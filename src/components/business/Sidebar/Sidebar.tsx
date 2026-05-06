@@ -4,6 +4,7 @@ import { ConnectionList, type RedisRefreshRequest } from "./ConnectionList";
 import { SavedQueriesList } from "./SavedQueriesList";
 import { ConnectionForm, type RoutineType, SavedQuery } from "@/services/api";
 import { useTranslation } from "react-i18next";
+import type { TreeCallbacks } from "@/lib/tree-adapters/types.tsx";
 
 interface ActiveTableTarget {
   connectionId: number;
@@ -24,37 +25,6 @@ interface SidebarProps {
     connectionId: number,
     driver: string,
     schema?: string,
-  ) => void;
-  onRedisKeySelect?: (
-    connection: string,
-    database: string,
-    redisKey: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
-  onOpenRedisConsole?: (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
-  onOpenRedisBrowser?: (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
-  onOpenRedisServerInfo?: (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
-  onOpenElasticsearchIndex?: (
-    connection: string,
-    index: string,
-    connectionId: number,
-    driver: string,
   ) => void;
   onConnect?: (form: ConnectionForm) => void;
   onCreateQuery?: (
@@ -108,15 +78,11 @@ interface SidebarProps {
   sidebarRevealRequest?: SidebarRevealRequest;
   layoutMode?: "tabs" | "tree";
   redisRefreshRequest?: RedisRefreshRequest;
+  treeCallbacks?: TreeCallbacks;
 }
 
 export function Sidebar({
   onTableSelect,
-  onRedisKeySelect,
-  onOpenRedisConsole,
-  onOpenRedisBrowser,
-  onOpenRedisServerInfo,
-  onOpenElasticsearchIndex,
   onConnect,
   onCreateQuery,
   onRoutineSelect,
@@ -130,6 +96,7 @@ export function Sidebar({
   sidebarRevealRequest,
   layoutMode = "tabs",
   redisRefreshRequest,
+  treeCallbacks,
 }: SidebarProps) {
   const { t } = useTranslation();
   const [sidebarTab, setSidebarTab] = useState<"connections" | "queries">(
@@ -144,11 +111,6 @@ export function Sidebar({
   // Shared props for both layout modes — add new ConnectionList props here once
   const connectionListProps = {
     onTableSelect,
-    onRedisKeySelect,
-    onOpenRedisConsole,
-    onOpenRedisBrowser,
-    onOpenRedisServerInfo,
-    onOpenElasticsearchIndex,
     onConnect,
     onCreateQuery,
     onRoutineSelect,
@@ -159,6 +121,7 @@ export function Sidebar({
     activeTableTarget,
     sidebarRevealRequest,
     redisRefreshRequest,
+    treeCallbacks,
   };
 
   if (layoutMode === "tree") {

@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isMysqlFamilyDriver, isKeyValueDriver } from "@/lib/driver-registry";
+import type { TreeCallbacks } from "@/lib/tree-adapters/types.tsx";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -1041,6 +1042,62 @@ export default function App() {
     setActiveTab(tabId);
   };
 
+  const treeCallbacks: TreeCallbacks = useMemo(
+    () => ({
+      onKeySelect: (ctx) => {
+        handleRedisKeySelect(
+          ctx.connectionName,
+          ctx.databaseName,
+          ctx.leafName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onCreateKey: (ctx) => {
+        handleRedisKeySelect(
+          ctx.connectionName,
+          ctx.databaseName,
+          "",
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onOpenBrowser: (ctx) => {
+        handleOpenRedisBrowser(
+          ctx.connectionName,
+          ctx.databaseName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onOpenConsole: (ctx) => {
+        handleOpenRedisConsole(
+          ctx.connectionName,
+          ctx.databaseName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onOpenServerInfo: (ctx) => {
+        handleOpenRedisServerInfo(
+          ctx.connectionName,
+          ctx.databaseName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onOpenIndex: (ctx) => {
+        handleOpenElasticsearchIndex(
+          ctx.connectionName,
+          ctx.leafName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+    }),
+    [],
+  );
+
   const notifyRedisRefresh = (connectionId: number, database: string) => {
     setRedisRefreshRequest({
       id: ++redisRefreshIdRef.current,
@@ -1846,11 +1903,6 @@ export default function App() {
           >
             <Sidebar
               onTableSelect={handleTableSelect}
-              onRedisKeySelect={handleRedisKeySelect}
-              onOpenRedisConsole={handleOpenRedisConsole}
-              onOpenRedisBrowser={handleOpenRedisBrowser}
-              onOpenRedisServerInfo={handleOpenRedisServerInfo}
-              onOpenElasticsearchIndex={handleOpenElasticsearchIndex}
               onConnect={() => {}}
               onCreateQuery={handleCreateQuery}
               onRoutineSelect={handleRoutineSelect}
@@ -1864,6 +1916,7 @@ export default function App() {
               sidebarRevealRequest={sidebarRevealRequest}
               layoutMode={sidebarLayout}
               redisRefreshRequest={redisRefreshRequest}
+              treeCallbacks={treeCallbacks}
             />
           </ResizablePanel>
 

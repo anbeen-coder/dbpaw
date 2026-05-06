@@ -12,6 +12,10 @@ import {
   siTidb,
   siElasticsearch,
 } from "simple-icons";
+import type { TreeConfig, TreeCallbacks } from "./tree-adapters/types.tsx";
+import { createSqlTreeConfig } from "./tree-adapters/sql-adapter.tsx";
+import { createRedisTreeConfig } from "./tree-adapters/redis-adapter.tsx";
+import { createElasticsearchTreeConfig } from "./tree-adapters/elasticsearch-adapter.tsx";
 
 export type ImportDriverCapability =
   | "supported"
@@ -72,6 +76,7 @@ export interface DriverConfig {
   supportsRoutines: boolean;
   importCapability: ImportDriverCapability;
   icon: () => ReactNode;
+  treeConfig?: TreeConfig | ((callbacks: TreeCallbacks) => TreeConfig);
 }
 
 export const DRIVER_REGISTRY: DriverConfig[] = [
@@ -88,6 +93,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siPostgresql),
+    treeConfig: createSqlTreeConfig({ supportsSchemaNode: true }),
   },
   {
     id: "mysql",
@@ -102,6 +108,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siMysql),
+    treeConfig: createSqlTreeConfig(),
   },
   {
     id: "mariadb",
@@ -116,6 +123,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siMariadb),
+    treeConfig: createSqlTreeConfig(),
   },
   {
     id: "tidb",
@@ -130,6 +138,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siTidb),
+    treeConfig: createSqlTreeConfig(),
   },
   {
     id: "starrocks",
@@ -144,6 +153,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderLocalIcon("/icons/db/starrocks.svg"),
+    treeConfig: createSqlTreeConfig(),
   },
   {
     id: "doris",
@@ -158,6 +168,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siApachedoris),
+    treeConfig: createSqlTreeConfig(),
   },
   {
     id: "sqlite",
@@ -172,6 +183,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siSqlite),
+    treeConfig: createSqlTreeConfig(),
   },
   {
     id: "duckdb",
@@ -186,6 +198,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siDuckdb),
+    treeConfig: createSqlTreeConfig(),
   },
   {
     id: "clickhouse",
@@ -200,6 +213,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "read_only_not_supported",
     icon: () => renderSimpleIcon(siClickhouse),
+    treeConfig: createSqlTreeConfig(),
   },
   {
     id: "mssql",
@@ -214,6 +228,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderLocalIcon("/icons/db/mssql.svg"),
+    treeConfig: createSqlTreeConfig({ supportsSchemaNode: true }),
   },
   {
     id: "oracle",
@@ -228,6 +243,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderLocalIcon("/icons/db/oracle.svg"),
+    treeConfig: createSqlTreeConfig({ supportsSchemaNode: true }),
   },
   {
     id: "redis",
@@ -242,6 +258,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siRedis),
+    treeConfig: (callbacks) => createRedisTreeConfig(callbacks),
   },
   {
     id: "elasticsearch",
@@ -256,6 +273,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siElasticsearch),
+    treeConfig: (callbacks) => createElasticsearchTreeConfig(callbacks),
   },
 ];
 
@@ -301,4 +319,18 @@ export const getConnectionIcon = (
     return getConnectionIcon("postgres");
   if (normalized === "sqlite3") return getConnectionIcon("sqlite");
   return <Server className="w-4 h-4" />;
+};
+
+export const getTreeConfig = (
+  driver: Driver,
+  callbacks?: TreeCallbacks,
+): TreeConfig => {
+  const config = getDriverConfig(driver);
+  if (!config.treeConfig) {
+    throw new Error(`No treeConfig defined for driver: ${driver}`);
+  }
+  if (typeof config.treeConfig === "function") {
+    return config.treeConfig(callbacks || {});
+  }
+  return config.treeConfig;
 };

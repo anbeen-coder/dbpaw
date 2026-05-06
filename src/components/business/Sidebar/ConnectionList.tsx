@@ -11,7 +11,6 @@ import { save, open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   Database,
-  Table,
   Table2 as TableIcon,
   Key,
   Copy,
@@ -26,10 +25,6 @@ import {
   Download,
   FolderOpen,
   Upload,
-  Terminal,
-  LayoutDashboard,
-  FileSearch,
-  Server,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,7 +79,9 @@ import {
   supportsCreateDatabase,
   supportsRoutines,
   supportsSchemaBrowsing,
+  getTreeConfig,
 } from "@/lib/driver-registry";
+import type { TreeCallbacks } from "@/lib/tree-adapters/types.tsx";
 import { toast } from "sonner";
 import { TreeNode } from "./connection-list/TreeNode";
 import { ConnectionDialog } from "./connection-list/ConnectionDialog";
@@ -497,37 +494,6 @@ interface ConnectionListProps {
     driver: string,
     schema?: string,
   ) => void;
-  onRedisKeySelect?: (
-    connection: string,
-    database: string,
-    redisKey: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
-  onOpenRedisConsole?: (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
-  onOpenRedisBrowser?: (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
-  onOpenRedisServerInfo?: (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
-  onOpenElasticsearchIndex?: (
-    connection: string,
-    index: string,
-    connectionId: number,
-    driver: string,
-  ) => void;
   onConnect?: (form: ConnectionForm) => void;
   onCreateQuery?: (
     connectionId: number,
@@ -591,6 +557,7 @@ interface ConnectionListProps {
   lastUpdated?: number;
   showSavedQueriesInTree?: boolean;
   redisRefreshRequest?: RedisRefreshRequest;
+  treeCallbacks?: TreeCallbacks;
 }
 
 export interface RedisRefreshRequest {
@@ -601,11 +568,6 @@ export interface RedisRefreshRequest {
 
 export function ConnectionList({
   onTableSelect,
-  onRedisKeySelect,
-  onOpenRedisConsole,
-  onOpenRedisBrowser,
-  onOpenRedisServerInfo,
-  onOpenElasticsearchIndex,
   onConnect,
   onCreateQuery,
   onRoutineSelect,
@@ -619,6 +581,7 @@ export function ConnectionList({
   lastUpdated,
   showSavedQueriesInTree = false,
   redisRefreshRequest,
+  treeCallbacks,
 }: ConnectionListProps) {
   const { t } = useTranslation();
   const tableNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -1434,53 +1397,168 @@ export function ConnectionList({
     }
   };
 
+  const openCreateElasticsearchIndexDialog = (
+    connectionId: string,
+    _databaseName = "Indices",
+  ) => {
+    const connection = connections.find((conn) => conn.id === connectionId);
+    if (!connection || connection.type !== "elasticsearch") return;
+    setCreateEsIndexConnectionId(connectionId);
+    setIsCreateEsIndexDialogOpen(true);
+  };
+
+  const handleElasticsearchIndexAction = async (
+    connectionId: string,
+    databaseName: string,
+    index: string,
+    action: ElasticsearchIndexAction,
+  ) => {
+    if (action === "delete" && !window.confirm(`Delete index "${index}"?`)) {
+      return;
+    }
+
+    try {
+      await executeElasticsearchIndexAction(
+        Number(connectionId),
+        index,
+        action,
+      );
+      toast.success(elasticsearchIndexActionSuccessMessage(action, index));
+      await handleRefreshDatabaseTables(connectionId, databaseName);
+    } catch (e) {
+      toast.error(`Failed to ${action} Elasticsearch index`, {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  };
+
   const getDatasourceTreeAdapter = (
     connection: Connection,
   ): DatasourceTreeAdapter => {
-    if (connection.type === "redis") {
-      return {
-        supportsSchemaNode: false,
-        isDatabaseExpandable: false,
-        listDatabases: async () =>
-          (await api.redis.listDatabases(Number(connection.id))).map(
+    const config = getTreeConfig(connection.type, treeCallbacks);
+    const driverKind = connection.type === "redis" ? "kv" : 
+                       connection.type === "elasticsearch" ? "search" : "sql";
+
+    // Build context for callbacks
+    const buildContext = () => ({
+      connectionId: connection.id,
+      connectionName: connection.name,
+      connectionType: connection.type,
+      driverKind: driverKind as any,
+    });
+
+    // Wrap treeCallbacks with ConnectionList internal functions
+    const enhancedCallbacks = {
+      ...treeCallbacks,
+      onCreateIndex: (ctx: any) => {
+        openCreateElasticsearchIndexDialog(ctx.connectionId, ctx.databaseName);
+        treeCallbacks?.onCreateIndex?.(ctx);
+      },
+      onIndexAction: async (ctx: any, action: "refresh" | "open" | "close" | "delete") => {
+        await handleElasticsearchIndexAction(ctx.connectionId, ctx.databaseName, ctx.leafName, action);
+        treeCallbacks?.onIndexAction?.(ctx, action);
+      },
+    };
+
+    const configWithEnhancedCallbacks = getTreeConfig(connection.type, enhancedCallbacks);
+
+    return {
+      supportsSchemaNode: config.supportsSchemaNode,
+      isDatabaseExpandable: config.databaseExpandable,
+      listDatabases: async () => {
+        if (config.virtualDatabases) {
+          return config.virtualDatabases;
+        }
+        if (connection.type === "redis") {
+          return (await api.redis.listDatabases(Number(connection.id))).map(
             (db) => db.name,
-          ),
-        loadDatabaseChildren: async (databaseName: string) => {
+          );
+        }
+        return api.metadata.listDatabasesById(Number(connection.id));
+      },
+      loadDatabaseChildren: async (databaseName: string) => {
+        if (connection.type === "redis") {
           await loadRedisKeysPage(connection.id, databaseName, "0", false);
           return [];
-        },
-        shouldSkipTableColumns: true,
-        getItemIcon: () => <Key className="w-4 h-4" />,
-        onItemActivate: (database, table) => {
-          onRedisKeySelect?.(
+        }
+        if (connection.type === "elasticsearch") {
+          const indices = await api.elasticsearch.listIndices(
+            Number(connection.id),
+          );
+          return indices
+            .filter(
+              (index) =>
+                showElasticsearchSystemIndices ||
+                !index.isSystem ||
+                searchTerm.trim().startsWith("."),
+            )
+            .map((index) => ({
+              name: index.name,
+              schema: "Indices",
+              columns: [],
+              isSystem: index.isSystem,
+              indexStatus: index.status,
+            }));
+        }
+        return fetchSqlTablesAsTableInfo(connection.id, databaseName);
+      },
+      shouldSkipTableColumns: driverKind !== "sql",
+      getItemIcon: config.leafNodeIcon,
+      onItemActivate: (database, table) => {
+        const ctx = {
+          ...buildContext(),
+          databaseName: database.name,
+          leafName: table.name,
+          leafSchema: table.schema,
+          leafMeta: { isSystem: table.isSystem, indexStatus: table.indexStatus },
+        };
+
+        if (configWithEnhancedCallbacks.onLeafActivate) {
+          configWithEnhancedCallbacks.onLeafActivate(ctx);
+          return;
+        }
+
+        // Default SQL behavior
+        if (driverKind === "sql") {
+          onTableSelect?.(
             connection.name,
             database.name,
             table.name,
             Number(connection.id),
             connection.type,
+            table.schema,
           );
-        },
-        getDatabaseRowActions: (database) => (
-          <div onClick={(e) => e.stopPropagation()}>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={() => handleCreateRedisKey(connection, database)}
-            >
-              <Plus className="w-3 h-3" />
-            </Button>
-          </div>
-        ),
-        onDatabaseDoubleClick: (database) => {
-          onOpenRedisBrowser?.(
-            connection.name,
-            database.name,
-            Number(connection.id),
-            connection.type,
-          );
-        },
-        renderDatabaseFooter: (database, level) => {
+        }
+      },
+      getDatabaseRowActions: (database) => {
+        if (!configWithEnhancedCallbacks.getDatabaseActions) return undefined;
+        const ctx = {
+          ...buildContext(),
+          databaseName: database.name,
+          databaseMeta: {
+            redisKeyCount: database.redisKeyCount,
+            redisCursor: database.redisCursor,
+            redisIsPartial: database.redisIsPartial,
+            redisRequiresPattern: database.redisRequiresPattern,
+          },
+        };
+        return configWithEnhancedCallbacks.getDatabaseActions(ctx);
+      },
+      onDatabaseDoubleClick: configWithEnhancedCallbacks.onDatabaseDoubleClick
+        ? (database) => {
+            const ctx = {
+              ...buildContext(),
+              databaseName: database.name,
+              databaseMeta: {
+                redisKeyCount: database.redisKeyCount,
+              },
+            };
+            configWithEnhancedCallbacks.onDatabaseDoubleClick!(ctx);
+          }
+        : undefined,
+      renderDatabaseFooter: (database, level) => {
+        // Redis footer with pagination
+        if (connection.type === "redis") {
           const indent = `${(level + 1) * 12 + 8}px`;
           if (database.redisRequiresPattern) {
             return (
@@ -1519,269 +1597,121 @@ export function ConnectionList({
               Results capped — use a pattern to narrow down
             </span>
           );
-        },
-        renderTableContextMenu: () => null,
-        renderDatabaseContextMenu: (databaseName) => (
-          <>
-            <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-              onClick={() => {
-                onRedisKeySelect?.(
-                  connection.name,
-                  databaseName,
-                  "",
-                  Number(connection.id),
-                  connection.type,
-                );
-                setContextMenu((prev) => ({ ...prev, visible: false }));
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              New key
-            </button>
-            <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-              onClick={() => {
-                onOpenRedisBrowser?.(
-                  connection.name,
-                  databaseName,
-                  Number(connection.id),
-                  connection.type,
-                );
-                setContextMenu((prev) => ({ ...prev, visible: false }));
-              }}
-            >
-              <LayoutDashboard className="h-4 w-4" />
-              Open browser
-            </button>
-            <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-              onClick={() => {
-                onOpenRedisConsole?.(
-                  connection.name,
-                  databaseName,
-                  Number(connection.id),
-                  connection.type,
-                );
-                setContextMenu((prev) => ({ ...prev, visible: false }));
-              }}
-            >
-              <Terminal className="h-4 w-4" />
-              Open console
-            </button>
-            <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-              onClick={() => {
-                onOpenRedisServerInfo?.(
-                  connection.name,
-                  databaseName,
-                  Number(connection.id),
-                  connection.type,
-                );
-                setContextMenu((prev) => ({ ...prev, visible: false }));
-              }}
-            >
-              <Server className="h-4 w-4" />
-              Server Info
-            </button>
-          </>
-        ),
-      };
-    }
+        }
 
-    if (connection.type === "elasticsearch") {
-      return {
-        supportsSchemaNode: false,
-        isDatabaseExpandable: true,
-        listDatabases: async () => ["Indices"],
-        loadDatabaseChildren: async () => {
-          const indices = await api.elasticsearch.listIndices(
-            Number(connection.id),
+        // Elasticsearch footer with system indices toggle
+        if (connection.type === "elasticsearch") {
+          return (
+            <label
+              key="elasticsearch-system-indices"
+              className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground"
+              style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Checkbox
+                checked={showElasticsearchSystemIndices}
+                onCheckedChange={(checked) =>
+                  setShowElasticsearchSystemIndices(checked === true)
+                }
+              />
+              Show system indices
+            </label>
           );
-          return indices
-            .filter(
-              (index) =>
-                showElasticsearchSystemIndices ||
-                !index.isSystem ||
-                searchTerm.trim().startsWith("."),
-            )
-            .map((index) => ({
-              name: index.name,
-              schema: "Indices",
-              columns: [],
-              isSystem: index.isSystem,
-              indexStatus: index.status,
-            }));
-        },
-        shouldSkipTableColumns: true,
-        getItemIcon: () => <FileSearch className="w-4 h-4" />,
-        onItemActivate: (_database, table) => {
-          onOpenElasticsearchIndex?.(
-            connection.name,
-            table.name,
-            Number(connection.id),
-            connection.type,
-          );
-        },
-        getDatabaseRowActions: (database) => (
-          <div onClick={(e) => e.stopPropagation()}>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              title="New index"
-              onClick={() =>
-                openCreateElasticsearchIndexDialog(connection.id, database.name)
-              }
-            >
-              <Plus className="w-3 h-3" />
-            </Button>
-          </div>
-        ),
-        onDatabaseDoubleClick: undefined,
-        renderDatabaseFooter: (_database, level) => (
-          <label
-            key="elasticsearch-system-indices"
-            className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground"
-            style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Checkbox
-              checked={showElasticsearchSystemIndices}
-              onCheckedChange={(checked) =>
-                setShowElasticsearchSystemIndices(checked === true)
-              }
-            />
-            Show system indices
-          </label>
-        ),
-        renderTableContextMenu: (database, table) => (
-          <>
-            <ContextMenuItem
-              onClick={async () => {
-                await handleElasticsearchIndexAction(
-                  connection.id,
-                  database.name,
-                  table.name,
-                  "refresh",
-                );
-              }}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh index
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={async () => {
-                await handleElasticsearchIndexAction(
-                  connection.id,
-                  database.name,
-                  table.name,
-                  "open",
-                );
-              }}
-            >
-              <FolderOpen className="mr-2 h-4 w-4" />
-              Open index
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={async () => {
-                await handleElasticsearchIndexAction(
-                  connection.id,
-                  database.name,
-                  table.name,
-                  "close",
-                );
-              }}
-            >
-              <TableIcon className="mr-2 h-4 w-4" />
-              Close index
-            </ContextMenuItem>
-            <ContextMenuItem
-              className="text-destructive"
-              onClick={async () => {
-                await handleElasticsearchIndexAction(
-                  connection.id,
-                  database.name,
-                  table.name,
-                  "delete",
-                );
-              }}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete index
-            </ContextMenuItem>
-          </>
-        ),
-        renderDatabaseContextMenu: (databaseName) => (
-          <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-            onClick={() => {
-              openCreateElasticsearchIndexDialog(connection.id, databaseName);
-              setContextMenu((prev) => ({ ...prev, visible: false }));
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            New index
-          </button>
-        ),
-      };
-    }
+        }
 
-    return {
-      supportsSchemaNode: supportsSchemaNodeForDriver(connection.type),
-      isDatabaseExpandable: true,
-      listDatabases: () =>
-        api.metadata.listDatabasesById(Number(connection.id)),
-      loadDatabaseChildren: (databaseName: string) =>
-        fetchSqlTablesAsTableInfo(connection.id, databaseName),
-      shouldSkipTableColumns: false,
-      getItemIcon: () => <Table className="w-4 h-4" />,
-      onItemActivate: (database, table) => {
-        onTableSelect?.(
-          connection.name,
-          database.name,
-          table.name,
-          Number(connection.id),
-          connection.type,
-          table.schema,
+        return null;
+      },
+      renderTableContextMenu: (database, table) => {
+        // SQL class databases - use internal functions for export
+        if (driverKind === "sql") {
+          return (
+            <>
+              <ContextMenuItem
+                onClick={() =>
+                  handleCreateQueryFromContext(connection.id, database.name)
+                }
+              >
+                <FileCode className="mr-2 h-4 w-4" />
+                {t("connection.menu.newQuery")}
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => handleTableExportDialog(connection, database, table)}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {t("connection.menu.exportTable")}
+              </ContextMenuItem>
+              {onAlterTable ? (
+                <ContextMenuItem
+                  onClick={() =>
+                    onAlterTable(
+                      Number(connection.id),
+                      database.name,
+                      table.schema ?? "",
+                      table.name,
+                      connection.type,
+                    )
+                  }
+                >
+                  <TableIcon className="mr-2 h-4 w-4" />
+                  {t("connection.menu.alterTable")}
+                </ContextMenuItem>
+              ) : null}
+            </>
+          );
+        }
+
+        // Non-SQL databases - use treeConfig
+        if (!configWithEnhancedCallbacks.getLeafContextMenuItems) return null;
+        const ctx = {
+          ...buildContext(),
+          databaseName: database.name,
+          leafName: table.name,
+          leafSchema: table.schema,
+          leafMeta: { isSystem: table.isSystem, indexStatus: table.indexStatus },
+        };
+        const items = configWithEnhancedCallbacks.getLeafContextMenuItems(ctx);
+        if (items.length === 0) return null;
+        return (
+          <>
+            {items.map((item) => (
+              <ContextMenuItem
+                key={item.key}
+                className={item.destructive ? "text-destructive" : ""}
+                onClick={item.onClick}
+              >
+                {item.icon}
+                {item.label}
+              </ContextMenuItem>
+            ))}
+          </>
         );
       },
-      getDatabaseRowActions: () => undefined,
-      renderDatabaseFooter: () => null,
-      renderTableContextMenu: (database, table) => (
-        <>
-          <ContextMenuItem
-            onClick={() =>
-              handleCreateQueryFromContext(connection.id, database.name)
-            }
-          >
-            <FileCode className="mr-2 h-4 w-4" />
-            {t("connection.menu.newQuery")}
-          </ContextMenuItem>
-          <ContextMenuItem
-            onClick={() => handleTableExportDialog(connection, database, table)}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {t("connection.menu.exportTable")}
-          </ContextMenuItem>
-          {onAlterTable ? (
-            <ContextMenuItem
-              onClick={() =>
-                onAlterTable(
-                  Number(connection.id),
-                  database.name,
-                  table.schema ?? "",
-                  table.name,
-                  connection.type,
-                )
-              }
-            >
-              <TableIcon className="mr-2 h-4 w-4" />
-              {t("connection.menu.alterTable")}
-            </ContextMenuItem>
-          ) : null}
-        </>
-      ),
+      renderDatabaseContextMenu: configWithEnhancedCallbacks.getDatabaseContextMenuItems
+        ? (databaseName) => {
+            const ctx = {
+              ...buildContext(),
+              databaseName,
+            };
+            const items = configWithEnhancedCallbacks.getDatabaseContextMenuItems!(ctx);
+            return (
+              <>
+                {items.map((item) => (
+                  <button
+                    key={item.key}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
+                    onClick={() => {
+                      item.onClick();
+                      setContextMenu((prev) => ({ ...prev, visible: false }));
+                    }}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ))}
+              </>
+            );
+          }
+        : undefined,
     };
   };
 
@@ -2291,19 +2221,6 @@ export function ConnectionList({
     );
   };
 
-  const handleCreateRedisKey = (
-    connection: Connection,
-    database: DatabaseInfo,
-  ) => {
-    onRedisKeySelect?.(
-      connection.name,
-      database.name,
-      "",
-      Number(connection.id),
-      connection.type,
-    );
-  };
-
   const handleCreateQueryFromContext = (
     connectionId: string | null | undefined,
     databaseName?: string | null,
@@ -2339,41 +2256,6 @@ export function ConnectionList({
     setShowCreateDbAdvanced(false);
     setCreateDbForm(defaultCreateDatabaseForm);
     setIsCreateDbDialogOpen(true);
-  };
-
-  const openCreateElasticsearchIndexDialog = (
-    connectionId: string,
-    _databaseName = "Indices",
-  ) => {
-    const connection = connections.find((conn) => conn.id === connectionId);
-    if (!connection || connection.type !== "elasticsearch") return;
-    setCreateEsIndexConnectionId(connectionId);
-    setIsCreateEsIndexDialogOpen(true);
-  };
-
-  const handleElasticsearchIndexAction = async (
-    connectionId: string,
-    databaseName: string,
-    index: string,
-    action: ElasticsearchIndexAction,
-  ) => {
-    if (action === "delete" && !window.confirm(`Delete index "${index}"?`)) {
-      return;
-    }
-
-    try {
-      await executeElasticsearchIndexAction(
-        Number(connectionId),
-        index,
-        action,
-      );
-      toast.success(elasticsearchIndexActionSuccessMessage(action, index));
-      await handleRefreshDatabaseTables(connectionId, databaseName);
-    } catch (e) {
-      toast.error(`Failed to ${action} Elasticsearch index`, {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
   };
 
   const clearConnectionTreeCache = (connectionId: string) => {

@@ -4,6 +4,8 @@ import {
   getExportDefaultName,
   getExportFilter,
   getConnectionStatusLabel,
+  mergeConnections,
+  type ConnectionLike,
 } from "./helpers";
 
 describe("sanitizeConnectionErrorMessage", () => {
@@ -141,5 +143,105 @@ describe("getConnectionStatusLabel", () => {
     expect(getConnectionStatusLabel({ connectState: "idle" })).toBe(
       "Not connected",
     );
+  });
+});
+
+describe("mergeConnections", () => {
+  const makeConnection = (
+    id: string,
+    overrides: Partial<ConnectionLike> = {},
+  ): ConnectionLike => ({
+    id,
+    databases: [],
+    connectState: "idle",
+    isConnected: false,
+    ...overrides,
+  });
+
+  test("preserves databases from previous connections", () => {
+    const prev = [
+      makeConnection("1", {
+        databases: [{ name: "db1" }, { name: "db2" }],
+        connectState: "success",
+        isConnected: true,
+      }),
+    ];
+    const next = [makeConnection("1")];
+
+    const result = mergeConnections(next, prev);
+    expect(result[0].databases).toEqual([{ name: "db1" }, { name: "db2" }]);
+  });
+
+  test("preserves connectState from previous connections", () => {
+    const prev = [
+      makeConnection("1", { connectState: "success", isConnected: true }),
+    ];
+    const next = [makeConnection("1", { connectState: "idle" })];
+
+    const result = mergeConnections(next, prev);
+    expect(result[0].connectState).toBe("success");
+    expect(result[0].isConnected).toBe(true);
+  });
+
+  test("uses new connection data when no previous match exists", () => {
+    const prev = [makeConnection("1", { databases: [{ name: "old_db" }] })];
+    const next = [makeConnection("2")];
+
+    const result = mergeConnections(next, prev);
+    expect(result[0].id).toBe("2");
+    expect(result[0].databases).toEqual([]);
+    expect(result[0].connectState).toBe("idle");
+  });
+
+  test("updates metadata from new connection while preserving state", () => {
+    const prev = [
+      makeConnection("1", {
+        databases: [{ name: "db1" }],
+        connectState: "success",
+        isConnected: true,
+      }),
+    ];
+    const next = [makeConnection("1")];
+
+    const result = mergeConnections(next, prev);
+    expect(result[0].databases).toEqual([{ name: "db1" }]);
+    expect(result[0].connectState).toBe("success");
+    expect(result[0].isConnected).toBe(true);
+  });
+
+  test("handles multiple connections correctly", () => {
+    const prev = [
+      makeConnection("1", {
+        databases: [{ name: "db1" }],
+        connectState: "success",
+        isConnected: true,
+      }),
+      makeConnection("2", {
+        connectState: "error",
+        isConnected: false,
+      }),
+    ];
+    const next = [makeConnection("1"), makeConnection("2"), makeConnection("3")];
+
+    const result = mergeConnections(next, prev);
+    expect(result).toHaveLength(3);
+    expect(result[0].databases).toEqual([{ name: "db1" }]);
+    expect(result[0].connectState).toBe("success");
+    expect(result[1].connectState).toBe("error");
+    expect(result[2].databases).toEqual([]);
+    expect(result[2].connectState).toBe("idle");
+  });
+
+  test("handles empty previous connections", () => {
+    const next = [makeConnection("1")];
+    const result = mergeConnections(next, []);
+    expect(result).toHaveLength(1);
+    expect(result[0].databases).toEqual([]);
+  });
+
+  test("handles empty new connections", () => {
+    const prev = [makeConnection("1")];
+    const result = mergeConnections([], prev);
+    expect(result).toHaveLength(0);
   });
 });

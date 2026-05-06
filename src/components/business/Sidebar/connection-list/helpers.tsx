@@ -43,6 +43,29 @@ export const getConnectionStatusLabel = (connection: ConnectionStatusLike) => {
   return "Not connected";
 };
 
+export interface ConnectionLike {
+  id: string;
+  databases: unknown[];
+  connectState: "idle" | "connecting" | "success" | "error";
+  isConnected: boolean;
+}
+
+export const mergeConnections = <T extends ConnectionLike>(
+  newConnections: T[],
+  previousConnections: T[],
+): T[] =>
+  newConnections.map((newConn) => {
+    const existing = previousConnections.find((p) => p.id === newConn.id);
+    return existing
+      ? {
+          ...newConn,
+          databases: existing.databases,
+          connectState: existing.connectState,
+          isConnected: existing.isConnected,
+        }
+      : newConn;
+  });
+
 export const renderConnectionStatusIndicator = (
   connection: ConnectionStatusLike,
 ) => {

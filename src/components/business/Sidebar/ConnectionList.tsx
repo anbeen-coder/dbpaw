@@ -88,6 +88,7 @@ import { ConnectionDialog } from "./connection-list/ConnectionDialog";
 import {
   getExportDefaultName,
   getExportFilter,
+  mergeConnections,
   renderConnectionStatusIndicator,
   sanitizeConnectionErrorMessage,
 } from "./connection-list/helpers";
@@ -1056,12 +1057,10 @@ export function ConnectionList({
   const fetchConnections = async () => {
     try {
       const conns = await api.connections.list();
-      setConnections(
-        conns.map((c) => mapSavedConnection(c, t("common.unknown"))),
+      const mapped = conns.map((c) =>
+        mapSavedConnection(c, t("common.unknown")),
       );
-      setExpandedConnections(new Set());
-      setExpandedDatabases(new Set());
-      setExpandedDatabaseGroups(new Set());
+      setConnections((prev) => mergeConnections(mapped, prev));
     } catch (e) {
       console.error(
         "listConnections failed",

@@ -189,6 +189,11 @@ async fn test_mssql_get_table_data_supports_pagination_sort_filter_and_order_by(
         page1.data[0]["name"],
         serde_json::Value::String("delta".to_string())
     );
+    // Regression: internal __row_num column must not leak to users
+    assert!(
+        !page1.data[0].as_object().unwrap().contains_key("__row_num"),
+        "__row_num should not appear in result data"
+    );
 
     let filtered = driver
         .get_table_data(

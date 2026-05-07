@@ -285,6 +285,11 @@ async fn test_mssql_command_get_table_data_by_conn_pagination_works() {
     assert_eq!(page1.page, 1);
     assert_eq!(page1.data.len(), 2);
     assert_eq!(page2.data.len(), 1);
+    // Regression: internal __row_num column must not leak to users (page 2 uses ROW_NUMBER() path)
+    assert!(
+        !page2.data[0].as_object().unwrap().contains_key("__row_num"),
+        "__row_num should not appear in result data"
+    );
 
     cleanup_table(&form, &table).await;
 }

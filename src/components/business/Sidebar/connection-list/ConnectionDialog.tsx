@@ -110,6 +110,7 @@ export function ConnectionDialog({
   const isCreateTypeStep = dialogMode === "create" && createStep === "type";
   const isRedis = form.driver === "redis";
   const isElasticsearch = form.driver === "elasticsearch";
+  const isMssql = form.driver === "mssql";
   const hasElasticCloudId = isElasticsearch && !!(form.cloudId || "").trim();
   const redisMode = getRedisConnectionMode(form);
 
@@ -444,6 +445,11 @@ export function ConnectionDialog({
                                   }))
                                 }
                               />
+                              {isMssql && (
+                                <p className="text-xs text-muted-foreground">
+                                  {t("connection.dialog.hints.mssqlNamedInstance")}
+                                </p>
+                              )}
                             </div>
                           ) : null}
                           {formCapabilities.showPort ? (
@@ -616,9 +622,126 @@ export function ConnectionDialog({
                       </div>
                     ) : null}
 
+                    {isMssql ? (
+                      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                        <div className="grid gap-2">
+                          <Label htmlFor="authMode">
+                            {t("connection.dialog.fields.authMode")}
+                          </Label>
+                          <Select
+                            value={form.authMode || "sql_server"}
+                            onValueChange={(
+                              value: "sql_server" | "windows" | "integrated" | "aad_token",
+                            ) =>
+                              setForm((current) => ({
+                                ...current,
+                                authMode: value,
+                                username: value === "integrated" || value === "aad_token" ? "" : current.username,
+                                password: value === "integrated" ? "" : current.password,
+                              }))
+                            }
+                          >
+                            <SelectTrigger id="authMode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="sql_server">
+                                {t("connection.dialog.authMode.sqlServer")}
+                              </SelectItem>
+                              <SelectItem value="windows">
+                                {t("connection.dialog.authMode.windows")}
+                              </SelectItem>
+                              <SelectItem value="integrated">
+                                {t("connection.dialog.authMode.integrated")}
+                              </SelectItem>
+                              <SelectItem value="aad_token">
+                                {t("connection.dialog.authMode.aadToken")}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {(form.authMode === "sql_server" ||
+                          form.authMode === "windows") && (
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                              <Label htmlFor="username">
+                                {t("connection.dialog.fields.username")}{" "}
+                                <span className="text-red-600">*</span>
+                              </Label>
+                              <Input
+                                id="username"
+                                value={form.username || ""}
+                                onChange={(e) =>
+                                  setForm((current) => ({
+                                    ...current,
+                                    username: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label htmlFor="password">
+                                {t("connection.dialog.fields.password")}{" "}
+                                {dialogMode === "create" ? (
+                                  <span className="text-red-600">*</span>
+                                ) : null}
+                              </Label>
+                              <Input
+                                id="password"
+                                type="password"
+                                placeholder={
+                                  dialogMode === "edit"
+                                    ? t(
+                                        "connection.dialog.placeholders.keepPassword",
+                                      )
+                                    : undefined
+                                }
+                                value={form.password || ""}
+                                onChange={(e) =>
+                                  setForm((current) => ({
+                                    ...current,
+                                    password: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {form.authMode === "aad_token" && (
+                          <div className="grid gap-2">
+                            <Label htmlFor="password">
+                              {t("connection.dialog.fields.aadToken")}{" "}
+                              {dialogMode === "create" ? (
+                                <span className="text-red-600">*</span>
+                              ) : null}
+                            </Label>
+                            <Input
+                              id="password"
+                              type="password"
+                              placeholder={
+                                dialogMode === "edit"
+                                  ? t(
+                                      "connection.dialog.placeholders.keepPassword",
+                                    )
+                                  : undefined
+                              }
+                              value={form.password || ""}
+                              onChange={(e) =>
+                                setForm((current) => ({
+                                  ...current,
+                                  password: e.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
                     {(formCapabilities.showUsername ||
                       formCapabilities.showPassword) &&
-                      !isElasticsearch && (
+                      !isElasticsearch &&
+                      !isMssql && (
                         <div className="grid gap-2 sm:grid-cols-2">
                           {formCapabilities.showUsername ? (
                             <div className="grid gap-2">

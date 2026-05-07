@@ -241,6 +241,7 @@ export const ja: Translations = {
         apiKeyId: "API Key ID",
         apiKeySecret: "API Key",
         apiKeyEncoded: "エンコード済み API Key",
+        aadToken: "Azure AD トークン",
         cloudId: "Elastic Cloud ID",
         sqliteFilePath: "SQLite ファイルパス",
         sqliteKey: "暗号化キー（SQLCipher）",
@@ -306,6 +307,10 @@ export const ja: Translations = {
         none: "なし",
         basic: "ユーザー名 / パスワード",
         apiKey: "API Key",
+        sqlServer: "SQL Server 認証",
+        windows: "Windows 認証",
+        integrated: "統合認証",
+        aadToken: "Azure AD トークン",
       },
       redisMode: {
         standalone: "スタンドアロン",
@@ -326,6 +331,7 @@ export const ja: Translations = {
         fileBased: "ファイル型",
         readOnly: "読み取り専用",
         preview: "プレビュー",
+        mssqlNamedInstance: "名前付きインスタンスには Host\\Instance 形式を使用",
       },
       steps: {
         chooseType: "タイプ選択",

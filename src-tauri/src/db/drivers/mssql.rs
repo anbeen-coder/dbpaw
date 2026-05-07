@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use bb8::{Pool, RunError};
 use futures_util::TryStreamExt;
 use std::collections::{HashMap, HashSet};
-use tiberius::{AuthMethod, Client, Config, EncryptionLevel, QueryItem, Row};
+use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, QueryItem, Row};
+use tiberius::SqlBrowser;
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
@@ -17,6 +18,9 @@ use crate::ssh::SshTunnel;
 pub struct MssqlDriver {
     pub pool: Pool<MssqlConnectionManager>,
     pub ssh_tunnel: Option<SshTunnel>,
+    /// Whether the server supports FOR JSON (SQL Server 2016+, major version >= 13).
+    /// When false, query results are read directly from tiberius Row instead.
+    pub supports_for_json: bool,
 }
 
 pub struct MssqlConnectionManager {
@@ -31,15 +35,30 @@ struct MssqlConfig {
     username: String,
     password: String,
     ssl: bool,
+    auth_mode: Option<String>,
+    instance_name: Option<String>,
 }
 
 fn build_config(form: &ConnectionForm) -> Result<MssqlConfig, String> {
-    let host = form
+    let raw_host = form
         .host
         .clone()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.trim().is_empty())
         .ok_or("[VALIDATION_ERROR] host cannot be empty")?;
+
+    // Parse SQL Server named instance format: HOST\INSTANCE_NAME
+    let (host, instance_name) = if let Some((h, inst)) = raw_host.rsplit_once('\\') {
+        let h = h.trim().to_string();
+        let inst = inst.trim().to_string();
+        if h.is_empty() || inst.is_empty() {
+            return Err("[VALIDATION_ERROR] invalid host\\instance format".to_string());
+        }
+        (h, Some(inst))
+    } else {
+        (raw_host, None)
+    };
+
     let port = form.port.unwrap_or(1433);
     if !(0..=65535).contains(&port) {
         return Err("[VALIDATION_ERROR] port out of range".to_string());
@@ -50,12 +69,25 @@ fn build_config(form: &ConnectionForm) -> Result<MssqlConfig, String> {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "master".to_string());
+    let auth_mode = form.auth_mode.clone().map(|v| v.trim().to_string());
+
+    // Platform compatibility check for Windows-specific auth modes.
+    if let Some(ref mode) = auth_mode {
+        if mode.eq_ignore_ascii_case("windows") && !cfg!(target_os = "windows") {
+            return Err(
+                "[VALIDATION_ERROR] Windows authentication is only available on Windows. \
+                 Please use SQL Server authentication or Integrated authentication instead."
+                    .to_string(),
+            );
+        }
+    }
+
     let username = form
         .username
         .clone()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.trim().is_empty())
-        .ok_or("[VALIDATION_ERROR] username cannot be empty")?;
+        .unwrap_or_default();
     let password = form.password.clone().unwrap_or_default();
 
     Ok(MssqlConfig {
@@ -65,7 +97,127 @@ fn build_config(form: &ConnectionForm) -> Result<MssqlConfig, String> {
         username,
         password,
         ssl: form.ssl.unwrap_or(false),
+        auth_mode,
+        instance_name,
     })
+}
+
+async fn detect_for_json_support(client: &mut Client<Compat<TcpStream>>) -> bool {
+    let Ok(mut stream) = client
+        .simple_query("SELECT CAST(SERVERPROPERTY('ProductMajorVersion') AS VARCHAR(10))")
+        .await
+    else {
+        return true;
+    };
+    while let Ok(Some(item)) = stream.try_next().await {
+        if let QueryItem::Row(row) = item {
+            if let Ok(Some(v)) = row.try_get::<&str, _>(0) {
+                if let Ok(major) = v.trim().parse::<u32>() {
+                    return major >= 13;
+                }
+            }
+        }
+    }
+    // Could not determine version (e.g. SQL Server 2008/R2 where
+    // ProductMajorVersion is not available). Assume FOR JSON is NOT
+    // supported — the safest default.
+    false
+}
+
+fn column_data_to_json(col: &ColumnData<'static>) -> serde_json::Value {
+    match col {
+        ColumnData::U8(None)
+        | ColumnData::I16(None)
+        | ColumnData::I32(None)
+        | ColumnData::I64(None)
+        | ColumnData::F32(None)
+        | ColumnData::F64(None)
+        | ColumnData::Bit(None)
+        | ColumnData::String(None)
+        | ColumnData::Guid(None)
+        | ColumnData::Binary(None)
+        | ColumnData::Numeric(None)
+        | ColumnData::Xml(None)
+        | ColumnData::DateTime(None)
+        | ColumnData::SmallDateTime(None)
+        | ColumnData::Time(None)
+        | ColumnData::Date(None)
+        | ColumnData::DateTime2(None)
+        | ColumnData::DateTimeOffset(None) => serde_json::Value::Null,
+        ColumnData::U8(Some(v)) => serde_json::json!(v),
+        ColumnData::I16(Some(v)) => serde_json::json!(v),
+        ColumnData::I32(Some(v)) => serde_json::json!(v),
+        ColumnData::I64(Some(v)) => serde_json::json!(v),
+        ColumnData::F32(Some(v)) => serde_json::json!(v),
+        ColumnData::F64(Some(v)) => serde_json::json!(v),
+        ColumnData::Bit(Some(v)) => serde_json::json!(v),
+        ColumnData::String(Some(v)) => serde_json::json!(*v),
+        ColumnData::Guid(Some(v)) => serde_json::json!(v.to_string()),
+        ColumnData::Binary(Some(v)) => {
+            serde_json::json!(v.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+        }
+        ColumnData::Numeric(Some(v)) => serde_json::json!(v.to_string()),
+        ColumnData::Xml(Some(v)) => serde_json::json!(v.to_string()),
+        ColumnData::DateTime(Some(v)) => {
+            let base = chrono::NaiveDate::from_ymd_opt(1900, 1, 1).unwrap();
+            let date = base + chrono::Duration::days(v.days() as i64);
+            let ns = (v.seconds_fragments() as i64) * (1e9 as i64) / 300;
+            let time = chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap()
+                + chrono::Duration::nanoseconds(ns);
+            serde_json::json!(chrono::NaiveDateTime::new(date, time).format("%Y-%m-%dT%H:%M:%S%.3f").to_string())
+        }
+        ColumnData::SmallDateTime(Some(v)) => {
+            let base = chrono::NaiveDate::from_ymd_opt(1900, 1, 1).unwrap();
+            let date = base + chrono::Duration::days(v.days() as i64);
+            let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(v.seconds_fragments() as u32, 0).unwrap_or_default();
+            serde_json::json!(chrono::NaiveDateTime::new(date, time).format("%Y-%m-%dT%H:%M:%S").to_string())
+        }
+        ColumnData::Time(Some(v)) => {
+            let ns = v.increments() as i64 * 10i64.pow(9 - v.scale() as u32);
+            let time = chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap()
+                + chrono::Duration::nanoseconds(ns);
+            serde_json::json!(time.format("%H:%M:%S%.f").to_string())
+        }
+        ColumnData::Date(Some(v)) => {
+            let base = chrono::NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
+            let date = base + chrono::Duration::days(v.days() as i64);
+            serde_json::json!(date.format("%Y-%m-%d").to_string())
+        }
+        ColumnData::DateTime2(Some(v)) => {
+            let base = chrono::NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
+            let date = base + chrono::Duration::days(v.date().days() as i64);
+            let t = v.time();
+            let ns = t.increments() as i64 * 10i64.pow(9 - t.scale() as u32);
+            let time = chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap()
+                + chrono::Duration::nanoseconds(ns);
+            serde_json::json!(chrono::NaiveDateTime::new(date, time).format("%Y-%m-%dT%H:%M:%S%.f").to_string())
+        }
+        ColumnData::DateTimeOffset(Some(v)) => {
+            let base = chrono::NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
+            let dt2 = v.datetime2();
+            let date = base + chrono::Duration::days(dt2.date().days() as i64);
+            let t = dt2.time();
+            let ns = t.increments() as i64 * 10i64.pow(9 - t.scale() as u32);
+            let time = chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap()
+                + chrono::Duration::nanoseconds(ns);
+            let offset_mins = v.offset() as i32;
+            let sign = if offset_mins < 0 { "-" } else { "+" };
+            let abs = offset_mins.abs();
+            serde_json::json!(format!(
+                "{}{}{:02}:{:02}",
+                chrono::NaiveDateTime::new(date, time).format("%Y-%m-%dT%H:%M:%S%.f"),
+                sign,
+                abs / 60,
+                abs % 60
+            ))
+        }
+        #[allow(unreachable_patterns)]
+        _ => {
+            // Defensive fallback for any future ColumnData variants or unsupported
+            // types that tiberius might expose (e.g. SQL_VARIANT, GEOMETRY, etc.).
+            serde_json::Value::Null
+        }
+    }
 }
 
 fn escape_literal(value: &str) -> String {
@@ -155,6 +307,155 @@ fn first_sql_keyword(sql: &str) -> Option<String> {
     Some(sql[start..i].to_ascii_lowercase())
 }
 
+/// Check whether the SQL already contains a `FOR JSON` clause.
+/// Scans the statement while skipping string literals and comments.
+fn already_has_for_json(sql: &str) -> bool {
+    let upper = sql.to_uppercase();
+    let bytes = upper.as_bytes();
+    let mut i = 0;
+
+    while i + 8 <= bytes.len() {
+        match bytes[i] {
+            b'\'' => {
+                // Skip over a single-quoted string literal.
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == b'\'' {
+                        i += 1;
+                        // SQL Server escapes quotes by doubling them
+                        if i < bytes.len() && bytes[i] == b'\'' {
+                            continue;
+                        }
+                        break;
+                    }
+                    i += 1;
+                }
+                continue;
+            }
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                i += 2;
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                if i + 1 < bytes.len() {
+                    i += 2;
+                }
+                continue;
+            }
+            _ => {
+                if bytes[i..].starts_with(b"FOR JSON") {
+                    let before_ok = i == 0 || {
+                        let ch = bytes[i - 1];
+                        !ch.is_ascii_alphabetic() && ch != b'_'
+                    };
+                    let after = i + 8;
+                    let after_ok = after >= bytes.len() || {
+                        let ch = bytes[after];
+                        !ch.is_ascii_alphabetic() && ch != b'_'
+                    };
+                    if before_ok && after_ok {
+                        return true;
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Scan the SQL statement for a keyword that appears at "top level"
+/// (depth == 0, outside of parentheses and comments).
+fn has_top_level_keyword(sql: &str, keyword: &str) -> bool {
+    let upper = sql.to_uppercase();
+    let kw_bytes = keyword.to_uppercase().as_bytes().to_vec();
+    let kw_len = kw_bytes.len();
+    let bytes = upper.as_bytes();
+    let mut depth: i32 = 0;
+    let mut i = 0;
+
+    while i + kw_len <= bytes.len() {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => depth = depth.saturating_sub(1),
+            b'\'' => {
+                // Skip over a single-quoted string literal.
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == b'\'' {
+                        i += 1;
+                        // SQL Server escapes quotes by doubling them
+                        if i < bytes.len() && bytes[i] == b'\'' {
+                            continue;
+                        }
+                        break;
+                    }
+                    i += 1;
+                }
+                continue;
+            }
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                i += 2;
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                if i + 1 < bytes.len() {
+                    i += 2;
+                }
+                continue;
+            }
+            _ if depth == 0 => {
+                if bytes[i..].starts_with(&kw_bytes) {
+                    let after = i + kw_len;
+                    let after_ok = after >= bytes.len() || {
+                        let ch = bytes[after];
+                        !ch.is_ascii_alphabetic() && ch != b'_'
+                    };
+                    if after_ok {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    false
+}
+
+fn has_top_level_union(sql: &str) -> bool {
+    has_top_level_keyword(sql, "UNION")
+}
+
+/// Determine whether a query is safe to rewrite with FOR JSON PATH.
+/// Returns false for CTEs, UNION, EXEC, and other constructs where
+/// appending FOR JSON would produce invalid T-SQL.
+fn is_for_json_safe(sql: &str) -> bool {
+    let first = first_sql_keyword(sql);
+    if !matches!(first.as_deref(), Some("select")) {
+        return false;
+    }
+    // UNION at the top level requires wrapping, which we don't do.
+    if has_top_level_union(sql) {
+        return false;
+    }
+    true
+}
+
 impl MssqlConnectionManager {
     fn new(config: MssqlConfig) -> Self {
         Self { config }
@@ -165,10 +466,11 @@ impl MssqlConnectionManager {
         config.host(&self.config.host);
         config.port(self.config.port);
         config.database(&self.config.database);
-        config.authentication(AuthMethod::sql_server(
-            self.config.username.clone(),
-            self.config.password.clone(),
-        ));
+        if let Some(ref instance) = self.config.instance_name {
+            config.instance_name(instance);
+        }
+        let auth = self.build_auth_method();
+        config.authentication(auth);
         config.encryption(encryption);
         if trust_cert
             && !matches!(
@@ -179,6 +481,37 @@ impl MssqlConnectionManager {
             config.trust_cert();
         }
         config
+    }
+
+    fn build_auth_method(&self) -> AuthMethod {
+        let mode = self.config.auth_mode.as_deref().unwrap_or("sql_server");
+        match mode {
+            "integrated" => AuthMethod::Integrated,
+            "windows" => {
+                #[cfg(target_os = "windows")]
+                {
+                    AuthMethod::windows(
+                        self.config.username.clone(),
+                        self.config.password.clone(),
+                    )
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    // Fallback that will fail at connection time with a clear message.
+                    // We return sql_server here so compilation succeeds on all platforms;
+                    // the actual check is done in connect_single.
+                    AuthMethod::sql_server(
+                        self.config.username.clone(),
+                        self.config.password.clone(),
+                    )
+                }
+            }
+            "aad_token" => AuthMethod::aad_token(self.config.password.clone()),
+            _ => AuthMethod::sql_server(
+                self.config.username.clone(),
+                self.config.password.clone(),
+            ),
+        }
     }
 
     async fn connect_single(&self) -> Result<Client<Compat<TcpStream>>, String> {
@@ -225,7 +558,9 @@ impl MssqlConnectionManager {
 
     async fn connect_with_config(config: Config) -> Result<Client<Compat<TcpStream>>, String> {
         let connect_future = async {
-            let tcp = TcpStream::connect(config.get_addr())
+            // Use SqlBrowser to resolve named instance port when instance_name is set.
+            // If no instance_name is configured, connect_named falls back to direct TCP.
+            let tcp = TcpStream::connect_named(&config)
                 .await
                 .map_err(|e| format!("{}", e))?;
             tcp.set_nodelay(true).map_err(|e| format!("{}", e))?;
@@ -315,6 +650,25 @@ fn mssql_full_type_string(data_type: &str, max_length: i64, precision: i64, scal
     }
 }
 
+/// Build a SELECT column list for SQL Server, automatically casting unsupported
+/// types (sql_variant, geometry, geography, hierarchyid) to NVARCHAR(MAX)
+/// so that tiberius can read them without panicking on `todo!()` for Udt/SSVariant.
+fn build_mssql_select_list(columns: &[(String, String)]) -> Result<String, String> {
+    let mut parts = Vec::new();
+    for (name, data_type) in columns {
+        let ident = quote_ident(name)?;
+        let dt = data_type.to_ascii_lowercase();
+        let expr = match dt.as_str() {
+            "sql_variant" | "geometry" | "geography" | "hierarchyid" => {
+                format!("CAST({} AS NVARCHAR(MAX)) AS {}", ident, ident)
+            }
+            _ => ident,
+        };
+        parts.push(expr);
+    }
+    Ok(parts.join(", "))
+}
+
 impl MssqlDriver {
     pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
         let mut cfg_form = form.clone();
@@ -335,7 +689,15 @@ impl MssqlDriver {
             .await
             .map_err(|e| format!("[CONN_FAILED] Failed to create connection pool: {}", e))?;
 
-        let driver = Self { pool, ssh_tunnel };
+        let supports_for_json = {
+            let mut client = pool.get().await.map_err(map_pool_error)?;
+            detect_for_json_support(&mut client).await
+        };
+        let driver = Self {
+            pool,
+            ssh_tunnel,
+            supports_for_json,
+        };
         driver.test_connection().await?;
         Ok(driver)
     }
@@ -380,9 +742,77 @@ impl MssqlDriver {
         Ok((rows, columns))
     }
 
-    /// Execute a single query wrapped with FOR JSON, collecting both column
-    /// metadata and JSON row data from the same stream to avoid dual execution.
+    /// Execute a single query, collecting both column metadata and JSON row data.
+    /// Uses FOR JSON on SQL Server 2016+ when the query is simple enough to be
+    /// safely rewritten; falls back to direct Row conversion for older versions
+    /// or complex queries (CTEs, UNION, EXEC, etc.).
     async fn fetch_query_result_json(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<serde_json::Value>, Vec<QueryColumn>), String> {
+        if self.supports_for_json && is_for_json_safe(sql) {
+            self.fetch_query_result_for_json(sql).await
+        } else {
+            self.fetch_query_result_direct(sql).await
+        }
+    }
+
+    /// Direct row-to-JSON conversion for SQL Server < 2016 (no FOR JSON support).
+    async fn fetch_query_result_direct(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<serde_json::Value>, Vec<QueryColumn>), String> {
+        let mut client = self.pool.get().await.map_err(map_pool_error)?;
+        let mut stream = client
+            .simple_query(sql)
+            .await
+            .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+
+        let mut columns: Vec<QueryColumn> = Vec::new();
+        let mut high_precision_cols = HashSet::new();
+        let mut data: Vec<serde_json::Value> = Vec::new();
+
+        while let Some(item) = stream
+            .try_next()
+            .await
+            .map_err(|e| format!("[QUERY_ERROR] {}", e))?
+        {
+            match item {
+                QueryItem::Metadata(meta) if columns.is_empty() => {
+                    for col in meta.columns() {
+                        let type_str = format!("{:?}", col.column_type());
+                        if is_high_precision_mssql_query_type(&type_str) {
+                            high_precision_cols.insert(col.name().to_string());
+                        }
+                        columns.push(QueryColumn {
+                            name: col.name().to_string(),
+                            r#type: type_str,
+                        });
+                    }
+                }
+                QueryItem::Row(row) => {
+                    let cells: Vec<_> = row.cells().map(|(_, c)| c).collect();
+                    let mut obj = serde_json::Map::new();
+                    for (i, col) in columns.iter().enumerate() {
+                        if let Some(cell) = cells.get(i) {
+                            let mut val = column_data_to_json(cell);
+                            if high_precision_cols.contains(&col.name) && val.is_number() {
+                                val = serde_json::Value::String(val.to_string());
+                            }
+                            obj.insert(col.name.clone(), val);
+                        }
+                    }
+                    data.push(serde_json::Value::Object(obj));
+                }
+                _ => {}
+            }
+        }
+
+        Ok((data, columns))
+    }
+
+    /// FOR JSON path for SQL Server 2016+.
+    async fn fetch_query_result_for_json(
         &self,
         sql: &str,
     ) -> Result<(Vec<serde_json::Value>, Vec<QueryColumn>), String> {
@@ -444,13 +874,7 @@ impl MssqlDriver {
 
     fn build_for_json_query(sql: &str) -> String {
         let trimmed = sql.trim_end().trim_end_matches(';').trim_end();
-        // Avoid double-wrapping when the query already ends with FOR JSON / FOR XML
-        let upper = trimmed.to_uppercase();
-        if upper.ends_with("FOR JSON PATH")
-            || upper.ends_with("FOR JSON AUTO")
-            || upper.ends_with("FOR JSON EXPLICIT")
-            || upper.ends_with("FOR JSON PATH, WITHOUT_ARRAY_WRAPPER")
-        {
+        if already_has_for_json(trimmed) {
             return trimmed.to_string();
         }
         format!("{trimmed} FOR JSON PATH, INCLUDE_NULL_VALUES")
@@ -765,6 +1189,7 @@ fn normalize_mssql_row_json(
 #[cfg(test)]
 mod tests {
     use super::{
+        already_has_for_json, has_top_level_union, is_for_json_safe,
         is_high_precision_mssql_data_type, is_high_precision_mssql_query_type, quote_ident,
         routine_type_sql_filter, MssqlDriver,
     };
@@ -841,6 +1266,116 @@ mod tests {
             MssqlDriver::build_for_json_query(sql),
             "SELECT id, name FROM dbo.users FOR JSON PATH, INCLUDE_NULL_VALUES"
         );
+    }
+
+    #[test]
+    fn test_already_has_for_json_detects_variants() {
+        assert!(already_has_for_json("SELECT 1 FOR JSON PATH"));
+        assert!(already_has_for_json("SELECT 1 FOR JSON AUTO"));
+        assert!(already_has_for_json("SELECT 1 FOR JSON EXPLICIT"));
+        assert!(already_has_for_json("SELECT 1 FOR JSON PATH, WITHOUT_ARRAY_WRAPPER"));
+        assert!(already_has_for_json("SELECT 1 FOR JSON PATH, ROOT('data')"));
+        assert!(already_has_for_json("SELECT 1 FOR JSON PATH, INCLUDE_NULL_VALUES"));
+        // Should not match partial words
+        assert!(!already_has_for_json("SELECT * FROM performance_json_log"));
+        assert!(!already_has_for_json("SELECT 'FOR JSON' AS label"));
+    }
+
+    #[test]
+    fn test_has_top_level_union_detects_union() {
+        assert!(has_top_level_union("SELECT 1 UNION SELECT 2"));
+        assert!(has_top_level_union("SELECT 1 UNION ALL SELECT 2"));
+        assert!(!has_top_level_union("SELECT * FROM (SELECT 1 UNION SELECT 2) AS t"));
+        assert!(!has_top_level_union("SELECT 'union' AS word"));
+    }
+
+    #[test]
+    fn test_is_for_json_safe() {
+        // Safe: simple SELECT
+        assert!(is_for_json_safe("SELECT * FROM users"));
+        assert!(is_for_json_safe("  -- comment\nSELECT id FROM t"));
+
+        // Unsafe: CTE
+        assert!(!is_for_json_safe("WITH cte AS (SELECT 1) SELECT * FROM cte"));
+
+        // Unsafe: UNION
+        assert!(!is_for_json_safe("SELECT 1 UNION SELECT 2"));
+
+        // Unsafe: EXEC
+        assert!(!is_for_json_safe("EXEC dbo.MyProc"));
+        assert!(!is_for_json_safe("EXECUTE dbo.MyProc"));
+
+        // Unsafe: subquery as standalone statement (starts with paren)
+        // Actually first_sql_keyword would return None here, so it's unsafe.
+        // But more importantly, INSERT/UPDATE/DELETE are unsafe.
+        assert!(!is_for_json_safe("INSERT INTO t VALUES (1)"));
+        assert!(!is_for_json_safe("UPDATE t SET x = 1"));
+        assert!(!is_for_json_safe("DELETE FROM t"));
+    }
+
+    #[test]
+    fn test_build_for_json_query_preserves_existing_for_json() {
+        let sql = "SELECT 1 FOR JSON PATH, ROOT('data')";
+        assert_eq!(
+            MssqlDriver::build_for_json_query(sql),
+            "SELECT 1 FOR JSON PATH, ROOT('data')"
+        );
+
+        let sql2 = "SELECT 1 FOR JSON PATH, INCLUDE_NULL_VALUES";
+        assert_eq!(
+            MssqlDriver::build_for_json_query(sql2),
+            "SELECT 1 FOR JSON PATH, INCLUDE_NULL_VALUES"
+        );
+    }
+
+    #[test]
+    fn test_build_config_parses_named_instance() {
+        use crate::models::ConnectionForm;
+
+        let form = ConnectionForm {
+            driver: "mssql".to_string(),
+            host: Some("192.168.1.10\\SQLEXPRESS".to_string()),
+            port: Some(1433),
+            username: Some("sa".to_string()),
+            password: Some("pass".to_string()),
+            ..Default::default()
+        };
+        let cfg = super::build_config(&form).unwrap();
+        assert_eq!(cfg.host, "192.168.1.10");
+        assert_eq!(cfg.instance_name, Some("SQLEXPRESS".to_string()));
+        assert_eq!(cfg.port, 1433);
+    }
+
+    #[test]
+    fn test_build_config_parses_plain_host() {
+        use crate::models::ConnectionForm;
+
+        let form = ConnectionForm {
+            driver: "mssql".to_string(),
+            host: Some("sql-server.example.com".to_string()),
+            port: Some(1433),
+            username: Some("sa".to_string()),
+            password: Some("pass".to_string()),
+            ..Default::default()
+        };
+        let cfg = super::build_config(&form).unwrap();
+        assert_eq!(cfg.host, "sql-server.example.com");
+        assert_eq!(cfg.instance_name, None);
+    }
+
+    #[test]
+    fn test_build_config_rejects_invalid_instance_format() {
+        use crate::models::ConnectionForm;
+
+        let form = ConnectionForm {
+            driver: "mssql".to_string(),
+            host: Some("192.168.1.10\\".to_string()),
+            port: Some(1433),
+            username: Some("sa".to_string()),
+            password: Some("pass".to_string()),
+            ..Default::default()
+        };
+        assert!(super::build_config(&form).is_err());
     }
 }
 
@@ -1255,11 +1790,34 @@ impl DatabaseDriver for MssqlDriver {
             " ORDER BY (SELECT NULL)".to_string()
         };
 
+        // Build explicit column list, casting unsupported types (sql_variant,
+        // geometry, geography, hierarchyid) to NVARCHAR(MAX) so tiberius can
+        // read them without panicking on `todo!()` for Udt/SSVariant.
+        let column_sql = format!(
+            "SELECT c.name, t.name AS data_type \
+             FROM sys.columns c \
+             JOIN sys.types t ON c.user_type_id = t.user_type_id \
+             JOIN sys.tables tbl ON tbl.object_id = c.object_id \
+             JOIN sys.schemas s ON s.schema_id = tbl.schema_id \
+             WHERE s.name = '{}' AND tbl.name = '{}' \
+             ORDER BY c.column_id",
+            escape_literal(&schema),
+            escape_literal(&table)
+        );
+        let col_rows = self.fetch_rows(&column_sql).await?;
+        let mut col_list = Vec::new();
+        for row in &col_rows {
+            let name = Self::parse_string(row, 0);
+            let data_type = Self::parse_string(row, 1);
+            col_list.push((name, data_type));
+        }
+        let select_list = build_mssql_select_list(&col_list)?;
+
         let sql = if offset == 0 {
             // Simple TOP query for first page (compatible with all SQL Server versions)
             format!(
-                "SELECT TOP ({}) * FROM {}{}{}",
-                safe_limit, qualified, where_clause, order_clause
+                "SELECT TOP ({}) {} FROM {}{}{}",
+                safe_limit, select_list, qualified, where_clause, order_clause
             )
         } else {
             // ROW_NUMBER() based pagination for subsequent pages (compatible with SQL Server 2005+)
@@ -1273,15 +1831,25 @@ impl DatabaseDriver for MssqlDriver {
 
             format!(
                 "SELECT * FROM ( \
-                    SELECT TOP ({}) *, ROW_NUMBER() OVER (ORDER BY {}) AS __row_num \
+                    SELECT TOP ({}) {}, ROW_NUMBER() OVER (ORDER BY {}) AS __row_num \
                     FROM {}{} \
                 ) AS __paged \
                 WHERE __row_num > {} \
                 ORDER BY __row_num",
-                offset + safe_limit, row_num_order, qualified, where_clause, offset
+                offset + safe_limit, select_list, row_num_order, qualified, where_clause, offset
             )
         };
-        let (data, _columns) = self.fetch_query_result_json(&sql).await?;
+        let (mut data, mut columns) = self.fetch_query_result_json(&sql).await?;
+
+        // Filter out the internal __row_num column so it's not exposed to users
+        if let Some(idx) = columns.iter().position(|c| c.name == "__row_num") {
+            columns.remove(idx);
+            for row in &mut data {
+                if let serde_json::Value::Object(obj) = row {
+                    obj.remove("__row_num");
+                }
+            }
+        }
 
         Ok(TableDataResponse {
             data,

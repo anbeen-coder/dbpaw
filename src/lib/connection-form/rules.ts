@@ -115,7 +115,12 @@ export const buildConnectionFormDefaults = (
   connectTimeoutMs: driver === "redis" ? 5000 : undefined,
   serviceName: driver === "redis" ? "" : undefined,
   sentinelPassword: driver === "redis" ? "" : undefined,
-  authMode: driver === "elasticsearch" ? "none" : undefined,
+  authMode:
+    driver === "elasticsearch"
+      ? "none"
+      : driver === "mssql"
+        ? "sql_server"
+        : undefined,
   apiKeyId: "",
   apiKeySecret: "",
   apiKeyEncoded: "",
@@ -279,7 +284,14 @@ export const normalizeConnectionFormInput = (
         ? raw.authMode === "basic" || raw.authMode === "api_key"
           ? raw.authMode
           : "none"
-        : undefined,
+        : driver === "mssql"
+          ? raw.authMode === "sql_server" ||
+            raw.authMode === "windows" ||
+            raw.authMode === "integrated" ||
+            raw.authMode === "aad_token"
+            ? raw.authMode
+            : "sql_server"
+          : undefined,
     apiKeyId: normalizeTextValue(raw.apiKeyId),
     apiKeySecret: normalizeTextValue(raw.apiKeySecret, false),
     apiKeyEncoded: normalizeTextValue(raw.apiKeyEncoded, false),

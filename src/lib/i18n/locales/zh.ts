@@ -235,6 +235,7 @@ export const zh: Translations = {
         apiKeyId: "API Key ID",
         apiKeySecret: "API Key",
         apiKeyEncoded: "已编码 API Key",
+        aadToken: "Azure AD 令牌",
         cloudId: "Elastic Cloud ID",
         sqliteFilePath: "SQLite 文件路径",
         sqliteKey: "加密密钥（SQLCipher）",
@@ -297,6 +298,10 @@ export const zh: Translations = {
         none: "无",
         basic: "用户名 / 密码",
         apiKey: "API Key",
+        sqlServer: "SQL Server 身份验证",
+        windows: "Windows 身份验证",
+        integrated: "集成身份验证",
+        aadToken: "Azure AD 令牌",
       },
       redisMode: {
         standalone: "单机",
@@ -317,6 +322,7 @@ export const zh: Translations = {
         fileBased: "文件型",
         readOnly: "只读能力",
         preview: "测试中",
+        mssqlNamedInstance: "支持 Host\\Instance 格式连接命名实例",
       },
       steps: {
         chooseType: "选择类型",

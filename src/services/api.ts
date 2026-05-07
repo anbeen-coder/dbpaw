@@ -434,7 +434,7 @@ export interface ConnectionForm {
   connectTimeoutMs?: number;
   serviceName?: string;
   sentinelPassword?: string;
-  authMode?: "none" | "basic" | "api_key";
+  authMode?: string;
   apiKeyId?: string;
   apiKeySecret?: string;
   apiKeyEncoded?: string;

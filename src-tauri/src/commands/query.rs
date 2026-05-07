@@ -477,31 +477,91 @@ fn append_limit_1000(sql: &str) -> String {
     }
 }
 
+fn insert_mssql_top_limit(sql: &str, limit: i64) -> String {
+    let bytes = sql.as_bytes();
+    let mut i = 0;
+    let mut depth = 0_i32;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        if i + 1 < bytes.len() && b == b'-' && bytes[i + 1] == b'-' {
+            i = skip_line_comment(bytes, i);
+            continue;
+        }
+        if i + 1 < bytes.len() && b == b'/' && bytes[i + 1] == b'*' {
+            i = skip_block_comment(bytes, i);
+            continue;
+        }
+        if b == b'\'' {
+            i = skip_single_quote(bytes, i);
+            continue;
+        }
+        if b == b'"' {
+            i = skip_double_quote(bytes, i);
+            continue;
+        }
+        if b == b'`' {
+            i = skip_backtick_quote(bytes, i);
+            continue;
+        }
+        if b == b'$' {
+            let next = skip_dollar_quote(bytes, i);
+            if next != i + 1 {
+                i = next;
+                continue;
+            }
+        }
+        if b == b'(' {
+            depth += 1;
+            i += 1;
+            continue;
+        }
+        if b == b')' {
+            depth = (depth - 1).max(0);
+            i += 1;
+            continue;
+        }
+        if depth == 0 && (b.is_ascii_alphabetic() || b == b'_') {
+            let start = i;
+            i += 1;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            let word = &sql[start..i];
+            if word.eq_ignore_ascii_case("select") {
+                let insert_pos = i;
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                return format!("{} TOP ({limit}) {}", &sql[..insert_pos], &sql[i..]);
+            }
+            continue;
+        }
+        i += 1;
+    }
+
+    // Fallback: wrap in subquery (rare, e.g. VALUES clause without SELECT)
+    format!("SELECT TOP ({limit}) * FROM ({sql}) AS __limited")
+}
+
 fn append_mssql_fetch_1000(sql: &str) -> String {
     let mut trimmed = sql.trim_end();
     let had_semicolon = trimmed.ends_with(';');
     if had_semicolon {
         trimmed = trimmed.trim_end_matches(';').trim_end();
     }
-    let has_order_by = collect_top_level_keywords(trimmed)
-        .windows(2)
-        .any(|pair| pair[0] == "order" && pair[1] == "by");
     let has_offset_clause = has_top_level_mssql_offset_clause(trimmed);
 
-    let with_fetch = if has_offset_clause {
+    let limited = if has_offset_clause {
         format!("{trimmed} FETCH NEXT {DEFAULT_SELECT_LIMIT} ROWS ONLY")
-    } else if has_order_by {
-        format!("{trimmed} OFFSET 0 ROWS FETCH NEXT {DEFAULT_SELECT_LIMIT} ROWS ONLY")
     } else {
-        format!(
-            "{trimmed} ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT {DEFAULT_SELECT_LIMIT} ROWS ONLY"
-        )
+        insert_mssql_top_limit(trimmed, DEFAULT_SELECT_LIMIT)
     };
 
     if had_semicolon {
-        format!("{with_fetch};")
+        format!("{limited};")
     } else {
-        with_fetch
+        limited
     }
 }
 
@@ -1214,18 +1274,34 @@ mod tests {
     }
 
     #[test]
-    fn mssql_adds_fetch_with_default_order() {
+    fn mssql_adds_top_to_simple_select() {
         assert_eq!(
             maybe_apply_default_limit("SELECT * FROM t", Some("mssql")),
-            "SELECT * FROM t ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY"
+            "SELECT TOP (1000) * FROM t"
         );
     }
 
     #[test]
-    fn mssql_adds_fetch_with_existing_order() {
+    fn mssql_adds_top_with_existing_order() {
         assert_eq!(
             maybe_apply_default_limit("SELECT * FROM t ORDER BY id DESC", Some("mssql")),
-            "SELECT * FROM t ORDER BY id DESC OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY"
+            "SELECT TOP (1000) * FROM t ORDER BY id DESC"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_top_to_cte_select() {
+        assert_eq!(
+            maybe_apply_default_limit("WITH cte AS (SELECT 1) SELECT * FROM cte", Some("mssql")),
+            "WITH cte AS (SELECT 1) SELECT TOP (1000) * FROM cte"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_top_to_select_with_semicolon() {
+        assert_eq!(
+            maybe_apply_default_limit("SELECT * FROM t;", Some("mssql")),
+            "SELECT TOP (1000) * FROM t;"
         );
     }
 

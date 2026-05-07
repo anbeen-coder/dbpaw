@@ -239,6 +239,7 @@ export const en = {
         apiKeyId: "API Key ID",
         apiKeySecret: "API Key",
         apiKeyEncoded: "Encoded API Key",
+        aadToken: "AAD Token",
         cloudId: "Elastic Cloud ID",
         sqliteFilePath: "SQLite File Path",
         sqliteKey: "Encryption Key (SQLCipher)",
@@ -304,6 +305,10 @@ export const en = {
         none: "None",
         basic: "Username / Password",
         apiKey: "API Key",
+        sqlServer: "SQL Server Authentication",
+        windows: "Windows Authentication",
+        integrated: "Integrated Authentication",
+        aadToken: "Azure AD Token",
       },
       redisMode: {
         standalone: "Standalone",
@@ -324,6 +329,7 @@ export const en = {
         fileBased: "File-based",
         readOnly: "Read-only",
         preview: "Preview",
+        mssqlNamedInstance: "Supports Host\\Instance format for named instances",
       },
       steps: {
         chooseType: "Choose type",

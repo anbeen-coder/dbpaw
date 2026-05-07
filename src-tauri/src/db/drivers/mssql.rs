@@ -107,7 +107,7 @@ async fn detect_for_json_support(client: &mut Client<Compat<TcpStream>>) -> bool
         .simple_query("SELECT CAST(SERVERPROPERTY('ProductMajorVersion') AS VARCHAR(10))")
         .await
     else {
-        return true;
+        return false;
     };
     while let Ok(Some(item)) = stream.try_next().await {
         if let QueryItem::Row(row) = item {

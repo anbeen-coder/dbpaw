@@ -1,4 +1,4 @@
-use super::{conn_failed_error, strip_trailing_statement_terminator, DatabaseDriver};
+use super::{conn_failed_error, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
     SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
@@ -34,46 +34,7 @@ fn escape_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
 
-fn first_sql_keyword(sql: &str) -> Option<String> {
-    let bytes = sql.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
-    loop {
-        while i < len && (bytes[i].is_ascii_whitespace() || bytes[i] == b';') {
-            i += 1;
-        }
-        if i + 1 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' {
-            i += 2;
-            while i < len && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            if i + 1 >= len {
-                return None;
-            }
-            i += 2;
-            continue;
-        }
-        break;
-    }
-    if i >= len {
-        return None;
-    }
-    let start = i;
-    while i < len && bytes[i].is_ascii_alphabetic() {
-        i += 1;
-    }
-    if start == i {
-        return None;
-    }
-    Some(sql[start..i].to_ascii_lowercase())
-}
+
 
 /// Convert a single Oracle column value (by index) into a `serde_json::Value`.
 ///
@@ -651,17 +612,39 @@ impl DatabaseDriver for OracleDriver {
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let sql_clean = strip_trailing_statement_terminator(&sql).to_string();
-        let first_kw = first_sql_keyword(&sql_clean);
-        let is_read = matches!(
-            first_kw.as_deref(),
-            Some("select") | Some("with") | Some("show")
-        );
+        let statements = super::split_sql_statements(&sql);
+        if statements.is_empty() {
+            return Err("[QUERY_ERROR] Empty SQL statement".to_string());
+        }
 
         self.run_blocking(move |conn| {
+            // Execute all statements except the last one
+            if statements.len() > 1 {
+                for statement in statements.iter().take(statements.len() - 1) {
+                    let sql_clean = super::strip_trailing_statement_terminator(statement);
+                    let mut stmt = conn
+                        .statement(sql_clean)
+                        .build()
+                        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                    stmt.execute(&[] as &[&dyn oracle::sql_type::ToSql])
+                        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                    conn.commit()
+                        .map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
+                }
+            }
+
+            // Execute the last statement and return its result
+            let last_sql = statements.last().unwrap();
+            let sql_clean = super::strip_trailing_statement_terminator(last_sql);
+            let first_kw = super::first_sql_keyword(sql_clean);
+            let is_read = matches!(
+                first_kw.as_deref(),
+                Some("SELECT") | Some("WITH") | Some("SHOW")
+            );
+
             if is_read {
                 let rows = conn
-                    .query(&sql_clean, &[] as &[&dyn oracle::sql_type::ToSql])
+                    .query(sql_clean, &[] as &[&dyn oracle::sql_type::ToSql])
                     .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
 
                 // Collect column metadata before consuming rows
@@ -699,7 +682,7 @@ impl DatabaseDriver for OracleDriver {
             } else {
                 // DML or DDL — use Statement API to get affected-row count
                 let mut stmt = conn
-                    .statement(&sql_clean)
+                    .statement(sql_clean)
                     .build()
                     .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                 stmt.execute(&[] as &[&dyn oracle::sql_type::ToSql])
@@ -777,7 +760,7 @@ impl DatabaseDriver for OracleDriver {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape_literal, first_sql_keyword, quote_ident};
+    use super::{escape_literal, quote_ident};
 
     #[test]
     fn quote_ident_wraps_in_double_quotes() {
@@ -797,24 +780,24 @@ mod tests {
     #[test]
     fn first_sql_keyword_extracts_select() {
         assert_eq!(
-            first_sql_keyword("  SELECT id FROM t"),
-            Some("select".to_string())
+            crate::db::drivers::first_sql_keyword("  SELECT id FROM t"),
+            Some("SELECT".to_string())
         );
     }
 
     #[test]
     fn first_sql_keyword_skips_comments() {
         assert_eq!(
-            first_sql_keyword("-- comment\nINSERT INTO t VALUES(1)"),
-            Some("insert".to_string())
+            crate::db::drivers::first_sql_keyword("-- comment\nINSERT INTO t VALUES(1)"),
+            Some("INSERT".to_string())
         );
     }
 
     #[test]
     fn first_sql_keyword_identifies_with() {
         assert_eq!(
-            first_sql_keyword("WITH cte AS (SELECT 1) SELECT * FROM cte"),
-            Some("with".to_string())
+            crate::db::drivers::first_sql_keyword("WITH cte AS (SELECT 1) SELECT * FROM cte"),
+            Some("WITH".to_string())
         );
     }
 }

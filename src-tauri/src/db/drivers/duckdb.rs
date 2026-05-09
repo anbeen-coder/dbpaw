@@ -53,53 +53,7 @@ fn duckdb_table_ref(schema: &str, table: &str) -> String {
     }
 }
 
-fn first_sql_keyword(sql: &str) -> Option<String> {
-    let bytes = sql.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
 
-    loop {
-        while i < len && (bytes[i].is_ascii_whitespace() || bytes[i] == b';') {
-            i += 1;
-        }
-
-        if i + 1 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' {
-            i += 2;
-            while i < len && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            if i + 1 >= len {
-                return None;
-            }
-            i += 2;
-            continue;
-        }
-
-        break;
-    }
-
-    if i >= len {
-        return None;
-    }
-
-    let start = i;
-    while i < len && bytes[i].is_ascii_alphabetic() {
-        i += 1;
-    }
-    if start == i {
-        return None;
-    }
-
-    Some(sql[start..i].to_ascii_lowercase())
-}
 
 fn sql_contains_keyword(sql: &str, keyword: &str) -> bool {
     let keyword_bytes = keyword.as_bytes();
@@ -681,22 +635,37 @@ impl DatabaseDriver for DuckdbDriver {
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
         self.run_blocking(move |conn| {
             let start = std::time::Instant::now();
-            let first_keyword = first_sql_keyword(&sql);
+            let statements = super::split_sql_statements(&sql);
+            if statements.is_empty() {
+                return Err("[QUERY_ERROR] Empty SQL statement".to_string());
+            }
+
+            // Execute all statements except the last one
+            if statements.len() > 1 {
+                for statement in statements.iter().take(statements.len() - 1) {
+                    conn.execute_batch(statement)
+                        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                }
+            }
+
+            // Execute the last statement and return its result
+            let last_sql = statements.last().unwrap();
+            let first_keyword = super::first_sql_keyword(last_sql);
             let should_fetch_rows = matches!(
                 first_keyword.as_deref(),
-                Some("select")
-                    | Some("pragma")
-                    | Some("with")
-                    | Some("explain")
-                    | Some("show")
-                    | Some("describe")
-                    | Some("desc")
-                    | Some("values")
-            ) || sql_contains_keyword(&sql, "returning");
+                Some("SELECT")
+                    | Some("PRAGMA")
+                    | Some("WITH")
+                    | Some("EXPLAIN")
+                    | Some("SHOW")
+                    | Some("DESCRIBE")
+                    | Some("DESC")
+                    | Some("VALUES")
+            ) || sql_contains_keyword(last_sql, "returning");
 
             if should_fetch_rows {
                 let mut stmt = conn
-                    .prepare(&sql)
+                    .prepare(last_sql)
                     .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                 let mut rows = stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                 let columns: Vec<QueryColumn> = rows
@@ -741,10 +710,10 @@ impl DatabaseDriver for DuckdbDriver {
                 });
             }
 
-            let row_count = match conn.execute(&sql, []) {
+            let row_count = match conn.execute(last_sql, []) {
                 Ok(v) => v as i64,
                 Err(_) => {
-                    conn.execute_batch(&sql)
+                    conn.execute_batch(last_sql)
                         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                     0
                 }

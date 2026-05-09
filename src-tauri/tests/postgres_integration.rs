@@ -1500,3 +1500,46 @@ async fn test_postgres_ddl_identity_columns() {
         .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
         .await;
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_postgres_multi_statement_execution() {
+    let form = shared_postgres_form();
+    let driver = postgres_context::connect_with_retry(|| PostgresDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_pg_multi_stmt_test";
+    let qualified = format!("public.{}", table_name);
+
+    // Setup
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INTEGER PRIMARY KEY, name VARCHAR(50))",
+            qualified
+        ))
+        .await
+        .expect("create table failed");
+
+    // Multi-statement: two INSERTs separated by semicolon
+    let multi_sql = format!(
+        "INSERT INTO {} (id, name) VALUES (1, 'Alice'); INSERT INTO {} (id, name) VALUES (2, 'Bob')",
+        qualified, qualified
+    );
+    let result = driver.execute_query(multi_sql).await;
+    assert!(result.is_ok(), "Multi-statement INSERT failed: {:?}", result.err());
+
+    // Verify both rows were inserted
+    let select_res = driver
+        .execute_query(format!("SELECT * FROM {} ORDER BY id", qualified))
+        .await
+        .expect("SELECT failed");
+    assert_eq!(select_res.row_count, 2);
+
+    // Cleanup
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+}

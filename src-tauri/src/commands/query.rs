@@ -31,103 +31,6 @@ fn normalize_for_guard(sql: &str) -> &str {
     sql.trim()
 }
 
-fn skip_single_quote(bytes: &[u8], mut i: usize) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == b'\'' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
-                i += 2;
-                continue;
-            }
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
-}
-
-fn skip_double_quote(bytes: &[u8], mut i: usize) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == b'"' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'"' {
-                i += 2;
-                continue;
-            }
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
-}
-
-fn skip_backtick_quote(bytes: &[u8], mut i: usize) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'`' {
-                i += 2;
-                continue;
-            }
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
-}
-
-fn parse_dollar_quote_tag(bytes: &[u8], start: usize) -> Option<usize> {
-    if bytes.get(start) != Some(&b'$') {
-        return None;
-    }
-    let mut i = start + 1;
-    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-        i += 1;
-    }
-    if bytes.get(i) == Some(&b'$') {
-        Some(i)
-    } else {
-        None
-    }
-}
-
-fn skip_dollar_quote(bytes: &[u8], start: usize) -> usize {
-    let Some(tag_end) = parse_dollar_quote_tag(bytes, start) else {
-        return start + 1;
-    };
-    let tag = &bytes[start..=tag_end];
-    let tag_len = tag.len();
-    let mut i = tag_end + 1;
-
-    while i + tag_len <= bytes.len() {
-        if &bytes[i..i + tag_len] == tag {
-            return i + tag_len;
-        }
-        i += 1;
-    }
-
-    bytes.len()
-}
-
-fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
-    i += 2;
-    while i < bytes.len() && bytes[i] != b'\n' {
-        i += 1;
-    }
-    i
-}
-
-fn skip_block_comment(bytes: &[u8], mut i: usize) -> usize {
-    i += 2;
-    while i + 1 < bytes.len() {
-        if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-            return i + 2;
-        }
-        i += 1;
-    }
-    i
-}
-
 fn statement_kind_for_limit_guard(sql: &str) -> Option<&'static str> {
     let tokens = collect_top_level_keywords(sql);
     let first = tokens.first()?.as_str();
@@ -162,27 +65,27 @@ fn is_single_statement(sql: &str) -> bool {
     while i < bytes.len() {
         let b = bytes[i];
         if i + 1 < bytes.len() && b == b'-' && bytes[i + 1] == b'-' {
-            i = skip_line_comment(bytes, i);
+            i = crate::db::drivers::skip_line_comment(bytes, i);
             continue;
         }
         if i + 1 < bytes.len() && b == b'/' && bytes[i + 1] == b'*' {
-            i = skip_block_comment(bytes, i);
+            i = crate::db::drivers::skip_block_comment(bytes, i);
             continue;
         }
         if b == b'\'' {
-            i = skip_single_quote(bytes, i);
+            i = crate::db::drivers::skip_single_quote(bytes, i);
             continue;
         }
         if b == b'"' {
-            i = skip_double_quote(bytes, i);
+            i = crate::db::drivers::skip_double_quote(bytes, i);
             continue;
         }
         if b == b'`' {
-            i = skip_backtick_quote(bytes, i);
+            i = crate::db::drivers::skip_backtick_quote(bytes, i);
             continue;
         }
         if b == b'$' {
-            let next = skip_dollar_quote(bytes, i);
+            let next = crate::db::drivers::skip_dollar_quote(bytes, i);
             if next != i + 1 {
                 i = next;
                 continue;
@@ -211,11 +114,11 @@ fn is_single_statement(sql: &str) -> bool {
                     continue;
                 }
                 if i + 1 < bytes.len() && c == b'-' && bytes[i + 1] == b'-' {
-                    i = skip_line_comment(bytes, i);
+                    i = crate::db::drivers::skip_line_comment(bytes, i);
                     continue;
                 }
                 if i + 1 < bytes.len() && c == b'/' && bytes[i + 1] == b'*' {
-                    i = skip_block_comment(bytes, i);
+                    i = crate::db::drivers::skip_block_comment(bytes, i);
                     continue;
                 }
                 return false;
@@ -237,27 +140,27 @@ fn collect_top_level_keywords(sql: &str) -> Vec<String> {
     while i < bytes.len() {
         let b = bytes[i];
         if i + 1 < bytes.len() && b == b'-' && bytes[i + 1] == b'-' {
-            i = skip_line_comment(bytes, i);
+            i = crate::db::drivers::skip_line_comment(bytes, i);
             continue;
         }
         if i + 1 < bytes.len() && b == b'/' && bytes[i + 1] == b'*' {
-            i = skip_block_comment(bytes, i);
+            i = crate::db::drivers::skip_block_comment(bytes, i);
             continue;
         }
         if b == b'\'' {
-            i = skip_single_quote(bytes, i);
+            i = crate::db::drivers::skip_single_quote(bytes, i);
             continue;
         }
         if b == b'"' {
-            i = skip_double_quote(bytes, i);
+            i = crate::db::drivers::skip_double_quote(bytes, i);
             continue;
         }
         if b == b'`' {
-            i = skip_backtick_quote(bytes, i);
+            i = crate::db::drivers::skip_backtick_quote(bytes, i);
             continue;
         }
         if b == b'$' {
-            let next = skip_dollar_quote(bytes, i);
+            let next = crate::db::drivers::skip_dollar_quote(bytes, i);
             if next != i + 1 {
                 i = next;
                 continue;
@@ -324,11 +227,11 @@ fn has_top_level_limit(sql: &str) -> bool {
                 continue;
             }
             if i + 1 < bytes.len() && b == b'-' && bytes[i + 1] == b'-' {
-                i = skip_line_comment(bytes, i);
+                i = crate::db::drivers::skip_line_comment(bytes, i);
                 continue;
             }
             if i + 1 < bytes.len() && b == b'/' && bytes[i + 1] == b'*' {
-                i = skip_block_comment(bytes, i);
+                i = crate::db::drivers::skip_block_comment(bytes, i);
                 continue;
             }
 
@@ -366,27 +269,27 @@ fn has_top_level_limit(sql: &str) -> bool {
     while i < bytes.len() {
         let b = bytes[i];
         if i + 1 < bytes.len() && b == b'-' && bytes[i + 1] == b'-' {
-            i = skip_line_comment(bytes, i);
+            i = crate::db::drivers::skip_line_comment(bytes, i);
             continue;
         }
         if i + 1 < bytes.len() && b == b'/' && bytes[i + 1] == b'*' {
-            i = skip_block_comment(bytes, i);
+            i = crate::db::drivers::skip_block_comment(bytes, i);
             continue;
         }
         if b == b'\'' {
-            i = skip_single_quote(bytes, i);
+            i = crate::db::drivers::skip_single_quote(bytes, i);
             continue;
         }
         if b == b'"' {
-            i = skip_double_quote(bytes, i);
+            i = crate::db::drivers::skip_double_quote(bytes, i);
             continue;
         }
         if b == b'`' {
-            i = skip_backtick_quote(bytes, i);
+            i = crate::db::drivers::skip_backtick_quote(bytes, i);
             continue;
         }
         if b == b'$' {
-            let next = skip_dollar_quote(bytes, i);
+            let next = crate::db::drivers::skip_dollar_quote(bytes, i);
             if next != i + 1 {
                 i = next;
                 continue;
@@ -485,27 +388,27 @@ fn insert_mssql_top_limit(sql: &str, limit: i64) -> String {
     while i < bytes.len() {
         let b = bytes[i];
         if i + 1 < bytes.len() && b == b'-' && bytes[i + 1] == b'-' {
-            i = skip_line_comment(bytes, i);
+            i = crate::db::drivers::skip_line_comment(bytes, i);
             continue;
         }
         if i + 1 < bytes.len() && b == b'/' && bytes[i + 1] == b'*' {
-            i = skip_block_comment(bytes, i);
+            i = crate::db::drivers::skip_block_comment(bytes, i);
             continue;
         }
         if b == b'\'' {
-            i = skip_single_quote(bytes, i);
+            i = crate::db::drivers::skip_single_quote(bytes, i);
             continue;
         }
         if b == b'"' {
-            i = skip_double_quote(bytes, i);
+            i = crate::db::drivers::skip_double_quote(bytes, i);
             continue;
         }
         if b == b'`' {
-            i = skip_backtick_quote(bytes, i);
+            i = crate::db::drivers::skip_backtick_quote(bytes, i);
             continue;
         }
         if b == b'$' {
-            let next = skip_dollar_quote(bytes, i);
+            let next = crate::db::drivers::skip_dollar_quote(bytes, i);
             if next != i + 1 {
                 i = next;
                 continue;

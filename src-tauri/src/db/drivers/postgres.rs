@@ -793,241 +793,12 @@ fn pg_quote_literal(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-fn skip_single_quote(bytes: &[u8], mut i: usize) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == b'\'' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
-                i += 2;
-                continue;
-            }
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
-}
 
-fn skip_double_quote(bytes: &[u8], mut i: usize) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == b'"' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'"' {
-                i += 2;
-                continue;
-            }
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
-}
-
-fn skip_backtick_quote(bytes: &[u8], mut i: usize) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'`' {
-                i += 2;
-                continue;
-            }
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
-}
-
-fn parse_dollar_quote_tag(bytes: &[u8], start: usize) -> Option<usize> {
-    if bytes.get(start) != Some(&b'$') {
-        return None;
-    }
-    let mut i = start + 1;
-    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-        i += 1;
-    }
-    if bytes.get(i) == Some(&b'$') {
-        Some(i)
-    } else {
-        None
-    }
-}
-
-fn skip_dollar_quote(bytes: &[u8], start: usize) -> usize {
-    let Some(tag_end) = parse_dollar_quote_tag(bytes, start) else {
-        return start + 1;
-    };
-    let tag = &bytes[start..=tag_end];
-    let tag_len = tag.len();
-    let mut i = tag_end + 1;
-
-    while i + tag_len <= bytes.len() {
-        if &bytes[i..i + tag_len] == tag {
-            return i + tag_len;
-        }
-        i += 1;
-    }
-
-    bytes.len()
-}
-
-fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
-    i += 2;
-    while i < bytes.len() && bytes[i] != b'\n' {
-        i += 1;
-    }
-    i
-}
-
-fn skip_block_comment(bytes: &[u8], mut i: usize) -> usize {
-    i += 2;
-    while i + 1 < bytes.len() {
-        if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-            return i + 2;
-        }
-        i += 1;
-    }
-    i
-}
-
-fn skip_ignorable_sql_prefix(bytes: &[u8], mut i: usize) -> usize {
-    while i < bytes.len() {
-        if bytes[i].is_ascii_whitespace() {
-            i += 1;
-            continue;
-        }
-        if i + 1 < bytes.len() && bytes[i] == b'-' && bytes[i + 1] == b'-' {
-            i = skip_line_comment(bytes, i);
-            continue;
-        }
-        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i = skip_block_comment(bytes, i);
-            continue;
-        }
-        break;
-    }
-    i
-}
-
-fn split_sql_statements(sql: &str) -> Vec<String> {
-    let bytes = sql.as_bytes();
-    let mut statements = Vec::new();
-    let mut i = 0;
-    let mut depth = 0_i32;
-    let mut start = skip_ignorable_sql_prefix(bytes, 0);
-
-    while i < bytes.len() {
-        let b = bytes[i];
-        if i + 1 < bytes.len() && b == b'-' && bytes[i + 1] == b'-' {
-            i = skip_line_comment(bytes, i);
-            continue;
-        }
-        if i + 1 < bytes.len() && b == b'/' && bytes[i + 1] == b'*' {
-            i = skip_block_comment(bytes, i);
-            continue;
-        }
-        if b == b'\'' {
-            i = skip_single_quote(bytes, i);
-            continue;
-        }
-        if b == b'"' {
-            i = skip_double_quote(bytes, i);
-            continue;
-        }
-        if b == b'`' {
-            i = skip_backtick_quote(bytes, i);
-            continue;
-        }
-        if b == b'$' {
-            let next = skip_dollar_quote(bytes, i);
-            if next != i + 1 {
-                i = next;
-                continue;
-            }
-        }
-        if b == b'(' {
-            depth += 1;
-            i += 1;
-            continue;
-        }
-        if b == b')' {
-            depth = (depth - 1).max(0);
-            i += 1;
-            continue;
-        }
-        if b == b';' && depth == 0 {
-            let stmt = sql[start..i].trim();
-            if !stmt.is_empty() {
-                statements.push(stmt.to_string());
-            }
-            start = skip_ignorable_sql_prefix(bytes, i + 1);
-        }
-        i += 1;
-    }
-
-    let tail = sql[start..].trim();
-    if !tail.is_empty() {
-        statements.push(tail.to_string());
-    }
-
-    statements
-}
-
-fn first_sql_keyword(sql: &str) -> Option<String> {
-    let bytes = sql.as_bytes();
-    let start = skip_ignorable_sql_prefix(bytes, 0);
-    if start >= bytes.len() {
-        return None;
-    }
-    let mut end = start;
-    while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
-        end += 1;
-    }
-    if end == start {
-        return None;
-    }
-    Some(sql[start..end].to_ascii_uppercase())
-}
 
 fn is_json_projectable_statement(sql: &str) -> bool {
     matches!(
-        first_sql_keyword(sql).as_deref(),
+        super::first_sql_keyword(sql).as_deref(),
         Some("SELECT" | "WITH" | "VALUES" | "TABLE")
-    )
-}
-
-/// Returns true for statements that produce no result rows (DML/DDL).
-fn is_non_result_statement(sql: &str) -> bool {
-    matches!(
-        first_sql_keyword(sql).as_deref(),
-        Some(
-            "INSERT"
-                | "UPDATE"
-                | "DELETE"
-                | "CREATE"
-                | "ALTER"
-                | "DROP"
-                | "TRUNCATE"
-                | "GRANT"
-                | "REVOKE"
-                | "COMMENT"
-                | "SET"
-                | "RESET"
-                | "CALL"
-                | "DO"
-                | "VACUUM"
-                | "ANALYZE"
-                | "REINDEX"
-                | "REFRESH"
-                | "CLUSTER"
-                | "DISCARD"
-                | "LISTEN"
-                | "NOTIFY"
-                | "PREPARE"
-                | "EXECUTE"
-                | "DEALLOCATE"
-                | "LOCK"
-        )
     )
 }
 
@@ -1576,7 +1347,7 @@ impl DatabaseDriver for PostgresDriver {
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let statements = split_sql_statements(&sql);
+        let statements = super::split_sql_statements(&sql);
         if statements.is_empty() {
             return Err("[QUERY_ERROR] Empty SQL statement".to_string());
         }
@@ -2117,7 +1888,7 @@ mod tests {
     #[test]
     fn test_split_sql_statements_multi_ddl() {
         let sql = "CREATE TYPE mood_enum AS ENUM ('sad', 'ok'); CREATE TYPE address_type AS (street VARCHAR(100));";
-        let statements = split_sql_statements(sql);
+        let statements = crate::db::drivers::split_sql_statements(sql);
         assert_eq!(statements.len(), 2);
         assert_eq!(statements[0], "CREATE TYPE mood_enum AS ENUM ('sad', 'ok')");
         assert_eq!(
@@ -2129,7 +1900,7 @@ mod tests {
     #[test]
     fn test_split_sql_statements_ignores_semicolon_in_literal_and_comment() {
         let sql = "SELECT ';' AS x; -- noop ;\nSELECT 1;";
-        let statements = split_sql_statements(sql);
+        let statements = crate::db::drivers::split_sql_statements(sql);
         assert_eq!(statements.len(), 2);
         assert_eq!(statements[0], "SELECT ';' AS x");
         assert_eq!(statements[1], "SELECT 1");
@@ -2145,7 +1916,7 @@ CREATE TABLE pg_data_type_test (
     id BIGSERIAL PRIMARY KEY,
     col_domain email_domain
 );";
-        let statements = split_sql_statements(sql);
+        let statements = crate::db::drivers::split_sql_statements(sql);
         assert_eq!(statements.len(), 2);
         assert!(statements[0].starts_with("CREATE DOMAIN email_domain"));
         assert!(statements[1].starts_with("CREATE TABLE pg_data_type_test"));
@@ -2162,7 +1933,7 @@ BEGIN
 END;
 $$;
 "#;
-        let statements = split_sql_statements(sql);
+        let statements = crate::db::drivers::split_sql_statements(sql);
         assert_eq!(statements.len(), 1);
         assert!(statements[0].contains("NEW.updated_at = CURRENT_TIMESTAMP;"));
         assert!(statements[0].ends_with("$$"));
@@ -2178,7 +1949,7 @@ BEGIN
 END;
 $body$;
 "#;
-        let statements = split_sql_statements(sql);
+        let statements = crate::db::drivers::split_sql_statements(sql);
         assert_eq!(statements.len(), 1);
         assert!(statements[0].contains("RETURN 'ok';"));
         assert!(statements[0].ends_with("$body$"));

@@ -342,53 +342,7 @@ fn pragma_table_info_sql(schema: &str, table: &str) -> String {
     )
 }
 
-fn first_sql_keyword(sql: &str) -> Option<String> {
-    let bytes = sql.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
 
-    loop {
-        while i < len && (bytes[i].is_ascii_whitespace() || bytes[i] == b';') {
-            i += 1;
-        }
-
-        if i + 1 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' {
-            i += 2;
-            while i < len && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            if i + 1 >= len {
-                return None;
-            }
-            i += 2;
-            continue;
-        }
-
-        break;
-    }
-
-    if i >= len {
-        return None;
-    }
-
-    let start = i;
-    while i < len && bytes[i].is_ascii_alphabetic() {
-        i += 1;
-    }
-    if start == i {
-        return None;
-    }
-
-    Some(sql[start..i].to_ascii_lowercase())
-}
 
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
@@ -699,15 +653,32 @@ impl DatabaseDriver for SqliteDriver {
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let first_keyword = first_sql_keyword(&sql);
-        let sql_lower = sql.to_lowercase();
+        let statements = super::split_sql_statements(&sql);
+        if statements.is_empty() {
+            return Err("[QUERY_ERROR] Empty SQL statement".to_string());
+        }
+
+        // Execute all statements except the last one
+        if statements.len() > 1 {
+            for statement in statements.iter().take(statements.len() - 1) {
+                sqlx::query(statement)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            }
+        }
+
+        // Execute the last statement and return its result
+        let last_sql = statements.last().unwrap();
+        let first_keyword = super::first_sql_keyword(last_sql);
+        let sql_lower = last_sql.to_lowercase();
         let should_fetch_rows = matches!(
             first_keyword.as_deref(),
-            Some("select") | Some("pragma") | Some("with") | Some("explain")
+            Some("SELECT") | Some("PRAGMA") | Some("WITH") | Some("EXPLAIN")
         ) || sql_lower.contains(" returning ");
 
         if should_fetch_rows {
-            let rows = sqlx::query(&sql)
+            let rows = sqlx::query(last_sql)
                 .fetch_all(&self.pool)
                 .await
                 .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
@@ -723,7 +694,7 @@ impl DatabaseDriver for SqliteDriver {
                     })
                     .collect()
             } else {
-                self.describe_query_columns(&sql).await?
+                self.describe_query_columns(last_sql).await?
             };
 
             for row in &rows {
@@ -747,7 +718,7 @@ impl DatabaseDriver for SqliteDriver {
             });
         }
 
-        let exec = sqlx::query(&sql)
+        let exec = sqlx::query(last_sql)
             .execute(&self.pool)
             .await
             .map_err(|e| format!("[QUERY_ERROR] {e}"))?;

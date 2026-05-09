@@ -88,53 +88,7 @@ fn build_config(form: &ConnectionForm) -> Result<ClickHouseConfig, String> {
     })
 }
 
-fn first_sql_keyword(sql: &str) -> Option<String> {
-    let bytes = sql.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
 
-    loop {
-        while i < len && (bytes[i].is_ascii_whitespace() || bytes[i] == b';') {
-            i += 1;
-        }
-
-        if i + 1 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' {
-            i += 2;
-            while i < len && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            if i + 1 >= len {
-                return None;
-            }
-            i += 2;
-            continue;
-        }
-
-        break;
-    }
-
-    if i >= len {
-        return None;
-    }
-
-    let start = i;
-    while i < len && bytes[i].is_ascii_alphabetic() {
-        i += 1;
-    }
-    if start == i {
-        return None;
-    }
-
-    Some(sql[start..i].to_ascii_lowercase())
-}
 
 fn quote_ident(ident: &str) -> String {
     format!("`{}`", ident.replace('`', "``"))
@@ -195,7 +149,7 @@ fn ensure_json_format(sql: &str) -> String {
 
 fn infer_insert_values_row_count(sql: &str) -> Option<i64> {
     let trimmed = trim_trailing_semicolon(sql);
-    if !matches!(first_sql_keyword(trimmed).as_deref(), Some("insert")) {
+    if !matches!(super::first_sql_keyword(trimmed).as_deref(), Some("INSERT")) {
         return None;
     }
 
@@ -916,20 +870,34 @@ impl DatabaseDriver for ClickHouseDriver {
         query_id: Option<&str>,
     ) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let keyword = first_sql_keyword(&sql);
+        let statements = super::split_sql_statements(&sql);
+        if statements.is_empty() {
+            return Err("[QUERY_ERROR] Empty SQL statement".to_string());
+        }
+
+        // Execute all statements except the last one
+        if statements.len() > 1 {
+            for statement in statements.iter().take(statements.len() - 1) {
+                self.execute_raw(statement, query_id).await?;
+            }
+        }
+
+        // Execute the last statement and return its result
+        let last_sql = statements.last().unwrap();
+        let keyword = super::first_sql_keyword(last_sql);
         let should_fetch_rows = matches!(
             keyword.as_deref(),
-            Some("select")
-                | Some("show")
-                | Some("describe")
-                | Some("desc")
-                | Some("with")
-                | Some("explain")
+            Some("SELECT")
+                | Some("SHOW")
+                | Some("DESCRIBE")
+                | Some("DESC")
+                | Some("WITH")
+                | Some("EXPLAIN")
         );
 
         if should_fetch_rows {
-            if has_format_clause(&sql) && !is_json_format(&sql) {
-                let raw = self.execute_raw(&sql, query_id).await?;
+            if has_format_clause(last_sql) && !is_json_format(last_sql) {
+                let raw = self.execute_raw(last_sql, query_id).await?;
                 let duration = start.elapsed();
                 return Ok(raw_text_to_query_result(
                     raw.body,
@@ -937,7 +905,7 @@ impl DatabaseDriver for ClickHouseDriver {
                 ));
             }
 
-            let query_sql = ensure_json_format(&sql);
+            let query_sql = ensure_json_format(last_sql);
             let resp = self.execute_json(&query_sql, query_id).await?;
 
             let columns = resp
@@ -961,7 +929,7 @@ impl DatabaseDriver for ClickHouseDriver {
             });
         }
 
-        let raw = self.execute_raw(&sql, query_id).await?;
+        let raw = self.execute_raw(last_sql, query_id).await?;
         let summary = raw.summary.unwrap_or_default();
         let affected_opt = summary
             .written_rows
@@ -970,7 +938,7 @@ impl DatabaseDriver for ClickHouseDriver {
             .or(summary.total_rows_to_read);
         let affected = if let Some(v) = affected_opt {
             v
-        } else if let Some(v) = infer_insert_values_row_count(&sql) {
+        } else if let Some(v) = infer_insert_values_row_count(last_sql) {
             v
         } else if raw.body.trim().is_empty() {
             0

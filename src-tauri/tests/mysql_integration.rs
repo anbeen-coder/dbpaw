@@ -855,3 +855,49 @@ async fn test_mysql_large_text_and_blob_round_trip() {
         .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
         .await;
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_mysql_multi_statement_execution() {
+    let form = mysql_context::shared_mysql_form();
+    let database = form.database.clone().expect("MYSQL_DB should be set");
+
+    let driver: MysqlDriver =
+        mysql_context::connect_with_retry(|| MysqlDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_multi_stmt_test";
+    let qualified = format!("`{}`.`{}`", database, table_name);
+
+    // Setup
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, name VARCHAR(50))",
+            qualified
+        ))
+        .await
+        .expect("create table failed");
+
+    // Multi-statement: two INSERTs separated by semicolon
+    let multi_sql = format!(
+        "INSERT INTO {} (id, name) VALUES (1, 'Alice'); INSERT INTO {} (id, name) VALUES (2, 'Bob')",
+        qualified, qualified
+    );
+    let result = driver.execute_query(multi_sql).await;
+    assert!(result.is_ok(), "Multi-statement INSERT failed: {:?}", result.err());
+
+    // Verify both rows were inserted
+    let select_res = driver
+        .execute_query(format!("SELECT * FROM {} ORDER BY id", qualified))
+        .await
+        .expect("SELECT failed");
+    assert_eq!(select_res.row_count, 2);
+
+    // Cleanup
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+}

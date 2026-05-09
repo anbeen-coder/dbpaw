@@ -518,7 +518,57 @@ async fn test_mssql_metadata_includes_indexes_and_foreign_keys() {
     let _ = driver
         .execute_query(format!(
             "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
-            parent, parent_qualified
+            table_name, qualified
+        ))
+        .await;
+    driver.close().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mssql_multi_statement_execution() {
+    let form = shared_mssql_form();
+    let driver = connect_with_retry(|| async { MssqlDriver::connect(&form).await }).await;
+
+    let table_name = "dbpaw_multi_stmt_test";
+    let qualified = format!("dbo.{}", table_name);
+
+    // Setup
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
+        ))
+        .await;
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, name VARCHAR(50))",
+            qualified
+        ))
+        .await
+        .expect("create table failed");
+
+    // Multi-statement: two INSERTs separated by semicolon
+    let multi_sql = format!(
+        "INSERT INTO {} (id, name) VALUES (1, 'Alice'); INSERT INTO {} (id, name) VALUES (2, 'Bob')",
+        qualified, qualified
+    );
+    let result = driver.execute_query(multi_sql).await;
+    assert!(result.is_ok(), "Multi-statement INSERT failed: {:?}", result.err());
+
+    // Verify both rows were inserted
+    let select_res = driver
+        .execute_query(format!("SELECT * FROM {} ORDER BY id", qualified))
+        .await
+        .expect("SELECT failed");
+    assert_eq!(select_res.row_count, 2);
+
+    // Cleanup
+    let _ = driver
+        .execute_query(format!(
+            "IF OBJECT_ID(N'dbo.{}', N'U') IS NOT NULL DROP TABLE {};",
+            table_name, qualified
         ))
         .await;
     driver.close().await;

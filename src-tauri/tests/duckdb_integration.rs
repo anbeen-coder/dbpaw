@@ -927,3 +927,42 @@ async fn test_duckdb_view_can_be_listed_and_queried() {
     driver.close().await;
     let _ = std::fs::remove_file(db_path);
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_duckdb_multi_statement_execution() {
+    let (db_path, form) = duckdb_context::duckdb_form_from_test_context();
+
+    let driver = DuckdbDriver::connect(&form)
+        .await
+        .expect("Failed to connect to duckdb");
+
+    // Setup
+    let _ = driver
+        .execute_query("DROP TABLE IF EXISTS multi_stmt_test".to_string())
+        .await;
+
+    driver
+        .execute_query("CREATE TABLE multi_stmt_test (id INTEGER PRIMARY KEY, name VARCHAR)".to_string())
+        .await
+        .expect("create table failed");
+
+    // Multi-statement: two INSERTs separated by semicolon
+    let multi_sql = "INSERT INTO multi_stmt_test (id, name) VALUES (1, 'Alice'); INSERT INTO multi_stmt_test (id, name) VALUES (2, 'Bob')".to_string();
+    let result = driver.execute_query(multi_sql).await;
+    assert!(result.is_ok(), "Multi-statement INSERT failed: {:?}", result.err());
+
+    // Verify both rows were inserted
+    let select_res = driver
+        .execute_query("SELECT * FROM multi_stmt_test ORDER BY id".to_string())
+        .await
+        .expect("SELECT failed");
+    assert_eq!(select_res.row_count, 2);
+
+    // Cleanup
+    let _ = driver
+        .execute_query("DROP TABLE IF EXISTS multi_stmt_test".to_string())
+        .await;
+    driver.close().await;
+    let _ = std::fs::remove_file(db_path);
+}

@@ -505,3 +505,53 @@ async fn test_clickhouse_boolean_and_json_type_mapping_regression() {
         .await;
     driver.close().await;
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_clickhouse_multi_statement_execution() {
+    let docker = (!clickhouse_context::should_reuse_local_db()).then(Cli::default);
+    let (_container, form) = clickhouse_context::clickhouse_form_from_test_context(docker.as_ref());
+    let database = form
+        .database
+        .clone()
+        .expect("CLICKHOUSE_DB or container default database should be present");
+    let driver: ClickHouseDriver =
+        clickhouse_context::connect_with_retry(|| ClickHouseDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_multi_stmt_test";
+    let qualified = format!("{}.{}", database, table_name);
+
+    // Setup
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id Int32, name String) ENGINE = MergeTree() ORDER BY id",
+            qualified
+        ))
+        .await
+        .expect("create table failed");
+
+    // Multi-statement: two INSERTs separated by semicolon
+    let multi_sql = format!(
+        "INSERT INTO {} (id, name) VALUES (1, 'Alice'); INSERT INTO {} (id, name) VALUES (2, 'Bob')",
+        qualified, qualified
+    );
+    let result = driver.execute_query(multi_sql).await;
+    assert!(result.is_ok(), "Multi-statement INSERT failed: {:?}", result.err());
+
+    // Verify both rows were inserted
+    let select_res = driver
+        .execute_query(format!("SELECT * FROM {} ORDER BY id FORMAT JSON", qualified))
+        .await
+        .expect("SELECT failed");
+    assert_eq!(select_res.row_count, 2);
+
+    // Cleanup
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+    driver.close().await;
+}

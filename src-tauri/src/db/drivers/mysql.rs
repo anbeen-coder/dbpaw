@@ -861,32 +861,13 @@ fn build_mysql_json_object_expr(columns: &[(String, String)], table_alias: Optio
     format!("JSON_OBJECT({})", args.join(", "))
 }
 
-fn first_sql_keyword(sql: &str) -> Option<String> {
-    let trimmed = sql.trim_start();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let mut end = 0usize;
-    for (idx, ch) in trimmed.char_indices() {
-        if !(ch.is_ascii_alphanumeric() || ch == '_') {
-            break;
-        }
-        end = idx + ch.len_utf8();
-    }
-    if end == 0 {
-        None
-    } else {
-        Some(trimmed[..end].to_ascii_uppercase())
-    }
-}
-
 fn is_json_projectable_statement(sql: &str) -> bool {
-    matches!(first_sql_keyword(sql).as_deref(), Some("SELECT" | "WITH"))
+    matches!(super::first_sql_keyword(sql).as_deref(), Some("SELECT" | "WITH"))
 }
 
 fn is_affected_rows_statement(sql: &str) -> bool {
     matches!(
-        first_sql_keyword(sql).as_deref(),
+        super::first_sql_keyword(sql).as_deref(),
         Some("INSERT" | "UPDATE" | "DELETE" | "REPLACE")
     )
 }
@@ -1300,15 +1281,29 @@ impl DatabaseDriver for MysqlDriver {
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
+        let statements = super::split_sql_statements(&sql);
+        if statements.is_empty() {
+            return Err("[QUERY_ERROR] Empty SQL statement".to_string());
+        }
+
+        // Execute all statements except the last one
+        if statements.len() > 1 {
+            for statement in statements.iter().take(statements.len() - 1) {
+                self.execute_sql(statement).await?;
+            }
+        }
+
+        // Execute the last statement and return its result
+        let last_sql = statements.last().unwrap();
         let (columns, data, row_count) =
-            if self.is_compatibility_mode() && is_json_projectable_statement(&sql) {
-                let rows = self.fetch_all_sql(&sql).await?;
+            if self.is_compatibility_mode() && is_json_projectable_statement(last_sql) {
+                let rows = self.fetch_all_sql(last_sql).await?;
                 let columns = query_columns_from_rows(&rows);
                 let data = decode_mysql_rows_without_projection(&rows, &HashSet::new());
                 let row_count = data.len() as i64;
                 (columns, data, row_count)
-            } else if is_json_projectable_statement(&sql) {
-                let columns = self.describe_query_columns(&sql).await?;
+            } else if is_json_projectable_statement(last_sql) {
+                let columns = self.describe_query_columns(last_sql).await?;
                 let high_precision_cols: HashSet<String> = columns
                     .iter()
                     .filter(|col| is_high_precision_mysql_query_type(&col.r#type))
@@ -1320,21 +1315,21 @@ impl DatabaseDriver for MysqlDriver {
                     .collect();
                 let json_expr = build_mysql_json_object_expr(&query_columns, Some("__dbpaw_row"));
                 let data = self
-                    .fetch_rows_as_json(&sql, &[], &json_expr, &high_precision_cols)
+                    .fetch_rows_as_json(last_sql, &[], &json_expr, &high_precision_cols)
                     .await?;
                 let row_count = data.len() as i64;
                 (columns, data, row_count)
-            } else if is_affected_rows_statement(&sql) {
-                let result = self.execute_sql(&sql).await?;
+            } else if is_affected_rows_statement(last_sql) {
+                let result = self.execute_sql(last_sql).await?;
                 (Vec::new(), Vec::new(), result.rows_affected() as i64)
             } else {
                 let mut executed_with_raw_sql = false;
-                let rows = match sqlx::query(&sql).fetch_all(&self.pool).await {
+                let rows = match sqlx::query(last_sql).fetch_all(&self.pool).await {
                     Ok(rows) => rows,
                     Err(e) => {
                         let error_text = e.to_string();
                         if is_prepared_protocol_unsupported_error(&error_text) {
-                            sqlx::raw_sql(&sql)
+                            sqlx::raw_sql(last_sql)
                                 .execute(&self.pool)
                                 .await
                                 .map_err(|raw_err| format!("[QUERY_ERROR] {raw_err}"))?;
@@ -1357,7 +1352,7 @@ impl DatabaseDriver for MysqlDriver {
                 } else if executed_with_raw_sql {
                     Vec::new()
                 } else {
-                    self.describe_query_columns(&sql).await?
+                    self.describe_query_columns(last_sql).await?
                 };
                 let mut data = Vec::new();
                 for row in &rows {

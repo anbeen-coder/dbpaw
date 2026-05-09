@@ -259,53 +259,7 @@ fn table_ref(schema: &str, table: &str) -> Result<String, String> {
     Ok(format!("{}.{}", quote_ident(schema)?, quote_ident(table)?))
 }
 
-fn first_sql_keyword(sql: &str) -> Option<String> {
-    let bytes = sql.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
 
-    loop {
-        while i < len && (bytes[i].is_ascii_whitespace() || bytes[i] == b';') {
-            i += 1;
-        }
-
-        if i + 1 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' {
-            i += 2;
-            while i < len && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            if i + 1 >= len {
-                return None;
-            }
-            i += 2;
-            continue;
-        }
-
-        break;
-    }
-
-    if i >= len {
-        return None;
-    }
-
-    let start = i;
-    while i < len && bytes[i].is_ascii_alphabetic() {
-        i += 1;
-    }
-    if start == i {
-        return None;
-    }
-
-    Some(sql[start..i].to_ascii_lowercase())
-}
 
 /// Check whether the SQL already contains a `FOR JSON` clause.
 /// Scans the statement while skipping string literals and comments.
@@ -445,8 +399,8 @@ fn has_top_level_union(sql: &str) -> bool {
 /// Returns false for CTEs, UNION, EXEC, and other constructs where
 /// appending FOR JSON would produce invalid T-SQL.
 fn is_for_json_safe(sql: &str) -> bool {
-    let first = first_sql_keyword(sql);
-    if !matches!(first.as_deref(), Some("select")) {
+    let first = super::first_sql_keyword(sql);
+    if !matches!(first.as_deref(), Some("SELECT")) {
         return false;
     }
     // UNION at the top level requires wrapping, which we don't do.
@@ -1886,14 +1840,32 @@ impl DatabaseDriver for MssqlDriver {
 
     async fn execute_query(&self, sql: String) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let first_keyword = first_sql_keyword(&sql);
+        let statements = super::split_sql_statements(&sql);
+        if statements.is_empty() {
+            return Err("[QUERY_ERROR] Empty SQL statement".to_string());
+        }
+
+        // Execute all statements except the last one
+        if statements.len() > 1 {
+            for statement in statements.iter().take(statements.len() - 1) {
+                let mut client = self.pool.get().await.map_err(map_pool_error)?;
+                client
+                    .execute(statement, &[])
+                    .await
+                    .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+            }
+        }
+
+        // Execute the last statement and return its result
+        let last_sql = statements.last().unwrap();
+        let first_keyword = super::first_sql_keyword(last_sql);
         let is_read_query = matches!(
             first_keyword.as_deref(),
-            Some("select") | Some("with") | Some("show") | Some("exec") | Some("execute")
+            Some("SELECT") | Some("WITH") | Some("SHOW") | Some("EXEC") | Some("EXECUTE")
         );
 
         if is_read_query {
-            let (data, columns) = self.fetch_query_result_json(&sql).await?;
+            let (data, columns) = self.fetch_query_result_json(last_sql).await?;
 
             return Ok(QueryResult {
                 row_count: data.len() as i64,
@@ -1907,7 +1879,7 @@ impl DatabaseDriver for MssqlDriver {
 
         let mut client = self.pool.get().await.map_err(map_pool_error)?;
         let result = client
-            .execute(&sql, &[])
+            .execute(last_sql, &[])
             .await
             .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
         let row_count = result.rows_affected().iter().sum::<u64>() as i64;

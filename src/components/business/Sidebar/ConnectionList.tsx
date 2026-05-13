@@ -138,6 +138,7 @@ interface DatabaseInfo {
   name: string;
   schemas: SchemaInfo[];
   tables: TableInfo[];
+  routines: RoutineInfo[];
   redisCursor?: string;
   redisIsPartial?: boolean;
   redisRequiresPattern?: boolean;
@@ -1153,6 +1154,7 @@ export function ConnectionList({
           name: db.name,
           schemas: [],
           tables: [],
+          routines: [],
           redisKeyCount: db.keyCount,
         }));
       } else {
@@ -1161,6 +1163,7 @@ export function ConnectionList({
           name,
           schemas: [],
           tables: [],
+          routines: [],
         }));
       }
 
@@ -1837,6 +1840,7 @@ export function ConnectionList({
                   ...db,
                   schemas: [],
                   tables: nextTables,
+                  routines: nextRoutines,
                 };
               }
               return {
@@ -3269,6 +3273,33 @@ export function ConnectionList({
                     {database.tables.map((table) =>
                       renderTableNode(table, level + 1),
                     )}
+                    {supportsRoutines(connection.type) &&
+                      (() => {
+                        const virtualSchema: SchemaInfo = {
+                          name: database.name,
+                          tables: database.tables,
+                          procedures: database.routines.filter(
+                            (r) => r.type === "procedure",
+                          ),
+                          functions: database.routines.filter(
+                            (r) => r.type === "function",
+                          ),
+                        };
+                        return (
+                          <>
+                            {renderRoutineGroup(
+                              virtualSchema,
+                              "procedure",
+                              level + 1,
+                            )}
+                            {renderRoutineGroup(
+                              virtualSchema,
+                              "function",
+                              level + 1,
+                            )}
+                          </>
+                        );
+                      })()}
                     {datasourceAdapter.renderDatabaseFooter(database, level)}
                   </>
                 )}

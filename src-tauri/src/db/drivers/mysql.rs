@@ -1,8 +1,8 @@
 use super::{strip_trailing_statement_terminator, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
-    SchemaOverview, SpecialTypeSummary, TableDataResponse, TableInfo, TableMetadata, TableSchema,
-    TableStructure,
+    RoutineInfo, SchemaOverview, SpecialTypeSummary, TableDataResponse, TableInfo, TableMetadata,
+    TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use sqlx::{
@@ -980,6 +980,79 @@ impl DatabaseDriver for MysqlDriver {
             });
         }
         Ok(res)
+    }
+
+    async fn list_routines(&self, schema: Option<String>) -> Result<Vec<RoutineInfo>, String> {
+        let target_schema = if let Some(s) = schema {
+            s
+        } else {
+            self.current_database()
+                .await
+                .map_err(|e| format!("[QUERY_ERROR] Failed to get current database: {e}"))?
+                .ok_or("[QUERY_ERROR] No database selected and no schema provided")?
+        };
+
+        let rows = self
+            .fetch_all_with_str_params(
+                "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE \
+                 FROM information_schema.ROUTINES \
+                 WHERE ROUTINE_SCHEMA = ? \
+                 ORDER BY ROUTINE_TYPE, ROUTINE_NAME",
+                &[&target_schema],
+            )
+            .await?;
+
+        let mut res = Vec::new();
+        for row in rows {
+            res.push(RoutineInfo {
+                schema: decode_mysql_text_cell(&row, 0).unwrap_or_default(),
+                name: decode_mysql_text_cell(&row, 1).unwrap_or_default(),
+                r#type: decode_mysql_text_cell(&row, 2)
+                    .unwrap_or_default()
+                    .to_lowercase(),
+            });
+        }
+        Ok(res)
+    }
+
+    async fn get_routine_ddl(
+        &self,
+        schema: String,
+        name: String,
+        routine_type: String,
+    ) -> Result<String, String> {
+        let ddl_keyword = match routine_type.to_lowercase().as_str() {
+            "procedure" => "PROCEDURE",
+            "function" => "FUNCTION",
+            _ => {
+                return Err(format!(
+                    "[QUERY_ERROR] Unknown routine type '{}'. Expected 'procedure' or 'function'",
+                    routine_type
+                ))
+            }
+        };
+
+        let sql = format!("SHOW CREATE {} `{}`.`{}`", ddl_keyword, schema, name);
+        let row = self.fetch_one_sql(&sql).await.map_err(|e| {
+            if e.contains("QUERY_ERROR") {
+                e
+            } else {
+                format!("[QUERY_ERROR] {e}")
+            }
+        })?;
+
+        // SHOW CREATE PROCEDURE/FUNCTION returns columns:
+        // Procedure/Function, sql_mode, Create Procedure/Function, character_set_client, collation_connection, Database Collation
+        // The DDL is in column index 2
+        let ddl = decode_mysql_text_cell(&row, 2).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+        if ddl.trim().is_empty() {
+            return Err(format!(
+                "[NOT_FOUND] Routine '{}.{}' does not exist or its definition is not visible",
+                schema, name
+            ));
+        }
+        Ok(ddl)
     }
 
     async fn get_table_structure(

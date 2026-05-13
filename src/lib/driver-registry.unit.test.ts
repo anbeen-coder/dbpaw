@@ -263,12 +263,12 @@ describe("supportsSchemaBrowsing", () => {
 describe("supportsRoutines", () => {
   test("returns true for drivers with routine support", () => {
     expect(supportsRoutines("postgres")).toBe(true);
+    expect(supportsRoutines("mysql")).toBe(true);
     expect(supportsRoutines("mssql")).toBe(true);
   });
 
   test("returns false for drivers without routine support", () => {
     const noRoutines: Driver[] = [
-      "mysql",
       "mariadb",
       "tidb",
       "starrocks",

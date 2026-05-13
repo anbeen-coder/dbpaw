@@ -108,7 +108,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: true,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
-    supportsRoutines: false,
+    supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siMysql),
     treeConfig: createSqlTreeConfig(),

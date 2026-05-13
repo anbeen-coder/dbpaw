@@ -901,3 +901,139 @@ async fn test_mysql_multi_statement_execution() {
         .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
         .await;
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_mysql_list_routines_and_get_routine_ddl() {
+    let form = mysql_context::shared_mysql_form();
+    let database = form
+        .database
+        .clone()
+        .expect("MYSQL_DB or container default database should be present");
+
+    let driver: MysqlDriver =
+        mysql_context::connect_with_retry(|| MysqlDriver::connect(&form)).await;
+
+    // Clean up any leftover routines from previous runs
+    let _ = driver
+        .execute_query(format!(
+            "DROP PROCEDURE IF EXISTS `{}`.`sp_dbpaw_test`",
+            database
+        ))
+        .await;
+    let _ = driver
+        .execute_query(format!(
+            "DROP FUNCTION IF EXISTS `{}`.`fn_dbpaw_test`",
+            database
+        ))
+        .await;
+
+    // Create a stored procedure
+    driver
+        .execute_query(format!(
+            "CREATE PROCEDURE `{}`.`sp_dbpaw_test`(IN p_id INT) \
+             BEGIN \
+               SELECT p_id AS given_id; \
+             END",
+            database
+        ))
+        .await
+        .expect("create procedure failed");
+
+    // Create a function
+    driver
+        .execute_query(format!(
+            "CREATE FUNCTION `{}`.`fn_dbpaw_test`(p_val INT) \
+             RETURNS INT DETERMINISTIC \
+             BEGIN \
+               RETURN p_val * 2; \
+             END",
+            database
+        ))
+        .await
+        .expect("create function failed");
+
+    // list_routines with explicit schema
+    let routines = driver
+        .list_routines(Some(database.clone()))
+        .await
+        .expect("list_routines failed");
+    assert!(
+        routines.iter().any(|r| r.name == "sp_dbpaw_test" && r.r#type == "procedure"),
+        "list_routines should include sp_dbpaw_test as procedure, got: {:?}",
+        routines
+    );
+    assert!(
+        routines.iter().any(|r| r.name == "fn_dbpaw_test" && r.r#type == "function"),
+        "list_routines should include fn_dbpaw_test as function, got: {:?}",
+        routines
+    );
+
+    // list_routines with None (should fallback to current database)
+    let routines_default = driver
+        .list_routines(None)
+        .await
+        .expect("list_routines(None) failed");
+    assert!(
+        routines_default.iter().any(|r| r.name == "sp_dbpaw_test"),
+        "list_routines(None) should include sp_dbpaw_test"
+    );
+
+    // get_routine_ddl for procedure
+    let proc_ddl = driver
+        .get_routine_ddl(database.clone(), "sp_dbpaw_test".to_string(), "procedure".to_string())
+        .await
+        .expect("get_routine_ddl for procedure failed");
+    assert!(
+        proc_ddl.to_uppercase().contains("CREATE"),
+        "Procedure DDL should contain CREATE, got: {}",
+        proc_ddl
+    );
+    assert!(
+        proc_ddl.to_uppercase().contains("PROCEDURE"),
+        "Procedure DDL should contain PROCEDURE, got: {}",
+        proc_ddl
+    );
+
+    // get_routine_ddl for function
+    let func_ddl = driver
+        .get_routine_ddl(database.clone(), "fn_dbpaw_test".to_string(), "function".to_string())
+        .await
+        .expect("get_routine_ddl for function failed");
+    assert!(
+        func_ddl.to_uppercase().contains("CREATE"),
+        "Function DDL should contain CREATE, got: {}",
+        func_ddl
+    );
+    assert!(
+        func_ddl.to_uppercase().contains("FUNCTION"),
+        "Function DDL should contain FUNCTION, got: {}",
+        func_ddl
+    );
+
+    // get_routine_ddl with invalid type should error
+    let bad_type = driver
+        .get_routine_ddl(database.clone(), "sp_dbpaw_test".to_string(), "invalid_type".to_string())
+        .await;
+    assert!(bad_type.is_err(), "get_routine_ddl with invalid type should fail");
+
+    // get_routine_ddl for non-existent routine should error
+    let missing = driver
+        .get_routine_ddl(database.clone(), "nonexistent_routine".to_string(), "procedure".to_string())
+        .await;
+    assert!(missing.is_err(), "get_routine_ddl for non-existent routine should fail");
+
+    // Cleanup
+    let _ = driver
+        .execute_query(format!(
+            "DROP PROCEDURE IF EXISTS `{}`.`sp_dbpaw_test`",
+            database
+        ))
+        .await;
+    let _ = driver
+        .execute_query(format!(
+            "DROP FUNCTION IF EXISTS `{}`.`fn_dbpaw_test`",
+            database
+        ))
+        .await;
+}

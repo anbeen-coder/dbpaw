@@ -7,18 +7,21 @@ import {
   Table as TableIcon,
   Trash2,
 } from "lucide-react";
-import type { TreeConfig, TreeMenuItem, DatabaseContext, LeafContext } from "./types";
+import type {
+  TreeConfig,
+  TreeMenuItem,
+  DatabaseContext,
+  LeafContext,
+} from "./types";
 
-export function createElasticsearchTreeConfig(
-  callbacks: {
-    onCreateIndex?: (ctx: DatabaseContext) => void;
-    onOpenIndex?: (ctx: LeafContext) => void;
-    onIndexAction?: (
-      ctx: LeafContext,
-      action: "refresh" | "open" | "close" | "delete",
-    ) => void;
-  },
-): TreeConfig {
+export function createElasticsearchTreeConfig(callbacks: {
+  onCreateIndex?: (ctx: DatabaseContext) => void;
+  onOpenIndex?: (ctx: LeafContext) => void;
+  onIndexAction?: (
+    ctx: LeafContext,
+    action: "refresh" | "open" | "close" | "delete",
+  ) => void;
+}): TreeConfig {
   return {
     supportsSavedQueries: false,
     databaseExpandable: true,

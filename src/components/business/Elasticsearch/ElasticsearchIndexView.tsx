@@ -1,22 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { save, open } from "@tauri-apps/plugin-dialog";
-import {
-  Copy,
-  Download,
-  FileJson,
-  FolderOpen,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Save,
-  Search,
-  SquareTerminal,
-  Trash2,
-  Upload,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -28,105 +11,75 @@ import type {
   ElasticsearchSearchHit,
 } from "@/services/api";
 import { toast } from "sonner";
-import { cn } from "@/components/ui/utils";
 import {
-  elasticsearchIndexActionSuccessMessage,
   executeElasticsearchIndexAction,
+  extractFieldsFromIndexMapping,
+  formatJson,
+  bulkDefaultName,
   type ElasticsearchIndexAction,
 } from "./elasticsearch-index-management";
+import { ElasticsearchSearchBar } from "./ElasticsearchSearchBar";
+import { ElasticsearchFieldList } from "./ElasticsearchFieldList";
+import { ElasticsearchDocumentTable } from "./ElasticsearchDocumentTable";
+import { ElasticsearchDocumentDetail } from "./ElasticsearchDocumentDetail";
+import type {
+  ElasticsearchDetailMode,
+  ElasticsearchField,
+  ElasticsearchSort,
+} from "./types";
 
-const PAGE_SIZE = 50;
-const DEFAULT_DOCUMENT_SOURCE = "{\n  \n}";
+const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_VISIBLE_COLUMNS = ["_id", "_score", "_source"];
 
 interface Props {
   connectionId: number;
   index: string;
 }
 
-function previewSource(source: unknown): string {
-  if (source === null || source === undefined) return "";
-  if (typeof source !== "object") return String(source);
-  const object = source as Record<string, unknown>;
-  const entries = Object.entries(object).slice(0, 4);
-  return entries
-    .map(([key, value]) => {
-      const rendered =
-        typeof value === "object" && value !== null
-          ? JSON.stringify(value)
-          : String(value);
-      return `${key}: ${rendered}`;
-    })
-    .join(" · ");
-}
-
-function formatJson(value: unknown): string {
-  return JSON.stringify(value ?? null, null, 2);
-}
-
-function bulkDefaultName(index: string): string {
-  const safe = index.replace(/[^a-zA-Z0-9._-]+/g, "_") || "elasticsearch";
-  return `${safe}.ndjson`;
-}
-
 export function ElasticsearchIndexView({ connectionId, index }: Props) {
+  // Data state
   const [indices, setIndices] = useState<ElasticsearchIndexInfo[]>([]);
-  const [query, setQuery] = useState("");
-  const [dsl, setDsl] = useState("");
-  const [from, setFrom] = useState(0);
+  const [mapping, setMapping] = useState<unknown>(null);
+  const [fields, setFields] = useState<ElasticsearchField[]>([]);
   const [result, setResult] = useState<{
     hits: ElasticsearchSearchHit[];
     total: number;
     tookMs: number;
     aggregations?: unknown;
   }>({ hits: [], total: 0, tookMs: 0 });
+
+  // Search state
+  const [query, setQuery] = useState("");
+  const [dsl, setDsl] = useState("");
+  const [from, setFrom] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [sort, setSort] = useState<ElasticsearchSort>({
+    field: "_score",
+    direction: "desc",
+  });
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([
+    ...DEFAULT_VISIBLE_COLUMNS,
+  ]);
+
+  // UI state
   const [selectedHit, setSelectedHit] = useState<ElasticsearchSearchHit | null>(
     null,
   );
-  const [mapping, setMapping] = useState<unknown>(null);
-  const [detailMode, setDetailMode] = useState<
-    "document" | "mapping" | "aggregations" | "console"
-  >("document");
-  const [documentIdInput, setDocumentIdInput] = useState("");
-  const [editorDocumentId, setEditorDocumentId] = useState("");
-  const [editorSource, setEditorSource] = useState(DEFAULT_DOCUMENT_SOURCE);
-  const [rawMethod, setRawMethod] = useState("GET");
-  const [rawPath, setRawPath] = useState(`/${index}/_search`);
-  const [rawBody, setRawBody] = useState(
-    '{\n  "query": {\n    "match_all": {}\n  }\n}',
-  );
-  const [rawResponse, setRawResponse] = useState("");
+  const [detailMode, setDetailMode] =
+    useState<ElasticsearchDetailMode>("document");
+  const [showFieldList, setShowFieldList] = useState(true);
+  const [showDocumentDetail, setShowDocumentDetail] = useState(true);
+
+  // Loading state
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
-  const [isLoadingDocument, setIsLoadingDocument] = useState(false);
-  const [isSavingDocument, setIsSavingDocument] = useState(false);
-  const [isDeletingDocument, setIsDeletingDocument] = useState(false);
-  const [isExecutingRaw, setIsExecutingRaw] = useState(false);
   const [isManagingIndex, setIsManagingIndex] = useState(false);
   const [isBulkImporting, setIsBulkImporting] = useState(false);
   const [isBulkExporting, setIsBulkExporting] = useState(false);
 
-  const selectedJson = useMemo(() => {
-    if (!selectedHit) return "";
-    return formatJson({
-      _index: selectedHit.index,
-      _id: selectedHit.id,
-      _score: selectedHit.score,
-      _source: selectedHit.source,
-      fields: selectedHit.fields,
-    });
-  }, [selectedHit]);
+  const currentIndex = indices.find((item) => item.name === index);
 
-  const syncEditorFromHit = useCallback(
-    (hit: ElasticsearchSearchHit | null) => {
-      setSelectedHit(hit);
-      setDetailMode("document");
-      setEditorDocumentId(hit?.id ?? "");
-      setDocumentIdInput(hit?.id ?? "");
-      setEditorSource(hit ? formatJson(hit.source) : DEFAULT_DOCUMENT_SOURCE);
-    },
-    [],
-  );
-
+  // Load metadata
   const loadMetadata = useCallback(async () => {
     setIsLoadingMeta(true);
     try {
@@ -136,6 +89,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
       ]);
       setIndices(nextIndices);
       setMapping(nextMapping);
+      setFields(extractFieldsFromIndexMapping(nextMapping));
     } catch (e) {
       toast.error("Failed to load Elasticsearch metadata", {
         description: e instanceof Error ? e.message : String(e),
@@ -145,6 +99,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
     }
   }, [connectionId, index]);
 
+  // Search documents
   const search = useCallback(
     async (nextFrom: number) => {
       setIsSearching(true);
@@ -155,11 +110,10 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
           query: query.trim() || undefined,
           dsl: dsl.trim() || undefined,
           from: nextFrom,
-          size: PAGE_SIZE,
+          size: pageSize,
         });
         setFrom(nextFrom);
         setResult(response);
-        syncEditorFromHit(response.hits[0] ?? null);
       } catch (e) {
         toast.error("Elasticsearch search failed", {
           description: e instanceof Error ? e.message : String(e),
@@ -168,176 +122,179 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
         setIsSearching(false);
       }
     },
-    [connectionId, index, query, dsl, syncEditorFromHit],
+    [connectionId, index, query, dsl, pageSize],
   );
 
+  // Auto-select first hit when result changes
+  useEffect(() => {
+    if (result.hits.length > 0) {
+      setSelectedHit((prev) => {
+        if (prev && result.hits.some((h) => h.id === prev.id)) return prev;
+        return result.hits[0];
+      });
+    } else {
+      setSelectedHit(null);
+    }
+  }, [result.hits]);
+
+  // Load once per opened index
   useEffect(() => {
     void loadMetadata();
     void search(0);
-    // Load once per opened index; query inputs search only on explicit action.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId, index]);
 
-  const currentIndex = indices.find((item) => item.name === index);
-  const page = Math.floor(from / PAGE_SIZE) + 1;
-  const canPrev = from > 0;
-  const canNext = from + PAGE_SIZE < result.total;
+  // Hit selection handler
+  const handleHitSelect = useCallback((hit: ElasticsearchSearchHit) => {
+    setSelectedHit(hit);
+    setDetailMode("document");
+  }, []);
 
-  const copySelected = async () => {
-    const text =
-      detailMode === "mapping"
-        ? formatJson(mapping)
-        : detailMode === "aggregations"
-          ? formatJson(result.aggregations)
-          : detailMode === "console"
-            ? rawResponse
-            : selectedJson || editorSource;
+  // Page size change handler
+  const handlePageSizeChange = useCallback(
+    (newSize: number) => {
+      setPageSize(newSize);
+      setFrom(0);
+      void search(0);
+    },
+    [search],
+  );
+
+  // Sort change handler
+  const handleSortChange = useCallback(
+    (newSort: ElasticsearchSort) => {
+      setSort(newSort);
+      // Re-search with new sort by applying via DSL
+      const sortDsl = JSON.stringify({
+        sort: [
+          {
+            [newSort.field === "_id" ? "_id" : newSort.field]: {
+              order: newSort.direction,
+            },
+          },
+        ],
+      });
+      setDsl(sortDsl);
+      void search(0);
+    },
+    [search],
+  );
+
+  // Column toggle handler
+  const handleColumnToggle = useCallback((fieldName: string) => {
+    setVisibleColumns((prev) => {
+      if (prev.includes(fieldName)) {
+        return prev.filter((col) => col !== fieldName);
+      }
+      return [...prev, fieldName];
+    });
+  }, []);
+
+  // Copy handler
+  const handleCopy = useCallback(async () => {
+    let text = "";
+
+    if (detailMode === "mapping") {
+      text = formatJson(mapping);
+    } else if (detailMode === "aggregations") {
+      text = formatJson(result.aggregations);
+    } else if (selectedHit) {
+      text = formatJson({
+        _index: selectedHit.index,
+        _id: selectedHit.id,
+        _score: selectedHit.score,
+        _source: selectedHit.source,
+        fields: selectedHit.fields,
+      });
+    }
+
     if (!text) return;
     await navigator.clipboard.writeText(text);
     toast.success("Copied");
-  };
+  }, [detailMode, mapping, result.aggregations, selectedHit]);
 
-  const openDocumentById = async (documentId = documentIdInput) => {
-    const id = documentId.trim();
-    if (!id) return;
-    setIsLoadingDocument(true);
-    try {
-      const doc = await api.elasticsearch.getDocument(connectionId, index, id);
-      if (!doc.found || !doc.source) {
-        toast.error("Document not found");
+  // Document save handler
+  const handleDocumentSave = useCallback(
+    async (docId: string, source: string) => {
+      try {
+        const parsedSource = JSON.parse(source);
+        const saved = await api.elasticsearch.upsertDocument({
+          id: connectionId,
+          index,
+          documentId: docId.trim() || undefined,
+          source: parsedSource,
+          refresh: true,
+        });
+        toast.success(
+          `${saved.result || "saved"}${saved.id ? ` · ${saved.id}` : ""}`,
+        );
+        await search(from);
+        await loadMetadata();
+      } catch (e) {
+        toast.error("Failed to save document", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+        throw e;
+      }
+    },
+    [connectionId, index, from, search, loadMetadata],
+  );
+
+  // Document delete handler
+  const handleDocumentDelete = useCallback(
+    async (docId: string) => {
+      try {
+        await api.elasticsearch.deleteDocument({
+          id: connectionId,
+          index,
+          documentId: docId,
+          refresh: true,
+        });
+        toast.success("Document deleted");
+        setSelectedHit(null);
+        await search(Math.max(0, from));
+        await loadMetadata();
+      } catch (e) {
+        toast.error("Failed to delete document", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+        throw e;
+      }
+    },
+    [connectionId, index, from, search, loadMetadata],
+  );
+
+  // Index management handler
+  const handleManageIndex = useCallback(
+    async (action: ElasticsearchIndexAction) => {
+      if (action === "delete" && !window.confirm(`Delete index "${index}"?`)) {
         return;
       }
-      syncEditorFromHit({
-        index: doc.index,
-        id: doc.id,
-        score: null,
-        source: doc.source,
-        fields: doc.fields,
-      });
-    } catch (e) {
-      toast.error("Failed to load document", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsLoadingDocument(false);
-    }
-  };
-
-  const newDocument = () => {
-    syncEditorFromHit(null);
-    setDetailMode("document");
-  };
-
-  const saveDocument = async () => {
-    setIsSavingDocument(true);
-    try {
-      const source = JSON.parse(editorSource);
-      const saved = await api.elasticsearch.upsertDocument({
-        id: connectionId,
-        index,
-        documentId: editorDocumentId.trim() || undefined,
-        source,
-        refresh: true,
-      });
-      toast.success(
-        `${saved.result || "saved"}${saved.id ? ` · ${saved.id}` : ""}`,
-      );
-      if (saved.id) {
-        await openDocumentById(saved.id);
+      setIsManagingIndex(true);
+      try {
+        await executeElasticsearchIndexAction(connectionId, index, action);
+        toast.success(
+          action === "delete"
+            ? `Index deleted · ${index}`
+            : `Index ${action} complete · ${index}`,
+        );
+        if (action !== "delete") {
+          await loadMetadata();
+          await search(from);
+        }
+      } catch (e) {
+        toast.error(`Failed to ${action} Elasticsearch index`, {
+          description: e instanceof Error ? e.message : String(e),
+        });
+      } finally {
+        setIsManagingIndex(false);
       }
-      await search(from);
-      await loadMetadata();
-    } catch (e) {
-      toast.error("Failed to save document", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsSavingDocument(false);
-    }
-  };
+    },
+    [connectionId, index, from, loadMetadata, search],
+  );
 
-  const deleteDocument = async () => {
-    const id = editorDocumentId.trim();
-    if (!id) return;
-    if (!window.confirm(`Delete document "${id}" from ${index}?`)) return;
-    setIsDeletingDocument(true);
-    try {
-      await api.elasticsearch.deleteDocument({
-        id: connectionId,
-        index,
-        documentId: id,
-        refresh: true,
-      });
-      toast.success("Document deleted");
-      syncEditorFromHit(null);
-      await search(Math.max(0, from));
-      await loadMetadata();
-    } catch (e) {
-      toast.error("Failed to delete document", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsDeletingDocument(false);
-    }
-  };
-
-  const executeRaw = async () => {
-    setIsExecutingRaw(true);
-    try {
-      const response = await api.elasticsearch.executeRaw({
-        id: connectionId,
-        method: rawMethod,
-        path: rawPath,
-        body: rawBody.trim() || undefined,
-      });
-      setRawResponse(
-        response.json ? formatJson(response.json) : response.body || "",
-      );
-      toast.success(`HTTP ${response.status} · ${response.tookMs}ms`);
-    } catch (e) {
-      toast.error("Elasticsearch request failed", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsExecutingRaw(false);
-    }
-  };
-
-  const exportDocuments = async () => {
-    if (!isTauri()) {
-      toast.error("Export dialog is only available in Tauri desktop mode.");
-      return;
-    }
-    setIsBulkExporting(true);
-    try {
-      const selected = await save({
-        title: "Export Elasticsearch documents",
-        defaultPath: bulkDefaultName(index),
-        filters: [{ name: "NDJSON", extensions: ["ndjson"] }],
-      });
-      if (!selected) return;
-      const filePath = Array.isArray(selected) ? selected[0] : selected;
-      if (!filePath) return;
-      const result = await api.elasticsearch.exportDocuments({
-        id: connectionId,
-        index,
-        query: query.trim() || undefined,
-        dsl: dsl.trim() || undefined,
-        filePath,
-      });
-      toast.success(`Exported ${result.documents} documents`, {
-        description: result.filePath,
-      });
-    } catch (e) {
-      toast.error("Failed to export Elasticsearch documents", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsBulkExporting(false);
-    }
-  };
-
-  const importDocuments = async () => {
+  // Import handler
+  const handleImport = useCallback(async () => {
     if (!isTauri()) {
       toast.error("Import dialog is only available in Tauri desktop mode.");
       return;
@@ -354,12 +311,14 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
       const filePath = Array.isArray(selected) ? selected[0] : selected;
       if (!filePath) return;
       if (!window.confirm(`Import documents into "${index}"?`)) return;
+
       const result = await api.elasticsearch.importDocuments({
         id: connectionId,
         index,
         filePath,
         refresh: true,
       });
+
       if (result.failed > 0) {
         toast.error(
           `Imported ${result.successful} documents, ${result.failed} failed`,
@@ -381,415 +340,147 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
     } finally {
       setIsBulkImporting(false);
     }
-  };
+  }, [connectionId, index, search, loadMetadata]);
 
-  const manageIndex = async (action: ElasticsearchIndexAction) => {
-    if (action === "delete" && !window.confirm(`Delete index "${index}"?`)) {
+  // Export handler
+  const handleExport = useCallback(async () => {
+    if (!isTauri()) {
+      toast.error("Export dialog is only available in Tauri desktop mode.");
       return;
     }
-    setIsManagingIndex(true);
+    setIsBulkExporting(true);
     try {
-      await executeElasticsearchIndexAction(connectionId, index, action);
-      toast.success(elasticsearchIndexActionSuccessMessage(action, index));
-      if (action !== "delete") {
-        await loadMetadata();
-        await search(from);
-      }
+      const selected = await save({
+        title: "Export Elasticsearch documents",
+        defaultPath: bulkDefaultName(index),
+        filters: [{ name: "NDJSON", extensions: ["ndjson"] }],
+      });
+      if (!selected) return;
+      const filePath = Array.isArray(selected) ? selected[0] : selected;
+      if (!filePath) return;
+
+      const result = await api.elasticsearch.exportDocuments({
+        id: connectionId,
+        index,
+        query: query.trim() || undefined,
+        dsl: dsl.trim() || undefined,
+        filePath,
+      });
+      toast.success(`Exported ${result.documents} documents`, {
+        description: result.filePath,
+      });
     } catch (e) {
-      toast.error(`Failed to ${action} Elasticsearch index`, {
+      toast.error("Failed to export Elasticsearch documents", {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
-      setIsManagingIndex(false);
+      setIsBulkExporting(false);
     }
-  };
+  }, [connectionId, index, query, dsl]);
 
   return (
     <ResizablePanelGroup direction="horizontal" className="h-full">
-      <ResizablePanel defaultSize={42} minSize={30} maxSize={60}>
-        <div className="flex h-full flex-col border-r">
-          <div className="space-y-3 border-b p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{index}</div>
-                <div className="text-xs text-muted-foreground">
-                  {currentIndex?.docsCount ?? result.total} docs
-                  {currentIndex?.storeSize
-                    ? ` · ${currentIndex.storeSize}`
-                    : ""}
-                  {result.tookMs ? ` · ${result.tookMs}ms` : ""}
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => {
-                  void loadMetadata();
-                  void search(from);
-                }}
-                disabled={isLoadingMeta || isSearching}
-                title="Refresh"
-              >
-                {isLoadingMeta || isSearching ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                disabled={isBulkImporting || isBulkExporting}
-                title="Import NDJSON"
-                onClick={() => void importDocuments()}
-              >
-                {isBulkImporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                disabled={isBulkImporting || isBulkExporting}
-                title="Export NDJSON"
-                onClick={() => void exportDocuments()}
-              >
-                {isBulkExporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                disabled={isManagingIndex}
-                title="Open index"
-                onClick={() => void manageIndex("open")}
-              >
-                <FolderOpen className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2"
-                disabled={isManagingIndex}
-                onClick={() => void manageIndex("close")}
-              >
-                Close
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="h-8 w-8 p-0"
-                disabled={isManagingIndex}
-                title="Delete index"
-                onClick={() => void manageIndex("delete")}
-              >
-                {isManagingIndex ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="h-8 pl-8 font-mono text-xs"
-                  placeholder="query_string, e.g. status:200 AND user:kimchy"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void search(0);
-                  }}
-                />
-              </div>
-              <Button
-                size="sm"
-                className="h-8"
-                onClick={() => void search(0)}
-                disabled={isSearching}
-              >
-                {isSearching ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="mr-2 h-4 w-4" />
-                )}
-                Search
-              </Button>
-            </div>
-            <Textarea
-              className="min-h-24 resize-none font-mono text-xs"
-              placeholder='Optional JSON DSL, e.g. {"query":{"match_all":{}}}'
-              value={dsl}
-              onChange={(e) => setDsl(e.target.value)}
+      {/* Left panel: Field list */}
+      {showFieldList && (
+        <>
+          <ResizablePanel defaultSize={18} minSize={12} maxSize={30}>
+            <ElasticsearchFieldList
+              fields={fields}
+              selectedField={null}
+              isLoading={isLoadingMeta}
+              visibleColumns={visibleColumns}
+              onFieldSelect={() => {
+                setDetailMode("mapping");
+              }}
+              onFieldToggle={handleColumnToggle}
             />
-          </div>
+          </ResizablePanel>
+          <ResizableHandle />
+        </>
+      )}
 
-          <div className="flex-1 overflow-y-auto">
-            {result.hits.length === 0 && !isSearching ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                No documents
-              </div>
-            ) : (
-              result.hits.map((hit) => (
-                <button
-                  key={`${hit.index}:${hit.id}`}
-                  type="button"
-                  className={cn(
-                    "block w-full border-b px-3 py-2 text-left hover:bg-muted/50",
-                    selectedHit?.id === hit.id && "bg-muted",
-                  )}
-                  onClick={() => void openDocumentById(hit.id)}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="truncate font-mono text-xs">{hit.id}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {hit.score ?? "-"}
-                    </span>
-                  </div>
-                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {previewSource(hit.source)}
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-
-          <div className="flex items-center justify-between border-t p-2 text-xs text-muted-foreground">
-            <span>
-              Page {page} · {result.total} hits
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2"
-                disabled={!canPrev || isSearching}
-                onClick={() => void search(Math.max(0, from - PAGE_SIZE))}
-              >
-                Prev
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2"
-                disabled={!canNext || isSearching}
-                onClick={() => void search(from + PAGE_SIZE)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </div>
-      </ResizablePanel>
-
-      <ResizableHandle />
-
-      <ResizablePanel defaultSize={58} minSize={40}>
+      {/* Center panel: Search bar + Document table */}
+      <ResizablePanel
+        defaultSize={
+          showFieldList && showDocumentDetail
+            ? 47
+            : showFieldList || showDocumentDetail
+              ? 65
+              : 100
+        }
+        minSize={30}
+      >
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-            <div className="flex min-w-0 items-center gap-1">
-              <Button
-                variant={detailMode === "document" ? "secondary" : "ghost"}
-                size="sm"
-                className="h-7 px-2"
-                onClick={() => setDetailMode("document")}
-              >
-                <FileJson className="mr-1.5 h-3.5 w-3.5" />
-                Document
-              </Button>
-              <Button
-                variant={detailMode === "mapping" ? "secondary" : "ghost"}
-                size="sm"
-                className="h-7 px-2"
-                onClick={() => setDetailMode("mapping")}
-              >
-                Mapping
-              </Button>
-              <Button
-                variant={detailMode === "aggregations" ? "secondary" : "ghost"}
-                size="sm"
-                className="h-7 px-2"
-                onClick={() => setDetailMode("aggregations")}
-              >
-                Aggregations
-              </Button>
-              <Button
-                variant={detailMode === "console" ? "secondary" : "ghost"}
-                size="sm"
-                className="h-7 px-2"
-                onClick={() => setDetailMode("console")}
-              >
-                <SquareTerminal className="mr-1.5 h-3.5 w-3.5" />
-                Console
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2"
-              disabled={
-                detailMode === "document" &&
-                !selectedHit &&
-                !editorSource.trim()
-              }
-              onClick={() => void copySelected()}
-            >
-              <Copy className="mr-2 h-3.5 w-3.5" />
-              Copy
-            </Button>
-          </div>
-          {detailMode === "document" ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex gap-2 border-b p-3">
-                <Input
-                  className="h-8 font-mono text-xs"
-                  placeholder="Document ID"
-                  value={documentIdInput}
-                  onChange={(e) => setDocumentIdInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void openDocumentById();
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  disabled={isLoadingDocument || !documentIdInput.trim()}
-                  onClick={() => void openDocumentById()}
-                >
-                  {isLoadingDocument ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Search className="mr-2 h-4 w-4" />
-                  )}
-                  Open
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  onClick={newDocument}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  New
-                </Button>
-              </div>
-              <div className="flex gap-2 border-b p-3">
-                <Input
-                  className="h-8 font-mono text-xs"
-                  placeholder="Leave blank to auto-generate ID"
-                  value={editorDocumentId}
-                  onChange={(e) => setEditorDocumentId(e.target.value)}
-                />
-                <Button
-                  size="sm"
-                  className="h-8"
-                  disabled={isSavingDocument}
-                  onClick={() => void saveDocument()}
-                >
-                  {isSavingDocument ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Save
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-8"
-                  disabled={isDeletingDocument || !editorDocumentId.trim()}
-                  onClick={() => void deleteDocument()}
-                >
-                  {isDeletingDocument ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="mr-2 h-4 w-4" />
-                  )}
-                  Delete
-                </Button>
-              </div>
-              <Textarea
-                className="min-h-0 flex-1 resize-none rounded-none border-0 font-mono text-xs focus-visible:ring-0"
-                value={editorSource}
-                onChange={(e) => setEditorSource(e.target.value)}
-              />
-            </div>
-          ) : detailMode === "mapping" ? (
-            <pre className="min-h-0 flex-1 overflow-auto p-3 text-xs">
-              {formatJson(mapping)}
-            </pre>
-          ) : detailMode === "aggregations" ? (
-            result.aggregations ? (
-              <pre className="min-h-0 flex-1 overflow-auto p-3 text-xs">
-                {formatJson(result.aggregations)}
-              </pre>
-            ) : (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                No aggregations
-              </div>
-            )
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex gap-2 border-b p-3">
-                <Input
-                  className="h-8 w-24 font-mono text-xs uppercase"
-                  value={rawMethod}
-                  onChange={(e) => setRawMethod(e.target.value.toUpperCase())}
-                />
-                <Input
-                  className="h-8 font-mono text-xs"
-                  value={rawPath}
-                  onChange={(e) => setRawPath(e.target.value)}
-                  placeholder="/_cluster/health"
-                />
-                <Button
-                  size="sm"
-                  className="h-8"
-                  disabled={isExecutingRaw}
-                  onClick={() => void executeRaw()}
-                >
-                  {isExecutingRaw ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <SquareTerminal className="mr-2 h-4 w-4" />
-                  )}
-                  Send
-                </Button>
-              </div>
-              <ResizablePanelGroup
-                direction="vertical"
-                className="min-h-0 flex-1"
-              >
-                <ResizablePanel defaultSize={45} minSize={20}>
-                  <Textarea
-                    className="h-full resize-none rounded-none border-0 font-mono text-xs focus-visible:ring-0"
-                    value={rawBody}
-                    onChange={(e) => setRawBody(e.target.value)}
-                    placeholder="Optional JSON request body"
-                  />
-                </ResizablePanel>
-                <ResizableHandle />
-                <ResizablePanel defaultSize={55} minSize={20}>
-                  <pre className="h-full overflow-auto p-3 text-xs">
-                    {rawResponse}
-                  </pre>
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            </div>
-          )}
+          <ElasticsearchSearchBar
+            index={index}
+            currentIndex={currentIndex}
+            total={result.total}
+            tookMs={result.tookMs}
+            query={query}
+            dsl={dsl}
+            isSearching={isSearching}
+            isManagingIndex={isManagingIndex}
+            isBulkImporting={isBulkImporting}
+            isBulkExporting={isBulkExporting}
+            showFieldList={showFieldList}
+            showDocumentDetail={showDocumentDetail}
+            onQueryChange={setQuery}
+            onDslChange={setDsl}
+            onSearch={() => search(0)}
+            onRefresh={() => {
+              void loadMetadata();
+              void search(from);
+            }}
+            onImport={handleImport}
+            onExport={handleExport}
+            onManageIndex={handleManageIndex}
+            onToggleFieldList={() => setShowFieldList(!showFieldList)}
+            onToggleDocumentDetail={() =>
+              setShowDocumentDetail(!showDocumentDetail)
+            }
+          />
+
+          <ElasticsearchDocumentTable
+            hits={result.hits}
+            total={result.total}
+            from={from}
+            pageSize={pageSize}
+            isLoading={isSearching}
+            selectedHit={selectedHit}
+            sort={sort}
+            visibleColumns={visibleColumns}
+            onHitSelect={handleHitSelect}
+            onPageChange={(newFrom) => {
+              setFrom(newFrom);
+              void search(newFrom);
+            }}
+            onPageSizeChange={handlePageSizeChange}
+            onSortChange={handleSortChange}
+            onColumnsChange={setVisibleColumns}
+          />
         </div>
       </ResizablePanel>
+
+      {/* Right panel: Document detail */}
+      {showDocumentDetail && (
+        <>
+          <ResizableHandle />
+          <ResizablePanel defaultSize={35} minSize={25} maxSize={50}>
+            <ElasticsearchDocumentDetail
+              hit={selectedHit}
+              mapping={mapping}
+              aggregations={result.aggregations}
+              index={index}
+              connectionId={connectionId}
+              detailMode={detailMode}
+              onDetailModeChange={setDetailMode}
+              onDocumentSave={handleDocumentSave}
+              onDocumentDelete={handleDocumentDelete}
+              onCopy={handleCopy}
+            />
+          </ResizablePanel>
+        </>
+      )}
     </ResizablePanelGroup>
   );
 }

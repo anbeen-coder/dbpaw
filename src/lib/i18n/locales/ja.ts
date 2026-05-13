@@ -333,7 +333,8 @@ export const ja: Translations = {
         fileBased: "ファイル型",
         readOnly: "読み取り専用",
         preview: "プレビュー",
-        mssqlNamedInstance: "名前付きインスタンスには Host\\Instance 形式を使用",
+        mssqlNamedInstance:
+          "名前付きインスタンスには Host\\Instance 形式を使用",
       },
       steps: {
         chooseType: "タイプ選択",
@@ -764,6 +765,59 @@ export const ja: Translations = {
     unsupported: {
       message:
         "このデータベースエンジンはインデックス管理をサポートしていません。",
+    },
+  },
+  elasticsearch: {
+    fields: {
+      title: "フィールド",
+      search: "フィールドを検索...",
+      noFields: "フィールドが見つかりません",
+    },
+    documents: {
+      title: "ドキュメント",
+      page: "ページ",
+      of: "/",
+      hits: "件",
+      limit: "表示件数",
+      sort: "並べ替え",
+      noDocuments: "ドキュメントがありません",
+      showing: "{{from}}-{{to}} / {{total}} 件を表示",
+    },
+    detail: {
+      document: "ドキュメント",
+      mapping: "マッピング",
+      aggregations: "アグリゲーション",
+      console: "コンソール",
+      documentId: "ドキュメント ID",
+      open: "開く",
+      new: "新規",
+      save: "保存",
+      delete: "削除",
+      copy: "コピー",
+      send: "送信",
+      noAggregations: "アグリゲーションがありません",
+      autoGenerateId: "空白にすると ID が自動生成されます",
+    },
+    actions: {
+      refresh: "更新",
+      import: "NDJSON をインポート",
+      export: "NDJSON をエクスポート",
+      openIndex: "インデックスを開く",
+      closeIndex: "インデックスを閉じる",
+      deleteIndex: "インデックスを削除",
+      moreActions: "その他のアクション",
+    },
+    search: {
+      placeholder: "query_string（例: status:200 AND user:kimchy）",
+      dslPlaceholder: 'オプションの JSON DSL（例: {"query":{"match_all":{}}}）',
+      search: "検索",
+    },
+    console: {
+      method: "メソッド",
+      path: "パス",
+      body: "リクエストボディ",
+      response: "レスポンス",
+      placeholder: "オプションの JSON リクエストボディ",
     },
   },
 };

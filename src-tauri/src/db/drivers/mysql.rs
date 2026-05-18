@@ -1,8 +1,8 @@
 use super::{strip_trailing_statement_terminator, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
-    RoutineInfo, SchemaOverview, SpecialTypeSummary, TableDataResponse, TableInfo, TableMetadata,
-    TableSchema, TableStructure,
+    RoutineInfo, SchemaOverview, SingleResultSet, SpecialTypeSummary, TableDataResponse,
+    TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use sqlx::{
@@ -873,6 +873,91 @@ fn is_affected_rows_statement(sql: &str) -> bool {
 }
 
 impl MysqlDriver {
+    async fn execute_single_statement(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<QueryColumn>, Vec<serde_json::Value>, i64), String> {
+        if self.is_compatibility_mode() && is_json_projectable_statement(sql) {
+            let rows = self.fetch_all_sql(sql).await?;
+            let columns = query_columns_from_rows(&rows);
+            let data = decode_mysql_rows_without_projection(&rows, &HashSet::new());
+            let row_count = data.len() as i64;
+            Ok((columns, data, row_count))
+        } else if is_json_projectable_statement(sql) {
+            let columns = self.describe_query_columns(sql).await?;
+            let high_precision_cols: HashSet<String> = columns
+                .iter()
+                .filter(|col| is_high_precision_mysql_query_type(&col.r#type))
+                .map(|col| col.name.clone())
+                .collect();
+            let query_columns: Vec<(String, String)> = columns
+                .iter()
+                .map(|col| (col.name.clone(), col.r#type.clone()))
+                .collect();
+            let json_expr = build_mysql_json_object_expr(&query_columns, Some("__dbpaw_row"));
+            let data = self
+                .fetch_rows_as_json(sql, &[], &json_expr, &high_precision_cols)
+                .await?;
+            let row_count = data.len() as i64;
+            Ok((columns, data, row_count))
+        } else if is_affected_rows_statement(sql) {
+            let result = self.execute_sql(sql).await?;
+            Ok((Vec::new(), Vec::new(), result.rows_affected() as i64))
+        } else {
+            let mut executed_with_raw_sql = false;
+            let rows = match sqlx::query(sql).fetch_all(&self.pool).await {
+                Ok(rows) => rows,
+                Err(e) => {
+                    let error_text = e.to_string();
+                    if is_prepared_protocol_unsupported_error(&error_text) {
+                        sqlx::raw_sql(sql)
+                            .execute(&self.pool)
+                            .await
+                            .map_err(|raw_err| format!("[QUERY_ERROR] {raw_err}"))?;
+                        executed_with_raw_sql = true;
+                        Vec::new()
+                    } else {
+                        return Err(format!("[QUERY_ERROR] {e}"));
+                    }
+                }
+            };
+            let columns = if let Some(first_row) = rows.first() {
+                first_row
+                    .columns()
+                    .iter()
+                    .map(|col| QueryColumn {
+                        name: col.name().to_string(),
+                        r#type: col.type_info().to_string(),
+                    })
+                    .collect()
+            } else if executed_with_raw_sql {
+                Vec::new()
+            } else {
+                self.describe_query_columns(sql).await?
+            };
+            let mut data = Vec::new();
+            for row in &rows {
+                let mut obj = serde_json::Map::new();
+                for col in row.columns() {
+                    let name = col.name();
+                    if let Ok(v) = row.try_get::<String, _>(name) {
+                        obj.insert(name.to_string(), serde_json::Value::String(v));
+                    } else if let Ok(v) = row.try_get::<Vec<u8>, _>(name) {
+                        obj.insert(
+                            name.to_string(),
+                            serde_json::Value::String(String::from_utf8_lossy(&v).to_string()),
+                        );
+                    } else {
+                        obj.insert(name.to_string(), serde_json::Value::Null);
+                    }
+                }
+                data.push(serde_json::Value::Object(obj));
+            }
+            let row_count = rows.len() as i64;
+            Ok((columns, data, row_count))
+        }
+    }
+
     async fn fetch_primary_key_columns(
         &self,
         schema: &str,
@@ -1359,105 +1444,68 @@ impl DatabaseDriver for MysqlDriver {
             return Err("[QUERY_ERROR] Empty SQL statement".to_string());
         }
 
-        // Execute all statements except the last one
-        if statements.len() > 1 {
-            for statement in statements.iter().take(statements.len() - 1) {
-                self.execute_sql(statement).await?;
+        // Single statement: keep original behavior
+        if statements.len() == 1 {
+            let last_sql = statements.last().unwrap();
+            let (columns, data, row_count) = self.execute_single_statement(last_sql).await?;
+            let duration = start.elapsed();
+            return Ok(QueryResult {
+                data,
+                row_count,
+                columns,
+                time_taken_ms: duration.as_millis() as i64,
+                success: true,
+                error: None,
+                result_sets: None,
+            });
+        }
+
+        // Multiple statements: execute each and collect results
+        let mut result_sets = Vec::new();
+        let mut last_error: Option<String> = None;
+
+        for (idx, statement) in statements.iter().enumerate() {
+            match self.execute_single_statement(statement).await {
+                Ok((columns, data, row_count)) => {
+                    result_sets.push(SingleResultSet {
+                        data,
+                        row_count,
+                        columns,
+                        index: idx as u32,
+                        statement: statement.clone(),
+                    });
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    break;
+                }
             }
         }
 
-        // Execute the last statement and return its result
-        let last_sql = statements.last().unwrap();
-        let (columns, data, row_count) =
-            if self.is_compatibility_mode() && is_json_projectable_statement(last_sql) {
-                let rows = self.fetch_all_sql(last_sql).await?;
-                let columns = query_columns_from_rows(&rows);
-                let data = decode_mysql_rows_without_projection(&rows, &HashSet::new());
-                let row_count = data.len() as i64;
-                (columns, data, row_count)
-            } else if is_json_projectable_statement(last_sql) {
-                let columns = self.describe_query_columns(last_sql).await?;
-                let high_precision_cols: HashSet<String> = columns
-                    .iter()
-                    .filter(|col| is_high_precision_mysql_query_type(&col.r#type))
-                    .map(|col| col.name.clone())
-                    .collect();
-                let query_columns: Vec<(String, String)> = columns
-                    .iter()
-                    .map(|col| (col.name.clone(), col.r#type.clone()))
-                    .collect();
-                let json_expr = build_mysql_json_object_expr(&query_columns, Some("__dbpaw_row"));
-                let data = self
-                    .fetch_rows_as_json(last_sql, &[], &json_expr, &high_precision_cols)
-                    .await?;
-                let row_count = data.len() as i64;
-                (columns, data, row_count)
-            } else if is_affected_rows_statement(last_sql) {
-                let result = self.execute_sql(last_sql).await?;
-                (Vec::new(), Vec::new(), result.rows_affected() as i64)
-            } else {
-                let mut executed_with_raw_sql = false;
-                let rows = match sqlx::query(last_sql).fetch_all(&self.pool).await {
-                    Ok(rows) => rows,
-                    Err(e) => {
-                        let error_text = e.to_string();
-                        if is_prepared_protocol_unsupported_error(&error_text) {
-                            sqlx::raw_sql(last_sql)
-                                .execute(&self.pool)
-                                .await
-                                .map_err(|raw_err| format!("[QUERY_ERROR] {raw_err}"))?;
-                            executed_with_raw_sql = true;
-                            Vec::new()
-                        } else {
-                            return Err(format!("[QUERY_ERROR] {e}"));
-                        }
-                    }
-                };
-                let columns = if let Some(first_row) = rows.first() {
-                    first_row
-                        .columns()
-                        .iter()
-                        .map(|col| QueryColumn {
-                            name: col.name().to_string(),
-                            r#type: col.type_info().to_string(),
-                        })
-                        .collect()
-                } else if executed_with_raw_sql {
-                    Vec::new()
-                } else {
-                    self.describe_query_columns(last_sql).await?
-                };
-                let mut data = Vec::new();
-                for row in &rows {
-                    let mut obj = serde_json::Map::new();
-                    for col in row.columns() {
-                        let name = col.name();
-                        if let Ok(v) = row.try_get::<String, _>(name) {
-                            obj.insert(name.to_string(), serde_json::Value::String(v));
-                        } else if let Ok(v) = row.try_get::<Vec<u8>, _>(name) {
-                            obj.insert(
-                                name.to_string(),
-                                serde_json::Value::String(String::from_utf8_lossy(&v).to_string()),
-                            );
-                        } else {
-                            obj.insert(name.to_string(), serde_json::Value::Null);
-                        }
-                    }
-                    data.push(serde_json::Value::Object(obj));
-                }
-                let row_count = rows.len() as i64;
-                (columns, data, row_count)
-            };
-
         let duration = start.elapsed();
+
+        if let Some(err) = last_error {
+            // Partial success: return collected results + error
+            return Ok(QueryResult {
+                data: vec![],
+                row_count: 0,
+                columns: vec![],
+                time_taken_ms: duration.as_millis() as i64,
+                success: false,
+                error: Some(err),
+                result_sets: Some(result_sets),
+            });
+        }
+
+        // All succeeded
         Ok(QueryResult {
-            data,
-            row_count,
-            columns,
+            data: vec![],
+            row_count: 0,
+            columns: vec![],
             time_taken_ms: duration.as_millis() as i64,
             success: true,
             error: None,
-            result_sets: None,
+            result_sets: Some(result_sets),
         })
     }
 

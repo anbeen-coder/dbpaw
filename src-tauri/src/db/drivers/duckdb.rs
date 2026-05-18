@@ -1,7 +1,7 @@
 use super::DatabaseDriver;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult, SchemaOverview,
-    TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
+    SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, NaiveTime, Utc};
@@ -640,70 +640,83 @@ impl DatabaseDriver for DuckdbDriver {
                 return Err("[QUERY_ERROR] Empty SQL statement".to_string());
             }
 
-            // Execute all statements except the last one
-            if statements.len() > 1 {
-                for statement in statements.iter().take(statements.len() - 1) {
-                    conn.execute_batch(statement)
+            // Single statement: keep original behavior
+            if statements.len() == 1 {
+                let last_sql = statements.last().unwrap();
+                let first_keyword = super::first_sql_keyword(last_sql);
+                let should_fetch_rows = matches!(
+                    first_keyword.as_deref(),
+                    Some("SELECT")
+                        | Some("PRAGMA")
+                        | Some("WITH")
+                        | Some("EXPLAIN")
+                        | Some("SHOW")
+                        | Some("DESCRIBE")
+                        | Some("DESC")
+                        | Some("VALUES")
+                ) || sql_contains_keyword(last_sql, "returning");
+
+                if should_fetch_rows {
+                    let mut stmt = conn
+                        .prepare(last_sql)
                         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                }
-            }
-
-            // Execute the last statement and return its result
-            let last_sql = statements.last().unwrap();
-            let first_keyword = super::first_sql_keyword(last_sql);
-            let should_fetch_rows = matches!(
-                first_keyword.as_deref(),
-                Some("SELECT")
-                    | Some("PRAGMA")
-                    | Some("WITH")
-                    | Some("EXPLAIN")
-                    | Some("SHOW")
-                    | Some("DESCRIBE")
-                    | Some("DESC")
-                    | Some("VALUES")
-            ) || sql_contains_keyword(last_sql, "returning");
-
-            if should_fetch_rows {
-                let mut stmt = conn
-                    .prepare(last_sql)
-                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                let mut rows = stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                let columns: Vec<QueryColumn> = rows
-                    .as_ref()
-                    .map(|s| {
-                        s.column_names()
-                            .into_iter()
-                            .map(|name| QueryColumn {
-                                name,
-                                r#type: "UNKNOWN".to_string(),
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                let mut columns = columns;
-                let mut data = Vec::new();
-                let mut inferred_types = false;
-                while let Some(row) = rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
-                    if !inferred_types {
-                        for (idx, col) in columns.iter_mut().enumerate() {
-                            if let Ok(v) = row.get_ref(idx) {
-                                col.r#type = duckdb_value_ref_type_name(&v).to_string();
+                    let mut rows = stmt.query([]).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                    let columns: Vec<QueryColumn> = rows
+                        .as_ref()
+                        .map(|s| {
+                            s.column_names()
+                                .into_iter()
+                                .map(|name| QueryColumn {
+                                    name,
+                                    r#type: "UNKNOWN".to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    let mut columns = columns;
+                    let mut data = Vec::new();
+                    let mut inferred_types = false;
+                    while let Some(row) = rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
+                        if !inferred_types {
+                            for (idx, col) in columns.iter_mut().enumerate() {
+                                if let Ok(v) = row.get_ref(idx) {
+                                    col.r#type = duckdb_value_ref_type_name(&v).to_string();
+                                }
                             }
+                            inferred_types = true;
                         }
-                        inferred_types = true;
+                        let mut obj = serde_json::Map::new();
+                        for (idx, col) in columns.iter().enumerate() {
+                            let cell = duckdb_cell_to_json(row, idx, &col.name)?;
+                            obj.insert(col.name.clone(), cell);
+                        }
+                        data.push(serde_json::Value::Object(obj));
                     }
-                    let mut obj = serde_json::Map::new();
-                    for (idx, col) in columns.iter().enumerate() {
-                        let cell = duckdb_cell_to_json(row, idx, &col.name)?;
-                        obj.insert(col.name.clone(), cell);
-                    }
-                    data.push(serde_json::Value::Object(obj));
+
+                    return Ok(QueryResult {
+                        row_count: data.len() as i64,
+                        data,
+                        columns,
+                        time_taken_ms: start.elapsed().as_millis() as i64,
+                        success: true,
+                        error: None,
+                        result_sets: None,
+                    });
                 }
+
+                let row_count = match conn.execute(last_sql, []) {
+                    Ok(v) => v as i64,
+                    Err(_) => {
+                        conn.execute_batch(last_sql)
+                            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                        0
+                    }
+                };
 
                 return Ok(QueryResult {
-                    row_count: data.len() as i64,
-                    data,
-                    columns,
+                    data: vec![],
+                    row_count,
+                    columns: vec![],
                     time_taken_ms: start.elapsed().as_millis() as i64,
                     success: true,
                     error: None,
@@ -711,23 +724,125 @@ impl DatabaseDriver for DuckdbDriver {
                 });
             }
 
-            let row_count = match conn.execute(last_sql, []) {
-                Ok(v) => v as i64,
-                Err(_) => {
-                    conn.execute_batch(last_sql)
-                        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                    0
-                }
-            };
+            // Multiple statements: execute each and collect results
+            let mut result_sets = Vec::new();
+            let mut last_error: Option<String> = None;
 
+            for (idx, statement) in statements.iter().enumerate() {
+                let first_keyword = super::first_sql_keyword(statement);
+                let should_fetch_rows = matches!(
+                    first_keyword.as_deref(),
+                    Some("SELECT")
+                        | Some("PRAGMA")
+                        | Some("WITH")
+                        | Some("EXPLAIN")
+                        | Some("SHOW")
+                        | Some("DESCRIBE")
+                        | Some("DESC")
+                        | Some("VALUES")
+                ) || sql_contains_keyword(statement, "returning");
+
+                let result = if should_fetch_rows {
+                    let mut stmt = match conn.prepare(statement) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            last_error = Some(format!("[QUERY_ERROR] {e}"));
+                            break;
+                        }
+                    };
+                    let mut rows = match stmt.query([]) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            last_error = Some(format!("[QUERY_ERROR] {e}"));
+                            break;
+                        }
+                    };
+                    let columns: Vec<QueryColumn> = rows
+                        .as_ref()
+                        .map(|s| {
+                            s.column_names()
+                                .into_iter()
+                                .map(|name| QueryColumn {
+                                    name,
+                                    r#type: "UNKNOWN".to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    let mut columns = columns;
+                    let mut data = Vec::new();
+                    let mut inferred_types = false;
+                    while let Some(row) = rows.next().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
+                        if !inferred_types {
+                            for (i, col) in columns.iter_mut().enumerate() {
+                                if let Ok(v) = row.get_ref(i) {
+                                    col.r#type = duckdb_value_ref_type_name(&v).to_string();
+                                }
+                            }
+                            inferred_types = true;
+                        }
+                        let mut obj = serde_json::Map::new();
+                        for (i, col) in columns.iter().enumerate() {
+                            let cell = duckdb_cell_to_json(row, i, &col.name)?;
+                            obj.insert(col.name.clone(), cell);
+                        }
+                        data.push(serde_json::Value::Object(obj));
+                    }
+                    let row_count = data.len() as i64;
+                    Ok((columns, data, row_count))
+                } else {
+                    let row_count = match conn.execute(statement, []) {
+                        Ok(v) => v as i64,
+                        Err(_) => {
+                            conn.execute_batch(statement)
+                                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                            0
+                        }
+                    };
+                    Ok((Vec::new(), Vec::new(), row_count))
+                };
+
+                match result {
+                    Ok((columns, data, row_count)) => {
+                        result_sets.push(SingleResultSet {
+                            data,
+                            row_count,
+                            columns,
+                            index: idx as u32,
+                            statement: statement.clone(),
+                        });
+                    }
+                    Err(e) => {
+                        last_error = Some(e);
+                        break;
+                    }
+                }
+            }
+
+            let duration = start.elapsed();
+
+            if let Some(err) = last_error {
+                // Partial success: return collected results + error
+                return Ok(QueryResult {
+                    data: vec![],
+                    row_count: 0,
+                    columns: vec![],
+                    time_taken_ms: duration.as_millis() as i64,
+                    success: false,
+                    error: Some(err),
+                    result_sets: Some(result_sets),
+                });
+            }
+
+            // All succeeded
             Ok(QueryResult {
                 data: vec![],
-                row_count,
+                row_count: 0,
                 columns: vec![],
-                time_taken_ms: start.elapsed().as_millis() as i64,
+                time_taken_ms: duration.as_millis() as i64,
                 success: true,
                 error: None,
-                result_sets: None,
+                result_sets: Some(result_sets),
             })
         })
         .await

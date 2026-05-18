@@ -1,7 +1,8 @@
 use super::{conn_failed_error, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
-    SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
+    SchemaOverview, SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema,
+    TableStructure,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -617,91 +618,174 @@ impl DatabaseDriver for OracleDriver {
             return Err("[QUERY_ERROR] Empty SQL statement".to_string());
         }
 
+        // Single statement: keep original behavior
+        if statements.len() == 1 {
+            let last_sql = statements.last().unwrap().clone();
+            return self
+                .run_blocking(move |conn| {
+                    let sql_clean = super::strip_trailing_statement_terminator(&last_sql);
+                    let first_kw = super::first_sql_keyword(sql_clean);
+                    let is_read = matches!(
+                        first_kw.as_deref(),
+                        Some("SELECT") | Some("WITH") | Some("SHOW")
+                    );
+
+                    if is_read {
+                        let rows = conn
+                            .query(sql_clean, &[] as &[&dyn oracle::sql_type::ToSql])
+                            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+                        let col_info: Vec<(String, String)> = rows
+                            .column_info()
+                            .iter()
+                            .map(|c| (c.name().to_string(), format!("{}", c.oracle_type())))
+                            .collect();
+                        let columns: Vec<QueryColumn> = col_info
+                            .iter()
+                            .map(|(name, ty)| QueryColumn {
+                                name: name.clone(),
+                                r#type: ty.clone(),
+                            })
+                            .collect();
+
+                        let mut data = Vec::new();
+                        for row_result in rows {
+                            let row = row_result.map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                            let mut map = serde_json::Map::new();
+                            for (i, (name, _)) in col_info.iter().enumerate() {
+                                map.insert(name.clone(), oracle_value_to_json(&row, i));
+                            }
+                            data.push(serde_json::Value::Object(map));
+                        }
+
+                        Ok(QueryResult {
+                            row_count: data.len() as i64,
+                            data,
+                            columns,
+                            time_taken_ms: start.elapsed().as_millis() as i64,
+                            success: true,
+                            error: None,
+                            result_sets: None,
+                        })
+                    } else {
+                        let mut stmt = conn
+                            .statement(sql_clean)
+                            .build()
+                            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                        stmt.execute(&[] as &[&dyn oracle::sql_type::ToSql])
+                            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                        let row_count = stmt.row_count().unwrap_or(0) as i64;
+                        conn.commit()
+                            .map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
+                        Ok(QueryResult {
+                            row_count,
+                            data: vec![],
+                            columns: vec![],
+                            time_taken_ms: start.elapsed().as_millis() as i64,
+                            success: true,
+                            error: None,
+                            result_sets: None,
+                        })
+                    }
+                })
+                .await;
+        }
+
+        // Multiple statements: execute each and collect results
         self.run_blocking(move |conn| {
-            // Execute all statements except the last one
-            if statements.len() > 1 {
-                for statement in statements.iter().take(statements.len() - 1) {
-                    let sql_clean = super::strip_trailing_statement_terminator(statement);
+            let mut result_sets = Vec::new();
+            let mut last_error: Option<String> = None;
+
+            for (idx, statement) in statements.iter().enumerate() {
+                let sql_clean = super::strip_trailing_statement_terminator(statement);
+                let first_kw = super::first_sql_keyword(sql_clean);
+                let is_read = matches!(
+                    first_kw.as_deref(),
+                    Some("SELECT") | Some("WITH") | Some("SHOW")
+                );
+
+                let result = if is_read {
+                    let rows = conn
+                        .query(sql_clean, &[] as &[&dyn oracle::sql_type::ToSql])
+                        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+                    let col_info: Vec<(String, String)> = rows
+                        .column_info()
+                        .iter()
+                        .map(|c| (c.name().to_string(), format!("{}", c.oracle_type())))
+                        .collect();
+                    let columns: Vec<QueryColumn> = col_info
+                        .iter()
+                        .map(|(name, ty)| QueryColumn {
+                            name: name.clone(),
+                            r#type: ty.clone(),
+                        })
+                        .collect();
+
+                    let mut data = Vec::new();
+                    for row_result in rows {
+                        let row = row_result.map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                        let mut map = serde_json::Map::new();
+                        for (i, (name, _)) in col_info.iter().enumerate() {
+                            map.insert(name.clone(), oracle_value_to_json(&row, i));
+                        }
+                        data.push(serde_json::Value::Object(map));
+                    }
+                    let row_count = data.len() as i64;
+                    Ok((columns, data, row_count))
+                } else {
                     let mut stmt = conn
                         .statement(sql_clean)
                         .build()
                         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                     stmt.execute(&[] as &[&dyn oracle::sql_type::ToSql])
                         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                    let row_count = stmt.row_count().unwrap_or(0) as i64;
                     conn.commit()
                         .map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
+                    Ok((Vec::new(), Vec::new(), row_count))
+                };
+
+                match result {
+                    Ok((columns, data, row_count)) => {
+                        result_sets.push(SingleResultSet {
+                            data,
+                            row_count,
+                            columns,
+                            index: idx as u32,
+                            statement: statement.clone(),
+                        });
+                    }
+                    Err(e) => {
+                        last_error = Some(e);
+                        break;
+                    }
                 }
             }
 
-            // Execute the last statement and return its result
-            let last_sql = statements.last().unwrap();
-            let sql_clean = super::strip_trailing_statement_terminator(last_sql);
-            let first_kw = super::first_sql_keyword(sql_clean);
-            let is_read = matches!(
-                first_kw.as_deref(),
-                Some("SELECT") | Some("WITH") | Some("SHOW")
-            );
-
-            if is_read {
-                let rows = conn
-                    .query(sql_clean, &[] as &[&dyn oracle::sql_type::ToSql])
-                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-
-                // Collect column metadata before consuming rows
-                let col_info: Vec<(String, String)> = rows
-                    .column_info()
-                    .iter()
-                    .map(|c| (c.name().to_string(), format!("{}", c.oracle_type())))
-                    .collect();
-                let columns: Vec<QueryColumn> = col_info
-                    .iter()
-                    .map(|(name, ty)| QueryColumn {
-                        name: name.clone(),
-                        r#type: ty.clone(),
-                    })
-                    .collect();
-
-                let mut data = Vec::new();
-                for row_result in rows {
-                    let row = row_result.map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                    let mut map = serde_json::Map::new();
-                    for (i, (name, _)) in col_info.iter().enumerate() {
-                        map.insert(name.clone(), oracle_value_to_json(&row, i));
-                    }
-                    data.push(serde_json::Value::Object(map));
-                }
-
-                Ok(QueryResult {
-                    row_count: data.len() as i64,
-                    data,
-                    columns,
-                    time_taken_ms: start.elapsed().as_millis() as i64,
-                    success: true,
-                    error: None,
-                    result_sets: None,
-                })
-            } else {
-                // DML or DDL — use Statement API to get affected-row count
-                let mut stmt = conn
-                    .statement(sql_clean)
-                    .build()
-                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                stmt.execute(&[] as &[&dyn oracle::sql_type::ToSql])
-                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                let row_count = stmt.row_count().unwrap_or(0) as i64;
-                // Commit so the change is visible after the connection closes.
-                conn.commit()
-                    .map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
-                Ok(QueryResult {
-                    row_count,
+            if let Some(err) = last_error {
+                // Partial success: return collected results + error
+                return Ok(QueryResult {
                     data: vec![],
+                    row_count: 0,
                     columns: vec![],
                     time_taken_ms: start.elapsed().as_millis() as i64,
-                    success: true,
-                    error: None,
-                    result_sets: None,
-                })
+                    success: false,
+                    error: Some(err),
+                    result_sets: Some(result_sets),
+                });
             }
+
+            // All succeeded
+            Ok(QueryResult {
+                data: vec![],
+                row_count: 0,
+                columns: vec![],
+                time_taken_ms: start.elapsed().as_millis() as i64,
+                success: true,
+                error: None,
+                result_sets: Some(result_sets),
+            })
         })
         .await
     }

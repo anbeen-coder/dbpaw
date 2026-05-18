@@ -1,8 +1,8 @@
 use super::{strip_trailing_statement_terminator, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
-    RoutineInfo, SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema,
-    TableStructure,
+    RoutineInfo, SchemaOverview, SingleResultSet, TableDataResponse, TableInfo, TableMetadata,
+    TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -143,6 +143,294 @@ impl Drop for PostgresDriver {
 impl PostgresDriver {
     fn cleanup_ca_file(&self) {
         cleanup_ca_file_opt(self.ca_cert_path.as_ref());
+    }
+
+    async fn execute_single_statement(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<QueryColumn>, Vec<serde_json::Value>, i64), String> {
+        if is_json_projectable_statement(sql) {
+            let columns = self.describe_query_columns(sql).await?;
+            let high_precision_cols = collect_high_precision_query_columns(&columns);
+            let json_query = build_postgres_json_projection_query(sql);
+            let rows = sqlx::query(&json_query)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", json_query, e))?;
+            let mut data = Vec::with_capacity(rows.len());
+            for row in rows {
+                let mut row_json = row
+                    .try_get::<sqlx::types::Json<serde_json::Value>, _>("__row_json")
+                    .map(|v| v.0)
+                    .map_err(|e| format!("[QUERY_ERROR] Failed to decode __row_json: {e}"))?;
+                normalize_postgres_row_json(&mut row_json, &high_precision_cols)?;
+                data.push(row_json);
+            }
+            let row_count = data.len() as i64;
+            Ok((columns, data, row_count))
+        } else {
+            let rows = sqlx::query(sql)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            let columns = if let Some(first_row) = rows.first() {
+                first_row
+                    .columns()
+                    .iter()
+                    .map(|col| QueryColumn {
+                        name: col.name().to_string(),
+                        r#type: col.type_info().to_string(),
+                    })
+                    .collect()
+            } else {
+                self.describe_query_columns(sql).await?
+            };
+
+            let mut data = Vec::new();
+            for row in &rows {
+                let mut obj = serde_json::Map::new();
+                for col in row.columns() {
+                    let name = col.name();
+                    let type_name = col.type_info().name();
+                    let value = match type_name {
+                        "BOOL" => row
+                            .try_get::<bool, _>(name)
+                            .ok()
+                            .map(serde_json::Value::Bool)
+                            .or_else(|| {
+                                row.try_get::<String, _>(name)
+                                    .ok()
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "INT2" | "INT4" | "INT8" => row
+                            .try_get::<i64, _>(name)
+                            .ok()
+                            .map(|v| serde_json::Value::String(v.to_string()))
+                            .or_else(|| {
+                                row.try_get::<String, _>(name)
+                                    .ok()
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "FLOAT4" | "FLOAT8" => row
+                            .try_get::<f64, _>(name)
+                            .ok()
+                            .map(serde_json::Value::from)
+                            .or_else(|| {
+                                row.try_get::<String, _>(name)
+                                    .ok()
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "NUMERIC" | "MONEY" => row
+                            .try_get::<Decimal, _>(name)
+                            .ok()
+                            .map(|v| serde_json::Value::String(v.to_string()))
+                            .or_else(|| {
+                                row.try_get::<String, _>(name)
+                                    .ok()
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "TEXT" | "VARCHAR" | "CHAR" | "BPCHAR" | "NAME" | "UUID" => row
+                            .try_get::<String, _>(name)
+                            .ok()
+                            .map(serde_json::Value::String)
+                            .unwrap_or(serde_json::Value::Null),
+                        "DATE" => row
+                            .try_get::<NaiveDate, _>(name)
+                            .ok()
+                            .map(|v| serde_json::Value::String(v.to_string()))
+                            .or_else(|| {
+                                row.try_get::<String, _>(name)
+                                    .ok()
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "TIME" | "TIMETZ" | "INTERVAL" => row
+                            .try_get::<NaiveTime, _>(name)
+                            .ok()
+                            .map(|v| serde_json::Value::String(v.to_string()))
+                            .or_else(|| {
+                                row.try_get::<String, _>(name)
+                                    .ok()
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "TIMESTAMP" => row
+                            .try_get::<NaiveDateTime, _>(name)
+                            .ok()
+                            .map(|v| serde_json::Value::String(v.to_string()))
+                            .or_else(|| {
+                                row.try_get::<String, _>(name)
+                                    .ok()
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "TIMESTAMPTZ" => row
+                            .try_get::<DateTime<Utc>, _>(name)
+                            .ok()
+                            .map(|v| serde_json::Value::String(v.to_string()))
+                            .or_else(|| {
+                                row.try_get::<String, _>(name)
+                                    .ok()
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "JSON" | "JSONB" => row
+                            .try_get::<sqlx::types::Json<serde_json::Value>, _>(name)
+                            .ok()
+                            .map(|v| v.0)
+                            .unwrap_or(serde_json::Value::Null),
+                        "_BOOL" => row
+                            .try_get::<Vec<Option<bool>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| match o {
+                                            Some(b) => serde_json::Value::Bool(b),
+                                            None => serde_json::Value::Null,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "_INT2" => row
+                            .try_get::<Vec<Option<i16>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| match o {
+                                            Some(n) => serde_json::Value::Number(n.into()),
+                                            None => serde_json::Value::Null,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "_INT4" => row
+                            .try_get::<Vec<Option<i32>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| match o {
+                                            Some(n) => serde_json::Value::Number(n.into()),
+                                            None => serde_json::Value::Null,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "_INT8" => row
+                            .try_get::<Vec<Option<i64>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| match o {
+                                            Some(n) => serde_json::Value::Number(n.into()),
+                                            None => serde_json::Value::Null,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "_FLOAT4" => row
+                            .try_get::<Vec<Option<f32>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| match o {
+                                            Some(f) => serde_json::Number::from_f64(f as f64)
+                                                .map(serde_json::Value::Number)
+                                                .unwrap_or_else(|| {
+                                                    serde_json::Value::String(f.to_string())
+                                                }),
+                                            None => serde_json::Value::Null,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "_FLOAT8" => row
+                            .try_get::<Vec<Option<f64>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| match o {
+                                            Some(f) => serde_json::Number::from_f64(f)
+                                                .map(serde_json::Value::Number)
+                                                .unwrap_or_else(|| {
+                                                    serde_json::Value::String(f.to_string())
+                                                }),
+                                            None => serde_json::Value::Null,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "_NUMERIC" => row
+                            .try_get::<Vec<Option<Decimal>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| match o {
+                                            Some(d) => serde_json::Value::String(d.to_string()),
+                                            None => serde_json::Value::Null,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "_TEXT" | "_VARCHAR" | "_BPCHAR" | "_NAME" | "_UUID" => row
+                            .try_get::<Vec<Option<String>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| match o {
+                                            Some(s) => serde_json::Value::String(s),
+                                            None => serde_json::Value::Null,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        "_JSON" | "_JSONB" => row
+                            .try_get::<Vec<Option<serde_json::Value>>, _>(name)
+                            .ok()
+                            .map(|v| {
+                                serde_json::Value::Array(
+                                    v.into_iter()
+                                        .map(|o| o.unwrap_or(serde_json::Value::Null))
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null),
+                        _ => {
+                            if let Ok(v) = row.try_get::<String, _>(name) {
+                                serde_json::Value::String(v)
+                            } else if let Ok(v) = row.try_get::<Vec<u8>, _>(name) {
+                                serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
+                            } else {
+                                serde_json::Value::Null
+                            }
+                        }
+                    };
+                    obj.insert(name.to_string(), value);
+                }
+                data.push(serde_json::Value::Object(obj));
+            }
+            let row_count = rows.len() as i64;
+            Ok((columns, data, row_count))
+        }
     }
 
     pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
@@ -1351,313 +1639,69 @@ impl DatabaseDriver for PostgresDriver {
         if statements.is_empty() {
             return Err("[QUERY_ERROR] Empty SQL statement".to_string());
         }
-        let describe_sql = statements
-            .last()
-            .cloned()
-            .unwrap_or_else(|| sql.trim().to_string());
 
-        if statements.len() > 1 {
-            for statement in statements.iter().take(statements.len() - 1) {
-                sqlx::query(statement)
-                    .execute(&self.pool)
-                    .await
-                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        // Single statement: keep original behavior
+        if statements.len() == 1 {
+            let last_sql = statements.last().unwrap();
+            let (columns, data, row_count) = self.execute_single_statement(last_sql).await?;
+            let duration = start.elapsed();
+            return Ok(QueryResult {
+                data,
+                row_count,
+                columns,
+                time_taken_ms: duration.as_millis() as i64,
+                success: true,
+                error: None,
+                result_sets: None,
+            });
+        }
+
+        // Multiple statements: execute each and collect results
+        let mut result_sets = Vec::new();
+        let mut last_error: Option<String> = None;
+
+        for (idx, statement) in statements.iter().enumerate() {
+            match self.execute_single_statement(statement).await {
+                Ok((columns, data, row_count)) => {
+                    result_sets.push(SingleResultSet {
+                        data,
+                        row_count,
+                        columns,
+                        index: idx as u32,
+                        statement: statement.clone(),
+                    });
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    break;
+                }
             }
         }
 
-        let (columns, data, row_count) = if is_json_projectable_statement(&describe_sql) {
-            let columns = self.describe_query_columns(&describe_sql).await?;
-            let high_precision_cols = collect_high_precision_query_columns(&columns);
-            let json_query = build_postgres_json_projection_query(&describe_sql);
-            let rows = sqlx::query(&json_query)
-                .fetch_all(&self.pool)
-                .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", json_query, e))?;
-            let mut data = Vec::with_capacity(rows.len());
-            for row in rows {
-                let mut row_json = row
-                    .try_get::<sqlx::types::Json<serde_json::Value>, _>("__row_json")
-                    .map(|v| v.0)
-                    .map_err(|e| format!("[QUERY_ERROR] Failed to decode __row_json: {e}"))?;
-                normalize_postgres_row_json(&mut row_json, &high_precision_cols)?;
-                data.push(row_json);
-            }
-            let row_count = data.len() as i64;
-            (columns, data, row_count)
-        } else {
-            let rows = sqlx::query(&describe_sql)
-                .fetch_all(&self.pool)
-                .await
-                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-            let columns = if let Some(first_row) = rows.first() {
-                first_row
-                    .columns()
-                    .iter()
-                    .map(|col| QueryColumn {
-                        name: col.name().to_string(),
-                        r#type: col.type_info().to_string(),
-                    })
-                    .collect()
-            } else {
-                self.describe_query_columns(&describe_sql).await?
-            };
-
-            let mut data = Vec::new();
-            for row in &rows {
-                let mut obj = serde_json::Map::new();
-                for col in row.columns() {
-                    let name = col.name();
-                    let type_name = col.type_info().name();
-                    let value = match type_name {
-                        "BOOL" => row
-                            .try_get::<bool, _>(name)
-                            .ok()
-                            .map(serde_json::Value::Bool)
-                            .or_else(|| {
-                                row.try_get::<String, _>(name)
-                                    .ok()
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "INT2" | "INT4" | "INT8" => row
-                            .try_get::<i64, _>(name)
-                            .ok()
-                            .map(|v| serde_json::Value::String(v.to_string()))
-                            .or_else(|| {
-                                row.try_get::<String, _>(name)
-                                    .ok()
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "FLOAT4" | "FLOAT8" => row
-                            .try_get::<f64, _>(name)
-                            .ok()
-                            .map(serde_json::Value::from)
-                            .or_else(|| {
-                                row.try_get::<String, _>(name)
-                                    .ok()
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "NUMERIC" | "MONEY" => row
-                            .try_get::<Decimal, _>(name)
-                            .ok()
-                            .map(|v| serde_json::Value::String(v.to_string()))
-                            .or_else(|| {
-                                row.try_get::<String, _>(name)
-                                    .ok()
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "TEXT" | "VARCHAR" | "CHAR" | "BPCHAR" | "NAME" | "UUID" => row
-                            .try_get::<String, _>(name)
-                            .ok()
-                            .map(serde_json::Value::String)
-                            .unwrap_or(serde_json::Value::Null),
-                        "DATE" => row
-                            .try_get::<NaiveDate, _>(name)
-                            .ok()
-                            .map(|v| serde_json::Value::String(v.to_string()))
-                            .or_else(|| {
-                                row.try_get::<String, _>(name)
-                                    .ok()
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "TIME" | "TIMETZ" | "INTERVAL" => row
-                            .try_get::<NaiveTime, _>(name)
-                            .ok()
-                            .map(|v| serde_json::Value::String(v.to_string()))
-                            .or_else(|| {
-                                row.try_get::<String, _>(name)
-                                    .ok()
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "TIMESTAMP" => row
-                            .try_get::<NaiveDateTime, _>(name)
-                            .ok()
-                            .map(|v| serde_json::Value::String(v.to_string()))
-                            .or_else(|| {
-                                row.try_get::<String, _>(name)
-                                    .ok()
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "TIMESTAMPTZ" => row
-                            .try_get::<DateTime<Utc>, _>(name)
-                            .ok()
-                            .map(|v| serde_json::Value::String(v.to_string()))
-                            .or_else(|| {
-                                row.try_get::<String, _>(name)
-                                    .ok()
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "JSON" | "JSONB" => row
-                            .try_get::<sqlx::types::Json<serde_json::Value>, _>(name)
-                            .ok()
-                            .map(|v| v.0)
-                            .unwrap_or(serde_json::Value::Null),
-                        // PostgreSQL array types (element type prefixed with _)
-                        "_BOOL" => row
-                            .try_get::<Vec<Option<bool>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| match o {
-                                            Some(b) => serde_json::Value::Bool(b),
-                                            None => serde_json::Value::Null,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "_INT2" => row
-                            .try_get::<Vec<Option<i16>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| match o {
-                                            Some(n) => serde_json::Value::Number(n.into()),
-                                            None => serde_json::Value::Null,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "_INT4" => row
-                            .try_get::<Vec<Option<i32>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| match o {
-                                            Some(n) => serde_json::Value::Number(n.into()),
-                                            None => serde_json::Value::Null,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "_INT8" => row
-                            .try_get::<Vec<Option<i64>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| match o {
-                                            Some(n) => serde_json::Value::Number(n.into()),
-                                            None => serde_json::Value::Null,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "_FLOAT4" => row
-                            .try_get::<Vec<Option<f32>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| match o {
-                                            Some(f) => serde_json::Number::from_f64(f as f64)
-                                                .map(serde_json::Value::Number)
-                                                .unwrap_or_else(|| {
-                                                    serde_json::Value::String(f.to_string())
-                                                }),
-                                            None => serde_json::Value::Null,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "_FLOAT8" => row
-                            .try_get::<Vec<Option<f64>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| match o {
-                                            Some(f) => serde_json::Number::from_f64(f)
-                                                .map(serde_json::Value::Number)
-                                                .unwrap_or_else(|| {
-                                                    serde_json::Value::String(f.to_string())
-                                                }),
-                                            None => serde_json::Value::Null,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "_NUMERIC" => row
-                            .try_get::<Vec<Option<Decimal>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| match o {
-                                            Some(d) => serde_json::Value::String(d.to_string()),
-                                            None => serde_json::Value::Null,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "_TEXT" | "_VARCHAR" | "_BPCHAR" | "_NAME" | "_UUID" => row
-                            .try_get::<Vec<Option<String>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| match o {
-                                            Some(s) => serde_json::Value::String(s),
-                                            None => serde_json::Value::Null,
-                                        })
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        "_JSON" | "_JSONB" => row
-                            .try_get::<Vec<Option<serde_json::Value>>, _>(name)
-                            .ok()
-                            .map(|v| {
-                                serde_json::Value::Array(
-                                    v.into_iter()
-                                        .map(|o| o.unwrap_or(serde_json::Value::Null))
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null),
-                        _ => {
-                            if let Ok(v) = row.try_get::<String, _>(name) {
-                                serde_json::Value::String(v)
-                            } else if let Ok(v) = row.try_get::<Vec<u8>, _>(name) {
-                                serde_json::Value::String(String::from_utf8_lossy(&v).to_string())
-                            } else {
-                                serde_json::Value::Null
-                            }
-                        }
-                    };
-                    obj.insert(name.to_string(), value);
-                }
-                data.push(serde_json::Value::Object(obj));
-            }
-            let row_count = rows.len() as i64;
-            (columns, data, row_count)
-        };
-
         let duration = start.elapsed();
+
+        if let Some(err) = last_error {
+            // Partial success: return collected results + error
+            return Ok(QueryResult {
+                data: vec![],
+                row_count: 0,
+                columns: vec![],
+                time_taken_ms: duration.as_millis() as i64,
+                success: false,
+                error: Some(err),
+                result_sets: Some(result_sets),
+            });
+        }
+
+        // All succeeded
         Ok(QueryResult {
-            data,
-            row_count,
-            columns,
+            data: vec![],
+            row_count: 0,
+            columns: vec![],
             time_taken_ms: duration.as_millis() as i64,
             success: true,
             error: None,
-            result_sets: None,
+            result_sets: Some(result_sets),
         })
     }
 

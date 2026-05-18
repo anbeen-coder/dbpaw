@@ -3287,12 +3287,8 @@ export function ConnectionList({
                           level={level + 1}
                           icon={<FolderOpen className="w-4 h-4" />}
                           label={t("connection.tree.tables")}
-                          isExpanded={expandedTableGroups.has(
-                            tableGroupKey,
-                          )}
-                          onToggle={() =>
-                            toggleTableGroup(tableGroupKey)
-                          }
+                          isExpanded={expandedTableGroups.has(tableGroupKey)}
+                          onToggle={() => toggleTableGroup(tableGroupKey)}
                         >
                           {database.tables.length === 0 ? (
                             <div

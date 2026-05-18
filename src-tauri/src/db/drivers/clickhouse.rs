@@ -1,7 +1,8 @@
 use super::DatabaseDriver;
 use crate::models::{
     ClickHouseTableExtra, ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult,
-    SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
+    SchemaOverview, SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema,
+    TableStructure,
 };
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -877,54 +878,86 @@ impl DatabaseDriver for ClickHouseDriver {
             return Err("[QUERY_ERROR] Empty SQL statement".to_string());
         }
 
-        // Execute all statements except the last one
-        if statements.len() > 1 {
-            for statement in statements.iter().take(statements.len() - 1) {
-                self.execute_raw(statement, query_id).await?;
-            }
-        }
+        // Single statement: keep original behavior
+        if statements.len() == 1 {
+            let last_sql = statements.last().unwrap();
+            let keyword = super::first_sql_keyword(last_sql);
+            let should_fetch_rows = matches!(
+                keyword.as_deref(),
+                Some("SELECT")
+                    | Some("SHOW")
+                    | Some("DESCRIBE")
+                    | Some("DESC")
+                    | Some("WITH")
+                    | Some("EXPLAIN")
+            );
 
-        // Execute the last statement and return its result
-        let last_sql = statements.last().unwrap();
-        let keyword = super::first_sql_keyword(last_sql);
-        let should_fetch_rows = matches!(
-            keyword.as_deref(),
-            Some("SELECT")
-                | Some("SHOW")
-                | Some("DESCRIBE")
-                | Some("DESC")
-                | Some("WITH")
-                | Some("EXPLAIN")
-        );
+            if should_fetch_rows {
+                if has_format_clause(last_sql) && !is_json_format(last_sql) {
+                    let raw = self.execute_raw(last_sql, query_id).await?;
+                    let duration = start.elapsed();
+                    return Ok(raw_text_to_query_result(
+                        raw.body,
+                        duration.as_millis() as i64,
+                    ));
+                }
 
-        if should_fetch_rows {
-            if has_format_clause(last_sql) && !is_json_format(last_sql) {
-                let raw = self.execute_raw(last_sql, query_id).await?;
+                let query_sql = ensure_json_format(last_sql);
+                let resp = self.execute_json(&query_sql, query_id).await?;
+
+                let columns = resp
+                    .meta
+                    .into_iter()
+                    .map(|m| QueryColumn {
+                        name: m.name,
+                        r#type: m.type_name,
+                    })
+                    .collect::<Vec<_>>();
+
+                let row_count = resp.rows.unwrap_or(resp.data.len() as u64) as i64;
                 let duration = start.elapsed();
-                return Ok(raw_text_to_query_result(
-                    raw.body,
-                    duration.as_millis() as i64,
-                ));
+                return Ok(QueryResult {
+                    data: resp.data,
+                    row_count,
+                    columns,
+                    time_taken_ms: duration.as_millis() as i64,
+                    success: true,
+                    error: None,
+                    result_sets: None,
+                });
             }
 
-            let query_sql = ensure_json_format(last_sql);
-            let resp = self.execute_json(&query_sql, query_id).await?;
-
-            let columns = resp
-                .meta
-                .into_iter()
-                .map(|m| QueryColumn {
-                    name: m.name,
-                    r#type: m.type_name,
-                })
-                .collect::<Vec<_>>();
-
-            let row_count = resp.rows.unwrap_or(resp.data.len() as u64) as i64;
+            let raw = self.execute_raw(last_sql, query_id).await?;
+            let summary = raw.summary.unwrap_or_default();
+            let affected_opt = summary
+                .written_rows
+                .or(summary.result_rows)
+                .or(summary.read_rows)
+                .or(summary.total_rows_to_read);
+            let affected = if let Some(v) = affected_opt {
+                v
+            } else if let Some(v) = infer_insert_values_row_count(last_sql) {
+                v
+            } else if raw.body.trim().is_empty() {
+                0
+            } else if let Ok(v) = raw.body.trim().parse::<i64>() {
+                v
+            } else {
+                let snippet = if raw.body.len() > 200 {
+                    format!("{}...", &raw.body[..200])
+                } else {
+                    raw.body.clone()
+                };
+                return Err(format!(
+                    "[PARSE_ERROR] Unable to determine affected rows from ClickHouse response. body: {}",
+                    snippet
+                ));
+            };
             let duration = start.elapsed();
             return Ok(QueryResult {
-                data: resp.data,
-                row_count,
-                columns,
+                data: vec![],
+                row_count: affected,
+                columns: vec![],
                 time_taken_ms: duration.as_millis() as i64,
                 success: true,
                 error: None,
@@ -932,41 +965,100 @@ impl DatabaseDriver for ClickHouseDriver {
             });
         }
 
-        let raw = self.execute_raw(last_sql, query_id).await?;
-        let summary = raw.summary.unwrap_or_default();
-        let affected_opt = summary
-            .written_rows
-            .or(summary.result_rows)
-            .or(summary.read_rows)
-            .or(summary.total_rows_to_read);
-        let affected = if let Some(v) = affected_opt {
-            v
-        } else if let Some(v) = infer_insert_values_row_count(last_sql) {
-            v
-        } else if raw.body.trim().is_empty() {
-            0
-        } else if let Ok(v) = raw.body.trim().parse::<i64>() {
-            v
-        } else {
-            let snippet = if raw.body.len() > 200 {
-                format!("{}...", &raw.body[..200])
+        // Multiple statements: execute each and collect results
+        let mut result_sets = Vec::new();
+        let mut last_error: Option<String> = None;
+
+        for (idx, statement) in statements.iter().enumerate() {
+            let keyword = super::first_sql_keyword(statement);
+            let should_fetch_rows = matches!(
+                keyword.as_deref(),
+                Some("SELECT")
+                    | Some("SHOW")
+                    | Some("DESCRIBE")
+                    | Some("DESC")
+                    | Some("WITH")
+                    | Some("EXPLAIN")
+            );
+
+            let result = if should_fetch_rows {
+                if has_format_clause(statement) && !is_json_format(statement) {
+                    self.execute_raw(statement, query_id)
+                        .await
+                        .map(|raw| {
+                            let qr = raw_text_to_query_result(raw.body, 0);
+                            (qr.columns, qr.data, qr.row_count)
+                        })
+                } else {
+                    let query_sql = ensure_json_format(statement);
+                    self.execute_json(&query_sql, query_id).await.map(|resp| {
+                        let columns = resp
+                            .meta
+                            .into_iter()
+                            .map(|m| QueryColumn {
+                                name: m.name,
+                                r#type: m.type_name,
+                            })
+                            .collect::<Vec<_>>();
+                        let row_count = resp.rows.unwrap_or(resp.data.len() as u64) as i64;
+                        (columns, resp.data, row_count)
+                    })
+                }
             } else {
-                raw.body.clone()
+                self.execute_raw(statement, query_id).await.map(|raw| {
+                    let summary = raw.summary.unwrap_or_default();
+                    let affected = summary
+                        .written_rows
+                        .or(summary.result_rows)
+                        .or(summary.read_rows)
+                        .or(summary.total_rows_to_read)
+                        .or(infer_insert_values_row_count(statement))
+                        .unwrap_or(0);
+                    (Vec::new(), Vec::new(), affected)
+                })
             };
-            return Err(format!(
-                "[PARSE_ERROR] Unable to determine affected rows from ClickHouse response. body: {}",
-                snippet
-            ));
-        };
+
+            match result {
+                Ok((columns, data, row_count)) => {
+                    result_sets.push(SingleResultSet {
+                        data,
+                        row_count,
+                        columns,
+                        index: idx as u32,
+                        statement: statement.clone(),
+                    });
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    break;
+                }
+            }
+        }
+
         let duration = start.elapsed();
+
+        if let Some(err) = last_error {
+            // Partial success: return collected results + error
+            return Ok(QueryResult {
+                data: vec![],
+                row_count: 0,
+                columns: vec![],
+                time_taken_ms: duration.as_millis() as i64,
+                success: false,
+                error: Some(err),
+                result_sets: Some(result_sets),
+            });
+        }
+
+        // All succeeded
         Ok(QueryResult {
             data: vec![],
-            row_count: affected,
+            row_count: 0,
             columns: vec![],
             time_taken_ms: duration.as_millis() as i64,
             success: true,
             error: None,
-            result_sets: None,
+            result_sets: Some(result_sets),
         })
     }
 

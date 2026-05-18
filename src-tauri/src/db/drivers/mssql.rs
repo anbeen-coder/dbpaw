@@ -1,8 +1,8 @@
 use super::DatabaseDriver;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
-    RoutineInfo, SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema,
-    TableStructure,
+    RoutineInfo, SchemaOverview, SingleResultSet, TableDataResponse, TableInfo, TableMetadata,
+    TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use bb8::{Pool, RunError};
@@ -1162,6 +1162,25 @@ impl MssqlDriver {
         indexes.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(indexes)
     }
+
+    async fn execute_single_statement(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<QueryColumn>, Vec<serde_json::Value>, i64), String> {
+        if Self::is_mssql_read_query(sql) {
+            let (data, columns) = self.fetch_query_result_json(sql).await?;
+            let row_count = data.len() as i64;
+            Ok((columns, data, row_count))
+        } else {
+            let mut client = self.pool.get().await.map_err(map_pool_error)?;
+            let stream = client
+                .simple_query(sql)
+                .await
+                .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+            let _ = stream.into_results().await;
+            Ok((Vec::new(), Vec::new(), 0))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1922,50 +1941,68 @@ impl DatabaseDriver for MssqlDriver {
             return Err("[QUERY_ERROR] Empty SQL statement".to_string());
         }
 
-        // Execute all statements except the last one
-        if statements.len() > 1 {
-            for statement in statements.iter().take(statements.len() - 1) {
-                let mut client = self.pool.get().await.map_err(map_pool_error)?;
-                client
-                    .execute(statement, &[])
-                    .await
-                    .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
-            }
-        }
-
-        // Execute the last statement and return its result
-        let last_sql = statements.last().unwrap();
-        let is_read_query = Self::is_mssql_read_query(last_sql);
-
-        if is_read_query {
-            let (data, columns) = self.fetch_query_result_json(last_sql).await?;
-
+        // Single statement: keep original behavior
+        if statements.len() == 1 {
+            let last_sql = statements.last().unwrap();
+            let (columns, data, row_count) = self.execute_single_statement(last_sql).await?;
+            let duration = start.elapsed();
             return Ok(QueryResult {
-                row_count: data.len() as i64,
                 data,
+                row_count,
                 columns,
-                time_taken_ms: start.elapsed().as_millis() as i64,
+                time_taken_ms: duration.as_millis() as i64,
                 success: true,
                 error: None,
                 result_sets: None,
             });
         }
 
-        let mut client = self.pool.get().await.map_err(map_pool_error)?;
-        let result = client
-            .execute(last_sql, &[])
-            .await
-            .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
-        let row_count = result.rows_affected().iter().sum::<u64>() as i64;
+        // Multiple statements: execute each and collect results
+        let mut result_sets = Vec::new();
+        let mut last_error: Option<String> = None;
 
+        for (idx, statement) in statements.iter().enumerate() {
+            match self.execute_single_statement(statement).await {
+                Ok((columns, data, row_count)) => {
+                    result_sets.push(SingleResultSet {
+                        data,
+                        row_count,
+                        columns,
+                        index: idx as u32,
+                        statement: statement.clone(),
+                    });
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    break;
+                }
+            }
+        }
+
+        let duration = start.elapsed();
+
+        if let Some(err) = last_error {
+            // Partial success: return collected results + error
+            return Ok(QueryResult {
+                data: vec![],
+                row_count: 0,
+                columns: vec![],
+                time_taken_ms: duration.as_millis() as i64,
+                success: false,
+                error: Some(err),
+                result_sets: Some(result_sets),
+            });
+        }
+
+        // All succeeded
         Ok(QueryResult {
             data: vec![],
-            row_count,
+            row_count: 0,
             columns: vec![],
-            time_taken_ms: start.elapsed().as_millis() as i64,
+            time_taken_ms: duration.as_millis() as i64,
             success: true,
             error: None,
-            result_sets: None,
+            result_sets: Some(result_sets),
         })
     }
 

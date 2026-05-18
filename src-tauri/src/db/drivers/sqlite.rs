@@ -1,7 +1,8 @@
 use super::DatabaseDriver;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
-    SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
+    SchemaOverview, SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema,
+    TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -296,6 +297,57 @@ impl SqliteDriver {
             }
         }
         Ok(map)
+    }
+
+    async fn execute_single_statement(
+        &self,
+        sql: &str,
+    ) -> Result<(Vec<QueryColumn>, Vec<serde_json::Value>, i64), String> {
+        let first_keyword = super::first_sql_keyword(sql);
+        let sql_lower = sql.to_lowercase();
+        let should_fetch_rows = matches!(
+            first_keyword.as_deref(),
+            Some("SELECT") | Some("PRAGMA") | Some("WITH") | Some("EXPLAIN")
+        ) || sql_lower.contains(" returning ");
+
+        if should_fetch_rows {
+            let rows = sqlx::query(sql)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+
+            let mut data = Vec::new();
+            let columns = if let Some(first_row) = rows.first() {
+                first_row
+                    .columns()
+                    .iter()
+                    .map(|col| QueryColumn {
+                        name: col.name().to_string(),
+                        r#type: col.type_info().to_string(),
+                    })
+                    .collect()
+            } else {
+                self.describe_query_columns(sql).await?
+            };
+
+            for row in &rows {
+                let mut obj = serde_json::Map::new();
+                for col in row.columns() {
+                    let name = col.name();
+                    let value = sqlite_cell_to_json(row, name, Some(col.type_info().name()))?;
+                    obj.insert(name.to_string(), value);
+                }
+                data.push(serde_json::Value::Object(obj));
+            }
+
+            Ok((columns, data, rows.len() as i64))
+        } else {
+            let exec = sqlx::query(sql)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            Ok((Vec::new(), Vec::new(), exec.rows_affected() as i64))
+        }
     }
 }
 
@@ -658,59 +710,14 @@ impl DatabaseDriver for SqliteDriver {
             return Err("[QUERY_ERROR] Empty SQL statement".to_string());
         }
 
-        // Execute all statements except the last one
-        if statements.len() > 1 {
-            for statement in statements.iter().take(statements.len() - 1) {
-                sqlx::query(statement)
-                    .execute(&self.pool)
-                    .await
-                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-            }
-        }
-
-        // Execute the last statement and return its result
-        let last_sql = statements.last().unwrap();
-        let first_keyword = super::first_sql_keyword(last_sql);
-        let sql_lower = last_sql.to_lowercase();
-        let should_fetch_rows = matches!(
-            first_keyword.as_deref(),
-            Some("SELECT") | Some("PRAGMA") | Some("WITH") | Some("EXPLAIN")
-        ) || sql_lower.contains(" returning ");
-
-        if should_fetch_rows {
-            let rows = sqlx::query(last_sql)
-                .fetch_all(&self.pool)
-                .await
-                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-
-            let mut data = Vec::new();
-            let columns = if let Some(first_row) = rows.first() {
-                first_row
-                    .columns()
-                    .iter()
-                    .map(|col| QueryColumn {
-                        name: col.name().to_string(),
-                        r#type: col.type_info().to_string(),
-                    })
-                    .collect()
-            } else {
-                self.describe_query_columns(last_sql).await?
-            };
-
-            for row in &rows {
-                let mut obj = serde_json::Map::new();
-                for col in row.columns() {
-                    let name = col.name();
-                    let value = sqlite_cell_to_json(row, name, Some(col.type_info().name()))?;
-                    obj.insert(name.to_string(), value);
-                }
-                data.push(serde_json::Value::Object(obj));
-            }
-
+        // Single statement: keep original behavior
+        if statements.len() == 1 {
+            let last_sql = statements.last().unwrap();
+            let (columns, data, row_count) = self.execute_single_statement(last_sql).await?;
             let duration = start.elapsed();
             return Ok(QueryResult {
                 data,
-                row_count: rows.len() as i64,
+                row_count,
                 columns,
                 time_taken_ms: duration.as_millis() as i64,
                 success: true,
@@ -719,20 +726,52 @@ impl DatabaseDriver for SqliteDriver {
             });
         }
 
-        let exec = sqlx::query(last_sql)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        // Multiple statements: execute each and collect results
+        let mut result_sets = Vec::new();
+        let mut last_error: Option<String> = None;
+
+        for (idx, statement) in statements.iter().enumerate() {
+            match self.execute_single_statement(statement).await {
+                Ok((columns, data, row_count)) => {
+                    result_sets.push(SingleResultSet {
+                        data,
+                        row_count,
+                        columns,
+                        index: idx as u32,
+                        statement: statement.clone(),
+                    });
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    break;
+                }
+            }
+        }
 
         let duration = start.elapsed();
+
+        if let Some(err) = last_error {
+            // Partial success: return collected results + error
+            return Ok(QueryResult {
+                data: vec![],
+                row_count: 0,
+                columns: vec![],
+                time_taken_ms: duration.as_millis() as i64,
+                success: false,
+                error: Some(err),
+                result_sets: Some(result_sets),
+            });
+        }
+
+        // All succeeded
         Ok(QueryResult {
             data: vec![],
-            row_count: exec.rows_affected() as i64,
+            row_count: 0,
             columns: vec![],
             time_taken_ms: duration.as_millis() as i64,
             success: true,
             error: None,
-            result_sets: None,
+            result_sets: Some(result_sets),
         })
     }
 
@@ -1202,5 +1241,182 @@ mod tests {
             sqlite_number_from_f64(f64::INFINITY),
             serde_json::Value::String("inf".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn test_execute_query_multiple_select_returns_result_sets() {
+        let path = temp_db_path();
+        let form = ConnectionForm {
+            driver: "sqlite".to_string(),
+            file_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        let driver = SqliteDriver::connect(&form).await.unwrap();
+        driver
+            .execute_query(
+                "CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT); \
+                 CREATE TABLE t2 (id INTEGER PRIMARY KEY, value INTEGER); \
+                 INSERT INTO t1 (name) VALUES ('alice'), ('bob'); \
+                 INSERT INTO t2 (value) VALUES (10), (20), (30);"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        // Multiple SELECT statements should return result_sets
+        let result = driver
+            .execute_query(
+                "SELECT * FROM t1 ORDER BY id; SELECT * FROM t2 ORDER BY id;".to_string(),
+            )
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        assert!(result.result_sets.is_some());
+
+        let result_sets = result.result_sets.unwrap();
+        assert_eq!(result_sets.len(), 2);
+
+        // First result set: t1
+        assert_eq!(result_sets[0].index, 0);
+        assert_eq!(result_sets[0].row_count, 2);
+        assert_eq!(result_sets[0].columns.len(), 2);
+        assert_eq!(result_sets[0].columns[0].name, "id");
+        assert_eq!(result_sets[0].columns[1].name, "name");
+        assert_eq!(
+            result_sets[0].data[0]["name"],
+            serde_json::Value::String("alice".to_string())
+        );
+
+        // Second result set: t2
+        assert_eq!(result_sets[1].index, 1);
+        assert_eq!(result_sets[1].row_count, 3);
+        assert_eq!(result_sets[1].columns.len(), 2);
+        assert_eq!(result_sets[1].columns[0].name, "id");
+        assert_eq!(result_sets[1].columns[1].name, "value");
+
+        driver.close().await;
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_execute_query_single_select_no_result_sets() {
+        let path = temp_db_path();
+        let form = ConnectionForm {
+            driver: "sqlite".to_string(),
+            file_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        let driver = SqliteDriver::connect(&form).await.unwrap();
+        driver
+            .execute_query("CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT);".to_string())
+            .await
+            .unwrap();
+        driver
+            .execute_query("INSERT INTO t1 (name) VALUES ('alice');".to_string())
+            .await
+            .unwrap();
+
+        // Single SELECT should NOT have result_sets
+        let result = driver
+            .execute_query("SELECT * FROM t1;".to_string())
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        assert!(result.result_sets.is_none());
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.columns.len(), 2);
+
+        driver.close().await;
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_execute_query_multiple_mixed_statements() {
+        let path = temp_db_path();
+        let form = ConnectionForm {
+            driver: "sqlite".to_string(),
+            file_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        let driver = SqliteDriver::connect(&form).await.unwrap();
+        driver
+            .execute_query("CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT);".to_string())
+            .await
+            .unwrap();
+
+        // Mix of DML and SELECT
+        let result = driver
+            .execute_query(
+                "INSERT INTO t1 (name) VALUES ('alice'); \
+                 INSERT INTO t1 (name) VALUES ('bob'); \
+                 SELECT * FROM t1 ORDER BY id;"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        assert!(result.result_sets.is_some());
+
+        let result_sets = result.result_sets.unwrap();
+        assert_eq!(result_sets.len(), 3);
+
+        // First two are DML (no columns)
+        assert_eq!(result_sets[0].row_count, 1); // INSERT affected 1 row
+        assert!(result_sets[0].columns.is_empty());
+
+        assert_eq!(result_sets[1].row_count, 1);
+        assert!(result_sets[1].columns.is_empty());
+
+        // Third is SELECT
+        assert_eq!(result_sets[2].row_count, 2);
+        assert_eq!(result_sets[2].columns.len(), 2);
+
+        driver.close().await;
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_execute_query_multiple_partial_failure() {
+        let path = temp_db_path();
+        let form = ConnectionForm {
+            driver: "sqlite".to_string(),
+            file_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        let driver = SqliteDriver::connect(&form).await.unwrap();
+        driver
+            .execute_query("CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT);".to_string())
+            .await
+            .unwrap();
+
+        // Second statement has syntax error
+        let result = driver
+            .execute_query(
+                "INSERT INTO t1 (name) VALUES ('alice'); \
+                 INVALID SQL SYNTAX; \
+                 SELECT * FROM t1;"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        // Should fail but include partial results
+        assert!(!result.success);
+        assert!(result.error.is_some());
+        assert!(result.result_sets.is_some());
+
+        let result_sets = result.result_sets.unwrap();
+        assert_eq!(result_sets.len(), 1); // Only first INSERT succeeded
+        assert_eq!(result_sets[0].row_count, 1);
+
+        driver.close().await;
+        let _ = std::fs::remove_file(path);
     }
 }

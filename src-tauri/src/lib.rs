@@ -41,6 +41,10 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
+            // Initialize Oracle Instant Client library path
+            // This must be done before any Oracle connections are made
+            init_oracle_lib_path(&handle);
+
             // Explicitly restore window state on Windows as a workaround for upstream timing issues
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.restore_state(StateFlags::all());
@@ -286,3 +290,79 @@ pub mod models;
 pub mod ssh;
 pub mod state;
 pub mod utils;
+
+/// Initialize Oracle Instant Client library path from bundled resources.
+///
+/// On macOS: sets DYLD_LIBRARY_PATH (works in dev mode, bypassed in hardened runtime)
+/// On Linux: sets LD_LIBRARY_PATH
+/// On Windows: adds to PATH
+///
+/// For hardened macOS builds, the library is loaded directly from the resource path.
+fn init_oracle_lib_path(app_handle: &tauri::AppHandle) {
+    // Try to get resource directory
+    let resource_dir = match app_handle.path().resource_dir() {
+        Ok(dir) => dir,
+        Err(_) => return,
+    };
+
+    let oracle_dir = resource_dir.join("oracle");
+    if !oracle_dir.exists() {
+        // Oracle libraries not bundled, skip initialization
+        return;
+    }
+
+    let oracle_path = oracle_dir.to_string_lossy().to_string();
+
+    #[cfg(target_os = "macos")]
+    {
+        // For macOS, we need to set DYLD_LIBRARY_PATH
+        // Note: This only works in dev mode. In production with hardened runtime,
+        // the library must be loaded via absolute path or @rpath
+        let current = std::env::var("DYLD_LIBRARY_PATH").unwrap_or_default();
+        let new_path = if current.is_empty() {
+            oracle_path.clone()
+        } else {
+            format!("{}:{}", oracle_path, current)
+        };
+        unsafe {
+            std::env::set_var("DYLD_LIBRARY_PATH", &new_path);
+        }
+        println!("Oracle: Set DYLD_LIBRARY_PATH to include {}", oracle_path);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let current = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+        let new_path = if current.is_empty() {
+            oracle_path.clone()
+        } else {
+            format!("{}:{}", oracle_path, current)
+        };
+        unsafe {
+            std::env::set_var("LD_LIBRARY_PATH", &new_path);
+        }
+        println!("Oracle: Set LD_LIBRARY_PATH to include {}", oracle_path);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let current = std::env::var("PATH").unwrap_or_default();
+        let new_path = if current.is_empty() {
+            oracle_path.clone()
+        } else {
+            format!("{};{}", oracle_path, current)
+        };
+        unsafe {
+            std::env::set_var("PATH", &new_path);
+        }
+        println!("Oracle: Added to PATH: {}", oracle_path);
+    }
+
+    // Also set ORACLE_HOME if not already set
+    if std::env::var("ORACLE_HOME").is_err() {
+        unsafe {
+            std::env::set_var("ORACLE_HOME", &oracle_path);
+        }
+        println!("Oracle: Set ORACLE_HOME to {}", oracle_path);
+    }
+}

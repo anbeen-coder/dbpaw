@@ -136,6 +136,12 @@ If your device is managed by an organization, you may need your IT admin to allo
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
+### Oracle Instant Client
+
+This software includes Oracle Instant Client, which is subject to the
+[Oracle Technology Network License Agreement for Oracle Instant Client](https://www.oracle.com/downloads/licenses/instant-client-license.html).
+Oracle Instant Client is free to use for connecting to Oracle Database.
+
 ## ❤️ Thanks
 
 Thanks for trying DbPaw. If you find it useful, please consider giving this repository a star — it helps a lot!

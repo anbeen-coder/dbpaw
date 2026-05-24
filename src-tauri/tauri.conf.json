@@ -44,6 +44,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "libs/oracle/current/*"
+    ],
     "windows": {
       "nsis": {
         "installMode": "both"

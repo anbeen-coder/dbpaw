@@ -286,6 +286,7 @@ pub mod datasources;
 pub mod db;
 pub mod error;
 pub mod events;
+pub mod mcp;
 pub mod models;
 pub mod ssh;
 pub mod state;

@@ -560,6 +560,37 @@ async fn resolve_driver(state: &State<'_, AppState>, id: i64) -> Option<String> 
         .map(|f| f.driver)
 }
 
+fn supports_query_cancellation(driver: &str) -> bool {
+    let d = driver.to_ascii_lowercase();
+    d == "clickhouse" || crate::db::drivers::is_mysql_family_driver(&d)
+}
+
+async fn execute_cancel_query(
+    connection_id: i64,
+    query_id: &str,
+    form: &crate::models::ConnectionForm,
+) -> Result<bool, String> {
+    if form.driver.eq_ignore_ascii_case("clickhouse") {
+        let driver = crate::db::drivers::clickhouse::ClickHouseDriver::connect(form).await?;
+        driver.kill_query(query_id).await?;
+        unregister_running_query(connection_id, query_id).await;
+        Ok(true)
+    } else if crate::db::drivers::is_mysql_family_driver(&form.driver) {
+        let Some(thread_id) =
+            crate::db::drivers::mysql::MysqlDriver::lookup_query_thread(query_id).await
+        else {
+            return Ok(false);
+        };
+        let driver = crate::db::drivers::mysql::MysqlDriver::connect(form).await?;
+        driver.kill_query(thread_id).await?;
+        crate::db::drivers::mysql::MysqlDriver::unregister_query_thread(query_id).await;
+        unregister_running_query(connection_id, query_id).await;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 async fn register_running_query(connection_id: i64, query_id: &str) {
     let mut guard = running_queries().lock().await;
     guard
@@ -682,12 +713,12 @@ pub async fn execute_query(
     {
         return Err("[UNSUPPORTED] Redis connections do not support SQL queries. Use the Redis key view to browse and edit keys.".to_string());
     }
-    let is_clickhouse = driver
+    let cancellation_supported = driver
         .as_deref()
-        .map(|d| d.eq_ignore_ascii_case("clickhouse"))
+        .map(supports_query_cancellation)
         .unwrap_or(false);
     let guarded_query = maybe_apply_default_limit(&query, driver.as_deref());
-    if is_clickhouse {
+    if cancellation_supported {
         register_running_query(id, &query_id).await;
     }
 
@@ -698,7 +729,7 @@ pub async fn execute_query(
             driver
                 .execute_query_with_id(
                     query_clone,
-                    if is_clickhouse {
+                    if cancellation_supported {
                         Some(query_id_clone.as_str())
                     } else {
                         None
@@ -708,7 +739,7 @@ pub async fn execute_query(
         }
     })
     .await;
-    if is_clickhouse {
+    if cancellation_supported {
         unregister_running_query(id, &query_id).await;
     }
 
@@ -771,12 +802,12 @@ pub async fn execute_query_by_id_direct(
 ) -> Result<QueryResult, String> {
     let query_id = make_query_id(id, query_id);
     let driver = resolve_driver_from_app_state(state, id).await;
-    let is_clickhouse = driver
+    let cancellation_supported = driver
         .as_deref()
-        .map(|d| d.eq_ignore_ascii_case("clickhouse"))
+        .map(supports_query_cancellation)
         .unwrap_or(false);
     let guarded_query = maybe_apply_default_limit(&query, driver.as_deref());
-    if is_clickhouse {
+    if cancellation_supported {
         register_running_query(id, &query_id).await;
     }
 
@@ -787,7 +818,7 @@ pub async fn execute_query_by_id_direct(
             driver
                 .execute_query_with_id(
                     query_clone,
-                    if is_clickhouse {
+                    if cancellation_supported {
                         Some(query_id_clone.as_str())
                     } else {
                         None
@@ -797,7 +828,7 @@ pub async fn execute_query_by_id_direct(
         }
     })
     .await;
-    if is_clickhouse {
+    if cancellation_supported {
         unregister_running_query(id, &query_id).await;
     }
 
@@ -901,14 +932,8 @@ pub async fn cancel_query(
     };
     let db = local_db.ok_or("Local DB not initialized".to_string())?;
     let form = db.get_connection_form_by_id(connection_id).await?;
-    if !form.driver.eq_ignore_ascii_case("clickhouse") {
-        return Ok(false);
-    }
 
-    let driver = crate::db::drivers::clickhouse::ClickHouseDriver::connect(&form).await?;
-    driver.kill_query(&query_id).await?;
-    unregister_running_query(connection_id, &query_id).await;
-    Ok(true)
+    execute_cancel_query(connection_id, &query_id, &form).await
 }
 
 #[tauri::command]
@@ -930,7 +955,7 @@ pub async fn execute_by_conn(
     let result = driver
         .execute_query_with_id(
             guarded_sql.clone(),
-            if form.driver.eq_ignore_ascii_case("clickhouse") {
+            if supports_query_cancellation(&form.driver) {
                 Some(query_id.as_str())
             } else {
                 None
@@ -1036,14 +1061,8 @@ pub async fn cancel_query_direct(
     };
     let db = local_db.ok_or("Local DB not initialized".to_string())?;
     let form = db.get_connection_form_by_id(connection_id).await?;
-    if !form.driver.eq_ignore_ascii_case("clickhouse") {
-        return Ok(false);
-    }
 
-    let driver = crate::db::drivers::clickhouse::ClickHouseDriver::connect(&form).await?;
-    driver.kill_query(&query_id).await?;
-    unregister_running_query(connection_id, &query_id).await;
-    Ok(true)
+    execute_cancel_query(connection_id, &query_id, &form).await
 }
 
 #[cfg(test)]

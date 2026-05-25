@@ -1,0 +1,88 @@
+use super::tools;
+use super::types::*;
+use crate::state::AppState;
+use std::sync::Arc;
+
+pub struct RequestHandler {
+    state: Arc<AppState>,
+}
+
+impl RequestHandler {
+    pub fn new(state: Arc<AppState>) -> Self {
+        Self { state }
+    }
+
+    pub async fn handle(&self, request: JsonRpcRequest) -> Option<JsonRpcResponse> {
+        let id = request.id.clone();
+
+        let result = match request.method.as_str() {
+            "initialize" => self.handle_initialize().await,
+            "initialized" => Ok(serde_json::json!({})),
+            "tools/list" => self.handle_tools_list().await,
+            "tools/call" => self.handle_tools_call(request.params).await,
+            "resources/list" => self.handle_resources_list().await,
+            "resources/read" => self.handle_resources_read(request.params).await,
+            "ping" => Ok(serde_json::json!({})),
+            _ => {
+                return Some(JsonRpcResponse::error(
+                    id,
+                    METHOD_NOT_FOUND,
+                    format!("Method not found: {}", request.method),
+                ));
+            }
+        };
+
+        match result {
+            Ok(value) => Some(JsonRpcResponse::success(id, value)),
+            Err(e) => Some(JsonRpcResponse::error(id, INTERNAL_ERROR, e)),
+        }
+    }
+
+    async fn handle_initialize(&self) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+                "tools": {},
+                "resources": {}
+            },
+            "serverInfo": {
+                "name": "dbpaw",
+                "version": "0.4.0"
+            }
+        }))
+    }
+
+    async fn handle_tools_list(&self) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({
+            "tools": tools::get_tool_definitions()
+        }))
+    }
+
+    async fn handle_tools_call(&self, params: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
+        let params = params.ok_or("Missing params")?;
+
+        let name = params["name"]
+            .as_str()
+            .ok_or("Missing tool name")?
+            .to_string();
+
+        let arguments = params["arguments"].clone();
+
+        let result = tools::execute_tool(&self.state, &name, arguments).await;
+
+        match result {
+            Ok(tool_result) => Ok(serde_json::to_value(tool_result).unwrap()),
+            Err(e) => Ok(serde_json::to_value(ToolResult::error(e)).unwrap()),
+        }
+    }
+
+    async fn handle_resources_list(&self) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({
+            "resources": []
+        }))
+    }
+
+    async fn handle_resources_read(&self, _params: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
+        Err("Resources not implemented yet".to_string())
+    }
+}

@@ -115,6 +115,9 @@ export const ja: Translations = {
       showColumnComments: "カラムコメントを表示",
       showColumnCommentsDescription:
         "テーブルヘッダーの列名の下に小さなテキストでカラムコメントを表示します",
+      filter: {
+        title: "フィルター",
+      },
     },
     layout: {
       title: "レイアウト",

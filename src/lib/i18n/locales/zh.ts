@@ -113,6 +113,9 @@ export const zh: Translations = {
       showColumnComments: "显示字段注释",
       showColumnCommentsDescription:
         "在表头列名下方以小字体显示字段的 Comment 注释",
+      filter: {
+        title: "过滤器",
+      },
     },
     layout: {
       title: "布局",

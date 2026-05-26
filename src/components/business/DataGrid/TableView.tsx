@@ -74,6 +74,7 @@ import type { ColumnInfo, TransferFormat } from "@/services/api";
 import { isEditableTarget, isModKey } from "@/lib/keyboard";
 import {
   buildDeleteStatement,
+  buildFilterExpression,
   buildUpdateStatement,
   calculateAutoColumnWidths,
   canMutateClickHouseTable,
@@ -87,7 +88,10 @@ import {
   getQualifiedTableName,
   isClickHouseMergeTreeEngine,
   isComplexValue,
+  isDateType,
   isInsertColumnRequired,
+  isNumericType,
+  isStringType,
   quoteIdent,
   sortRows,
 } from "./tableView/utils";
@@ -1348,6 +1352,35 @@ export function TableView({
     }
     return lines.join("\n");
   }, [getNormalizedCellRange, currentData, columns, getCellDisplayValue, canUpdateDelete, primaryKeys, tableContext]);
+
+  const applyFilter = useCallback(
+    (operator: string) => {
+      if (!selectedCell || !tableContext || !onFilterChange) return;
+
+      const cellValue = currentData[selectedCell.row]?.[selectedCell.col];
+      const colMeta = tableColumns.find((c) => c.name === selectedCell.col);
+      const columnType = colMeta?.type || "";
+
+      const expression = buildFilterExpression(
+        tableContext.driver,
+        selectedCell.col,
+        operator,
+        cellValue,
+        columnType,
+      );
+
+      setWhereInput(expression);
+      onFilterChange(expression, orderByInput);
+    },
+    [
+      selectedCell,
+      currentData,
+      tableColumns,
+      tableContext,
+      orderByInput,
+      onFilterChange,
+    ],
+  );
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
@@ -2676,6 +2709,78 @@ export function TableView({
                       </tr>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
+                      {!!tableContext && onFilterChange && selectedCell && (() => {
+                        const cellValue = currentData[selectedCell.row]?.[selectedCell.col];
+                        const colMeta = tableColumns.find((c) => c.name === selectedCell.col);
+                        const columnType = colMeta?.type || "";
+                        const isNull = cellValue === null || cellValue === undefined;
+                        const displayValue = isNull ? "NULL" : formatCellValue(cellValue);
+                        const truncatedValue = displayValue.length > 30
+                          ? displayValue.substring(0, 30) + "..."
+                          : displayValue;
+                        const isNumeric = isNumericType(columnType);
+                        const isString = isStringType(columnType);
+                        const isDate = isDateType(columnType);
+                        const showComparable = isNumeric || isDate || (!isString && !isNull && typeof cellValue === "number");
+
+                        return (
+                          <>
+                            <ContextMenuSub>
+                              <ContextMenuSubTrigger>
+                                <Filter className="w-4 h-4 mr-2" />
+                                {t("datagrid.filter.title", "Filter")}
+                              </ContextMenuSubTrigger>
+                              <ContextMenuSubContent>
+                                <ContextMenuItem onClick={() => applyFilter("=")}>
+                                  = {truncatedValue}
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => applyFilter("<>")}>
+                                  &lt;&gt; {truncatedValue}
+                                </ContextMenuItem>
+                                {showComparable && !isNull && (
+                                  <>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuItem onClick={() => applyFilter(">")}>
+                                      &gt; {truncatedValue}
+                                    </ContextMenuItem>
+                                    <ContextMenuItem onClick={() => applyFilter(">=")}>
+                                      &gt;= {truncatedValue}
+                                    </ContextMenuItem>
+                                    <ContextMenuItem onClick={() => applyFilter("<")}>
+                                      &lt; {truncatedValue}
+                                    </ContextMenuItem>
+                                    <ContextMenuItem onClick={() => applyFilter("<=")}>
+                                      &lt;= {truncatedValue}
+                                    </ContextMenuItem>
+                                  </>
+                                )}
+                                {isString && !isNull && (
+                                  <>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuItem onClick={() => applyFilter("LIKE_CONTAINS")}>
+                                      LIKE %{truncatedValue}%
+                                    </ContextMenuItem>
+                                    <ContextMenuItem onClick={() => applyFilter("LIKE_STARTS")}>
+                                      LIKE {truncatedValue}%
+                                    </ContextMenuItem>
+                                    <ContextMenuItem onClick={() => applyFilter("LIKE_ENDS")}>
+                                      LIKE %{truncatedValue}
+                                    </ContextMenuItem>
+                                  </>
+                                )}
+                                <ContextMenuSeparator />
+                                <ContextMenuItem onClick={() => applyFilter("IS NULL")}>
+                                  IS NULL
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => applyFilter("IS NOT NULL")}>
+                                  IS NOT NULL
+                                </ContextMenuItem>
+                              </ContextMenuSubContent>
+                            </ContextMenuSub>
+                            <ContextMenuSeparator />
+                          </>
+                        );
+                      })()}
                       <ContextMenuItem
                         onClick={() => {
                           handleCopySelection();

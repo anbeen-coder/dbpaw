@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildDeleteStatement,
+  buildFilterExpression,
   buildUpdateStatement,
   calculateAutoColumnWidths,
   canMutateClickHouseTable,
@@ -11,9 +12,13 @@ import {
   formatInsertSQLValue,
   formatSQLValue,
   getQualifiedTableName,
+  isBooleanType,
   isClickHouseMergeTreeEngine,
   isComplexValue,
+  isDateType,
   isInsertColumnRequired,
+  isNumericType,
+  isStringType,
   quoteIdent,
   sortRows,
 } from "./utils";
@@ -678,5 +683,210 @@ describe("mutation statement builders", () => {
     expect(
       buildDeleteStatement("postgres", '"public"."users"', '"id" = 1'),
     ).toBe('DELETE FROM "public"."users" WHERE "id" = 1');
+  });
+});
+
+describe("isBooleanType", () => {
+  test("matches boolean types", () => {
+    expect(isBooleanType("boolean")).toBe(true);
+    expect(isBooleanType("BOOLEAN")).toBe(true);
+    expect(isBooleanType("bool")).toBe(true);
+    expect(isBooleanType("bit")).toBe(true);
+  });
+
+  test("does not match non-boolean types", () => {
+    expect(isBooleanType("varchar")).toBe(false);
+    expect(isBooleanType("integer")).toBe(false);
+    expect(isBooleanType("text")).toBe(false);
+  });
+});
+
+describe("isNumericType", () => {
+  test("matches integer types", () => {
+    expect(isNumericType("integer")).toBe(true);
+    expect(isNumericType("int")).toBe(true);
+    expect(isNumericType("bigint")).toBe(true);
+    expect(isNumericType("smallint")).toBe(true);
+    expect(isNumericType("tinyint")).toBe(true);
+    expect(isNumericType("mediumint")).toBe(true);
+    expect(isNumericType("serial")).toBe(true);
+    expect(isNumericType("bigserial")).toBe(true);
+  });
+
+  test("matches decimal/float types", () => {
+    expect(isNumericType("decimal")).toBe(true);
+    expect(isNumericType("numeric")).toBe(true);
+    expect(isNumericType("real")).toBe(true);
+    expect(isNumericType("double")).toBe(true);
+    expect(isNumericType("float")).toBe(true);
+    expect(isNumericType("money")).toBe(true);
+    expect(isNumericType("number")).toBe(true);
+  });
+
+  test("does not match non-numeric types", () => {
+    expect(isNumericType("varchar")).toBe(false);
+    expect(isNumericType("text")).toBe(false);
+    expect(isNumericType("boolean")).toBe(false);
+    expect(isNumericType("date")).toBe(false);
+  });
+});
+
+describe("isStringType", () => {
+  test("matches string types", () => {
+    expect(isStringType("varchar")).toBe(true);
+    expect(isStringType("char")).toBe(true);
+    expect(isStringType("text")).toBe(true);
+    expect(isStringType("nvarchar")).toBe(true);
+    expect(isStringType("nchar")).toBe(true);
+    expect(isStringType("tinytext")).toBe(true);
+    expect(isStringType("mediumtext")).toBe(true);
+    expect(isStringType("longtext")).toBe(true);
+    expect(isStringType("clob")).toBe(true);
+    expect(isStringType("uuid")).toBe(true);
+    expect(isStringType("uniqueidentifier")).toBe(true);
+  });
+
+  test("matches json/xml types", () => {
+    expect(isStringType("json")).toBe(true);
+    expect(isStringType("jsonb")).toBe(true);
+    expect(isStringType("xml")).toBe(true);
+  });
+
+  test("does not match non-string types", () => {
+    expect(isStringType("integer")).toBe(false);
+    expect(isStringType("boolean")).toBe(false);
+    expect(isStringType("date")).toBe(false);
+    expect(isStringType("binary")).toBe(false);
+  });
+});
+
+describe("isDateType", () => {
+  test("matches date types", () => {
+    expect(isDateType("date")).toBe(true);
+    expect(isDateType("datetime")).toBe(true);
+    expect(isDateType("datetime2")).toBe(true);
+    expect(isDateType("datetimeoffset")).toBe(true);
+    expect(isDateType("smalldatetime")).toBe(true);
+  });
+
+  test("matches time types", () => {
+    expect(isDateType("time")).toBe(true);
+    expect(isDateType("timestamp")).toBe(true);
+    expect(isDateType("timestamp without time zone")).toBe(true);
+    expect(isDateType("timestamp with time zone")).toBe(true);
+    expect(isDateType("timestamptz")).toBe(true);
+  });
+
+  test("does not match non-date types", () => {
+    expect(isDateType("varchar")).toBe(false);
+    expect(isDateType("integer")).toBe(false);
+    expect(isDateType("boolean")).toBe(false);
+  });
+});
+
+describe("buildFilterExpression", () => {
+  test("builds IS NULL expression", () => {
+    expect(buildFilterExpression("postgres", "name", "IS NULL", null, "varchar")).toBe(
+      '"name" IS NULL',
+    );
+  });
+
+  test("builds IS NOT NULL expression", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "IS NOT NULL", null, "varchar"),
+    ).toBe('"name" IS NOT NULL');
+  });
+
+  test("builds equality expression for string value", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "=", "Alice", "varchar"),
+    ).toBe('"name" = \'Alice\'');
+  });
+
+  test("builds equality expression for numeric value", () => {
+    expect(buildFilterExpression("postgres", "age", "=", 30, "integer")).toBe(
+      '"age" = 30',
+    );
+  });
+
+  test("builds not equal expression", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "<>", "Bob", "varchar"),
+    ).toBe('"name" <> \'Bob\'');
+  });
+
+  test("builds comparison expressions for numeric", () => {
+    expect(buildFilterExpression("postgres", "age", ">", 18, "integer")).toBe(
+      '"age" > 18',
+    );
+    expect(
+      buildFilterExpression("postgres", "age", ">=", 18, "integer"),
+    ).toBe('"age" >= 18');
+    expect(buildFilterExpression("postgres", "age", "<", 100, "integer")).toBe(
+      '"age" < 100',
+    );
+    expect(
+      buildFilterExpression("postgres", "age", "<=", 100, "integer"),
+    ).toBe('"age" <= 100');
+  });
+
+  test("builds LIKE CONTAINS expression", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "LIKE_CONTAINS", "ali", "varchar"),
+    ).toBe('"name" LIKE \'%ali%\'');
+  });
+
+  test("builds LIKE STARTS expression", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "LIKE_STARTS", "Ali", "varchar"),
+    ).toBe('"name" LIKE \'Ali%\'');
+  });
+
+  test("builds LIKE ENDS expression", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "LIKE_ENDS", "ice", "varchar"),
+    ).toBe('"name" LIKE \'%ice\'');
+  });
+
+  test("escapes single quotes in LIKE expressions", () => {
+    expect(
+      buildFilterExpression(
+        "postgres",
+        "name",
+        "LIKE_CONTAINS",
+        "O'Brien",
+        "varchar",
+      ),
+    ).toBe('"name" LIKE \'%O\'\'Brien%\'');
+  });
+
+  test("uses backticks for mysql driver", () => {
+    expect(
+      buildFilterExpression("mysql", "name", "=", "Alice", "varchar"),
+    ).toBe("`name` = 'Alice'");
+  });
+
+  test("uses brackets for mssql driver", () => {
+    expect(
+      buildFilterExpression("mssql", "name", "=", "Alice", "varchar"),
+    ).toBe("[name] = 'Alice'");
+  });
+
+  test("handles null value with equality operator returns IS NULL", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "=", null, "varchar"),
+    ).toBe('"name" IS NULL');
+  });
+
+  test("handles null value with not equal operator returns IS NOT NULL", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "<>", null, "varchar"),
+    ).toBe('"name" IS NOT NULL');
+  });
+
+  test("falls back to equality for unknown operator", () => {
+    expect(
+      buildFilterExpression("postgres", "name", "UNKNOWN", "Alice", "varchar"),
+    ).toBe('"name" = \'Alice\'');
   });
 });

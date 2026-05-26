@@ -230,14 +230,74 @@ export function formatSQLValue(
   return `'${escapeSQL(value)}'`;
 }
 
-function isBooleanType(type: string): boolean {
+export function isBooleanType(type: string): boolean {
   return /\b(bool|boolean|bit)\b/.test(type.toLowerCase());
 }
 
-function isNumericType(type: string): boolean {
+export function isNumericType(type: string): boolean {
   return /\b(tinyint|smallint|mediumint|int|integer|bigint|serial|bigserial|decimal|numeric|real|double|float|money|number)\b/.test(
     type.toLowerCase(),
   );
+}
+
+export function isStringType(type: string): boolean {
+  return /\b(char|varchar|nvarchar|nchar|text|tinytext|mediumtext|longtext|clob|blob|json|jsonb|xml|uuid|uniqueidentifier)\b/.test(
+    type.toLowerCase(),
+  );
+}
+
+export function isDateType(type: string): boolean {
+  return /\b(date|datetime|datetime2|datetimeoffset|time|timestamp|timestamp without time zone|timestamp with time zone|timestamptz|smalldatetime)\b/.test(
+    type.toLowerCase(),
+  );
+}
+
+export function buildFilterExpression(
+  driver: string | undefined,
+  columnName: string,
+  operator: string,
+  cellValue: any,
+  _columnType: string,
+): string {
+  const quotedCol = quoteIdent(driver, columnName);
+
+  if (operator === "IS NULL") {
+    return `${quotedCol} IS NULL`;
+  }
+  if (operator === "IS NOT NULL") {
+    return `${quotedCol} IS NOT NULL`;
+  }
+
+  const isNull = cellValue === null || cellValue === undefined;
+  if (isNull) {
+    return operator === "<>" ? `${quotedCol} IS NOT NULL` : `${quotedCol} IS NULL`;
+  }
+
+  const strValue = cellValueToString(cellValue);
+  const formattedValue = formatSQLValue(strValue, cellValue, "execution", driver);
+
+  switch (operator) {
+    case "=":
+      return `${quotedCol} = ${formattedValue}`;
+    case "<>":
+      return `${quotedCol} <> ${formattedValue}`;
+    case ">":
+      return `${quotedCol} > ${formattedValue}`;
+    case ">=":
+      return `${quotedCol} >= ${formattedValue}`;
+    case "<":
+      return `${quotedCol} < ${formattedValue}`;
+    case "<=":
+      return `${quotedCol} <= ${formattedValue}`;
+    case "LIKE_CONTAINS":
+      return `${quotedCol} LIKE '%${escapeSQL(strValue)}%'`;
+    case "LIKE_STARTS":
+      return `${quotedCol} LIKE '${escapeSQL(strValue)}%'`;
+    case "LIKE_ENDS":
+      return `${quotedCol} LIKE '%${escapeSQL(strValue)}'`;
+    default:
+      return `${quotedCol} = ${formattedValue}`;
+  }
 }
 
 export function formatInsertSQLValue(

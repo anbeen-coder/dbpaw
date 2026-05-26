@@ -626,6 +626,15 @@ export const en = {
       samplingKey: "Sampling Key",
       ttl: "TTL",
     },
+    cassandra: {
+      title: "Cassandra",
+      partitionKey: "Partition Key",
+      clusteringColumn: "Clustering Column",
+      compactionStrategy: "Compaction Strategy",
+      bloomFilterFpChance: "Bloom Filter FP Chance",
+      gcGraceSeconds: "GC Grace Seconds",
+      defaultTimeToLive: "Default TTL",
+    },
     indexes: {
       title: "Indexes",
       indexName: "Index Name",

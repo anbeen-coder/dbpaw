@@ -571,6 +571,16 @@ export interface ClickHouseTableExtra {
   createTableQuery?: string | null;
 }
 
+export interface CassandraTableExtra {
+  partitionKey: string[];
+  clusteringColumns: string[];
+  compactionStrategy: string;
+  bloomFilterFpChance: number;
+  caching: any;
+  gcGraceSeconds: number;
+  defaultTimeToLive: number;
+}
+
 export type SpecialTypeCategory = "bitmap" | "geo" | "hyperloglog";
 
 export interface SpecialTypeSummary {
@@ -589,6 +599,7 @@ export interface TableMetadata {
   indexes: IndexInfo[];
   foreignKeys: ForeignKeyInfo[];
   clickhouseExtra?: ClickHouseTableExtra | null;
+  cassandraExtra?: CassandraTableExtra | null;
   specialTypeSummaries: SpecialTypeSummary[];
 }
 

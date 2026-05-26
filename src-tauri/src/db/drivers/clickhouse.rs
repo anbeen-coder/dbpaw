@@ -703,6 +703,7 @@ impl DatabaseDriver for ClickHouseDriver {
             indexes: vec![],
             foreign_keys: vec![],
             clickhouse_extra,
+            cassandra_extra: None,
             special_type_summaries: vec![],
         })
     }

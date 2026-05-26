@@ -144,6 +144,9 @@ case "${it_db}" in
   mongodb)
     run_integration_test "mongodb_integration"
     ;;
+  cassandra)
+    run_integration_test "cassandra_integration"
+    ;;
   all)
     run_integration_test "mysql_integration"
     run_integration_test "mysql_command_integration"
@@ -170,9 +173,10 @@ case "${it_db}" in
     run_integration_test "redis_integration"
     run_integration_test "elasticsearch_integration"
     run_integration_test "mongodb_integration"
+    run_integration_test "cassandra_integration"
     ;;
   *)
-    echo "[error] Invalid IT_DB='${it_db}'. Expected one of: mysql|starrocks|doris|mariadb|postgres|clickhouse|mssql|duckdb|sqlite|oracle|redis|elasticsearch|mongodb|all"
+    echo "[error] Invalid IT_DB='${it_db}'. Expected one of: mysql|starrocks|doris|mariadb|postgres|clickhouse|mssql|duckdb|sqlite|oracle|redis|elasticsearch|mongodb|cassandra|all"
     exit 1
     ;;
 esac

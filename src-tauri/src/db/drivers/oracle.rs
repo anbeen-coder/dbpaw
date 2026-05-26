@@ -460,6 +460,7 @@ impl DatabaseDriver for OracleDriver {
             indexes,
             foreign_keys,
             clickhouse_extra: None,
+            cassandra_extra: None,
             special_type_summaries: vec![],
         })
     }

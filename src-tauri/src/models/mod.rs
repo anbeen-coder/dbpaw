@@ -218,6 +218,18 @@ pub struct ClickHouseTableExtra {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CassandraTableExtra {
+    pub partition_key: Vec<String>,
+    pub clustering_columns: Vec<String>,
+    pub compaction_strategy: String,
+    pub bloom_filter_fp_chance: f64,
+    pub caching: serde_json::Value,
+    pub gc_grace_seconds: i64,
+    pub default_time_to_live: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpecialTypeSummary {
     pub column_name: String,
     pub category: String,
@@ -236,6 +248,7 @@ pub struct TableMetadata {
     pub indexes: Vec<IndexInfo>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
     pub clickhouse_extra: Option<ClickHouseTableExtra>,
+    pub cassandra_extra: Option<CassandraTableExtra>,
     pub special_type_summaries: Vec<SpecialTypeSummary>,
 }
 

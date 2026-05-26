@@ -491,6 +491,7 @@ impl DatabaseDriver for DuckdbDriver {
             indexes: vec![],
             foreign_keys: vec![],
             clickhouse_extra: None,
+            cassandra_extra: None,
             special_type_summaries: vec![],
         })
     }

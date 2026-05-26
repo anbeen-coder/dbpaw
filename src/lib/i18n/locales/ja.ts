@@ -634,6 +634,15 @@ export const ja: Translations = {
       samplingKey: "Sampling Key",
       ttl: "TTL",
     },
+    cassandra: {
+      title: "Cassandra",
+      partitionKey: "パーティションキー",
+      clusteringColumn: "クラスタリングカラム",
+      compactionStrategy: "コンパクション戦略",
+      bloomFilterFpChance: "ブルームフィルター偽陽性率",
+      gcGraceSeconds: "GC グレース期間",
+      defaultTimeToLive: "デフォルト TTL",
+    },
     indexes: {
       title: "インデックス",
       indexName: "インデックス名",

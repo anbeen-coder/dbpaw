@@ -12,6 +12,7 @@ import {
   siTidb,
   siElasticsearch,
   siMongodb,
+  siApachecassandra,
 } from "simple-icons";
 import type { TreeConfig, TreeCallbacks } from "./tree-adapters/types.tsx";
 import { createSqlTreeConfig } from "./tree-adapters/sql-adapter.tsx";
@@ -39,10 +40,11 @@ const DRIVER_IDS = [
   "redis",
   "elasticsearch",
   "mongodb",
+  "cassandra",
 ] as const;
 
 export type Driver = (typeof DRIVER_IDS)[number];
-export type DriverKind = "sql" | "kv" | "document" | "search";
+export type DriverKind = "sql" | "kv" | "document" | "search" | "widecolumn";
 
 const renderSimpleIcon = (icon: { path: string }) => (
   <svg
@@ -292,6 +294,21 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siMongodb),
     treeConfig: (callbacks) => createMongodbTreeConfig(callbacks),
+  },
+  {
+    id: "cassandra",
+    label: "Cassandra",
+    kind: "widecolumn",
+    defaultPort: 9042,
+    isFileBased: false,
+    isMysqlFamily: false,
+    supportsSSLCA: false,
+    supportsSchemaBrowsing: false,
+    supportsCreateDatabase: true,
+    supportsRoutines: false,
+    importCapability: "unsupported",
+    icon: () => renderSimpleIcon(siApachecassandra),
+    treeConfig: createSqlTreeConfig(),
   },
 ];
 

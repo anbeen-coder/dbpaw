@@ -53,6 +53,7 @@ duckdb = { version = "1.2.2", features = ["bundled"] }
 oracle = "0.6"
 redis = { version = "0.27", features = ["tokio-comp", "tokio-rustls-comp", "cluster-async", "sentinel"] }
 mongodb = "3.6"
+scylla = { version = "1.6", features = ["chrono-04"] }
 urlencoding = "2.1"
 fontique = { version = "0.9", default-features = false, features = ["system"] }
 

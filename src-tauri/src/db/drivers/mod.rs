@@ -1,3 +1,4 @@
+use self::cassandra::CassandraDriver;
 use self::clickhouse::ClickHouseDriver;
 use self::duckdb::DuckdbDriver;
 use self::mongodb::MongoDBDriver;
@@ -13,6 +14,7 @@ use crate::models::{
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 
+pub mod cassandra;
 pub mod clickhouse;
 pub mod duckdb;
 pub mod mongodb;
@@ -414,6 +416,10 @@ pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, S
         }
         "mongodb" => {
             let driver = MongoDBDriver::connect(form).await?;
+            Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
+        }
+        "cassandra" => {
+            let driver = CassandraDriver::connect(form).await?;
             Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
         }
         _ => Err(format!(

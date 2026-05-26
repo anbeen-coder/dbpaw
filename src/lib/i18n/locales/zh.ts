@@ -606,6 +606,15 @@ export const zh: Translations = {
       samplingKey: "采样键",
       ttl: "TTL",
     },
+    cassandra: {
+      title: "Cassandra",
+      partitionKey: "分区键",
+      clusteringColumn: "聚类列",
+      compactionStrategy: "压缩策略",
+      bloomFilterFpChance: "布隆过滤器误判率",
+      gcGraceSeconds: "GC 宽限期",
+      defaultTimeToLive: "默认 TTL",
+    },
     indexes: {
       title: "索引",
       indexName: "索引名",

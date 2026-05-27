@@ -40,6 +40,11 @@ export function buildDiagramData(
     fkTargetSet.add(`${fk.targetTable}.${fk.targetColumn}`);
   });
 
+  const schemaByTable = new Map<string, string>();
+  for (const table of overview.tables) {
+    schemaByTable.set(table.name, table.schema);
+  }
+
   const nodes: ERDiagramTableNode[] = overview.tables.map((table) => ({
     id: `${table.schema}.${table.name}`,
     schema: table.schema,
@@ -59,8 +64,8 @@ export function buildDiagramData(
 
   const edges: ERDiagramEdge[] = foreignKeys.map((fk) => ({
     id: `${fk.sourceTable}.${fk.sourceColumn}-${fk.targetTable}.${fk.targetColumn}`,
-    source: `${fk.sourceSchema || "public"}.${fk.sourceTable}`,
-    target: `${fk.targetSchema || "public"}.${fk.targetTable}`,
+    source: `${fk.sourceSchema || schemaByTable.get(fk.sourceTable) || "public"}.${fk.sourceTable}`,
+    target: `${fk.targetSchema || schemaByTable.get(fk.targetTable) || "public"}.${fk.targetTable}`,
     sourceColumn: fk.sourceColumn,
     targetColumn: fk.targetColumn,
     fkName: fk.name,

@@ -514,6 +514,11 @@ export interface SavedConnection {
   updatedAt: string;
 }
 
+export interface ImportResult {
+  imported: SavedConnection[];
+  skipped: number;
+}
+
 export interface CreateDatabasePayload {
   name: string;
   ifNotExists?: boolean;
@@ -970,6 +975,8 @@ export const api = {
       invoke<TestConnectionResult>("test_connection_ephemeral", { form }),
     listSqliteIssues: () =>
       invoke<SqliteConnectionIssue[]>("list_sqlite_issues"),
+    importFromFile: (filePath: string) =>
+      invoke<ImportResult>("import_connections", { filePath }),
   },
   redis: {
     listDatabases: (id: number) =>

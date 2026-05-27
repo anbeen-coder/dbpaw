@@ -677,3 +677,107 @@ impl DatabaseDriver for MongoDBDriver {
         Ok(SchemaOverview { tables })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_form(driver: &str, host: Option<&str>, port: Option<i64>) -> ConnectionForm {
+        ConnectionForm {
+            driver: driver.to_string(),
+            host: host.map(|s| s.to_string()),
+            port,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn build_uri_basic() {
+        let form = make_form("mongodb", Some("localhost"), Some(27017));
+        let uri = build_connection_uri(&form).unwrap();
+        assert_eq!(uri, "mongodb://localhost:27017");
+    }
+
+    #[test]
+    fn build_uri_with_auth() {
+        let form = ConnectionForm {
+            driver: "mongodb".to_string(),
+            host: Some("localhost".to_string()),
+            port: Some(27017),
+            username: Some("admin".to_string()),
+            password: Some("pass word".to_string()),
+            ..Default::default()
+        };
+        let uri = build_connection_uri(&form).unwrap();
+        assert!(uri.starts_with("mongodb://admin:pass%20word@localhost:27017"));
+    }
+
+    #[test]
+    fn build_uri_with_database() {
+        let form = ConnectionForm {
+            driver: "mongodb".to_string(),
+            host: Some("localhost".to_string()),
+            port: Some(27017),
+            database: Some("mydb".to_string()),
+            ..Default::default()
+        };
+        let uri = build_connection_uri(&form).unwrap();
+        assert_eq!(uri, "mongodb://localhost:27017/mydb");
+    }
+
+    #[test]
+    fn build_uri_with_auth_source() {
+        let form = ConnectionForm {
+            driver: "mongodb".to_string(),
+            host: Some("localhost".to_string()),
+            port: Some(27017),
+            username: Some("admin".to_string()),
+            password: Some("pass".to_string()),
+            auth_source: Some("admin".to_string()),
+            ..Default::default()
+        };
+        let uri = build_connection_uri(&form).unwrap();
+        assert!(uri.contains("authSource=admin"));
+    }
+
+    #[test]
+    fn build_uri_with_ssl() {
+        let form = ConnectionForm {
+            driver: "mongodb".to_string(),
+            host: Some("localhost".to_string()),
+            port: Some(27017),
+            ssl: Some(true),
+            ..Default::default()
+        };
+        let uri = build_connection_uri(&form).unwrap();
+        assert!(uri.contains("ssl=true"));
+    }
+
+    #[test]
+    fn build_uri_default_port() {
+        let form = make_form("mongodb", Some("localhost"), None);
+        let uri = build_connection_uri(&form).unwrap();
+        assert!(uri.contains("localhost:27017"));
+    }
+
+    #[test]
+    fn build_uri_missing_host() {
+        let form = make_form("mongodb", None, None);
+        assert!(build_connection_uri(&form).is_err());
+    }
+
+    #[test]
+    fn build_uri_invalid_port() {
+        let form = make_form("mongodb", Some("localhost"), Some(99999));
+        assert!(build_connection_uri(&form).is_err());
+    }
+
+    #[test]
+    fn normalize_error_categorization() {
+        assert!(normalize_mongo_error("authentication failed").contains("Authentication failed"));
+        assert!(normalize_mongo_error("dns resolve error").contains("DNS resolution failed"));
+        assert!(normalize_mongo_error("connection timed out").contains("Connection timed out"));
+        assert!(normalize_mongo_error("connection refused").contains("Connection refused"));
+        assert!(normalize_mongo_error("some other error").starts_with("[MONGODB_ERROR]"));
+    }
+}

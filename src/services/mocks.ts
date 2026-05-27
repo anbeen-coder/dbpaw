@@ -1755,6 +1755,12 @@ export async function invokeMock<T>(cmd: string, args?: any): Promise<T> {
     case "delete_connection":
       return mockDeleteConnection(args.id) as Promise<T>;
 
+    case "import_connections":
+      return {
+        imported: [],
+        skipped: 0,
+      } as T;
+
     case "create_database_by_id":
       return mockCreateDatabaseById(args.id, args.payload) as Promise<T>;
 

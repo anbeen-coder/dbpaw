@@ -1,3 +1,4 @@
+use crate::db::drivers::DatabaseDriver;
 use crate::models::{Connection, ConnectionForm, TestConnectionResult};
 use crate::state::AppState;
 use serde::Deserialize;
@@ -191,6 +192,54 @@ fn build_clickhouse_create_database_sql(
     Ok(sql)
 }
 
+fn quote_cql_ident(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('"', "\"\""))
+}
+
+fn build_cassandra_create_database_sql(
+    payload: &CreateDatabasePayload,
+    db_name: &str,
+) -> Result<String, String> {
+    if let Some(v) = normalize_option_token(&payload.charset, "charset")? {
+        return Err(format!(
+            "[VALIDATION_ERROR] Cassandra create keyspace does not support charset option: {}",
+            v
+        ));
+    }
+    if let Some(v) = normalize_option_token(&payload.collation, "collation")? {
+        return Err(format!(
+            "[VALIDATION_ERROR] Cassandra create keyspace does not support collation option: {}",
+            v
+        ));
+    }
+    if let Some(v) = normalize_option_token(&payload.encoding, "encoding")? {
+        return Err(format!(
+            "[VALIDATION_ERROR] Cassandra create keyspace does not support encoding option: {}",
+            v
+        ));
+    }
+    if let Some(v) = normalize_option_token(&payload.lc_collate, "lc_collate")? {
+        return Err(format!(
+            "[VALIDATION_ERROR] Cassandra create keyspace does not support lc_collate option: {}",
+            v
+        ));
+    }
+    if let Some(v) = normalize_option_token(&payload.lc_ctype, "lc_ctype")? {
+        return Err(format!(
+            "[VALIDATION_ERROR] Cassandra create keyspace does not support lc_ctype option: {}",
+            v
+        ));
+    }
+
+    let mut sql = String::from("CREATE KEYSPACE ");
+    if payload.if_not_exists.unwrap_or(true) {
+        sql.push_str("IF NOT EXISTS ");
+    }
+    sql.push_str(&quote_cql_ident(db_name));
+    sql.push_str(" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}");
+    Ok(sql)
+}
+
 fn normalize_create_database_error(err: String, db_name: &str) -> String {
     let lower = err.to_lowercase();
     if lower.contains("already exists")
@@ -312,6 +361,14 @@ pub async fn create_database_by_id(
             })
             .await
         }
+        "cassandra" => {
+            let sql = build_cassandra_create_database_sql(&payload, &db_name)?;
+            super::execute_with_retry(&state, id, None, |driver| {
+                let sql_clone = sql.clone();
+                async move { driver.execute_query(sql_clone).await.map(|_| ()) }
+            })
+            .await
+        }
         _ => Err(format!(
             "[UNSUPPORTED] Driver {} not supported for create database",
             driver
@@ -393,6 +450,14 @@ pub async fn create_database_by_id_direct(
             })
             .await
         }
+        "cassandra" => {
+            let sql = build_cassandra_create_database_sql(&payload, &db_name)?;
+            super::execute_with_retry_from_app_state(state, id, None, |driver| {
+                let sql_clone = sql.clone();
+                async move { driver.execute_query(sql_clone).await.map(|_| ()) }
+            })
+            .await
+        }
         _ => Err(format!(
             "[UNSUPPORTED] Driver {} not supported for create database",
             driver
@@ -415,8 +480,8 @@ pub async fn test_connection_ephemeral(
         let client = crate::datasources::elasticsearch::ElasticsearchClient::connect(&form)?;
         client.test_connection().await?;
     } else if form.driver == "mongodb" {
-        let client = crate::datasources::mongodb::MongodbClient::connect(&form).await?;
-        client.test_connection().await?;
+        let driver = crate::db::drivers::mongodb::MongoDBDriver::connect(&form).await?;
+        driver.test_connection().await?;
     } else {
         let driver = crate::db::drivers::connect(&form).await?;
         driver.test_connection().await.map_err(|e| e.to_string())?;
@@ -665,9 +730,9 @@ pub async fn delete_connection_direct(state: &AppState, id: i64) -> Result<(), S
 #[cfg(test)]
 mod tests {
     use super::{
-        build_clickhouse_create_database_sql, build_mssql_create_database_sql,
-        build_mysql_create_database_sql, build_postgres_create_database_sql,
-        validate_database_name, CreateDatabasePayload,
+        build_cassandra_create_database_sql, build_clickhouse_create_database_sql,
+        build_mssql_create_database_sql, build_mysql_create_database_sql,
+        build_postgres_create_database_sql, validate_database_name, CreateDatabasePayload,
     };
     use super::{
         is_safe_option_token, normalize_create_database_error, normalize_option_token,
@@ -898,5 +963,65 @@ mod tests {
         .unwrap();
 
         assert_eq!(sql, "CREATE DATABASE IF NOT EXISTS `analytics`");
+    }
+
+    #[test]
+    fn cassandra_sql_creates_keyspace_with_replication() {
+        let sql = build_cassandra_create_database_sql(
+            &CreateDatabasePayload {
+                name: "my_app".to_string(),
+                if_not_exists: Some(true),
+                charset: None,
+                collation: None,
+                encoding: None,
+                lc_collate: None,
+                lc_ctype: None,
+            },
+            "my_app",
+        )
+        .unwrap();
+        assert_eq!(
+            sql,
+            "CREATE KEYSPACE IF NOT EXISTS \"my_app\" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
+        );
+    }
+
+    #[test]
+    fn cassandra_sql_without_if_not_exists() {
+        let sql = build_cassandra_create_database_sql(
+            &CreateDatabasePayload {
+                name: "my_app".to_string(),
+                if_not_exists: Some(false),
+                charset: None,
+                collation: None,
+                encoding: None,
+                lc_collate: None,
+                lc_ctype: None,
+            },
+            "my_app",
+        )
+        .unwrap();
+        assert_eq!(
+            sql,
+            "CREATE KEYSPACE \"my_app\" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
+        );
+    }
+
+    #[test]
+    fn cassandra_sql_rejects_unsupported_options() {
+        let err = build_cassandra_create_database_sql(
+            &CreateDatabasePayload {
+                name: "my_app".to_string(),
+                if_not_exists: Some(true),
+                charset: Some("utf8mb4".to_string()),
+                collation: None,
+                encoding: None,
+                lc_collate: None,
+                lc_ctype: None,
+            },
+            "my_app",
+        )
+        .unwrap_err();
+        assert!(err.contains("does not support charset option"));
     }
 }

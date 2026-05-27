@@ -4,6 +4,7 @@ use crate::models::{
     SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use mongodb::bson::{doc, Bson, Document};
 use mongodb::options::{ClientOptions, Tls, TlsOptions};
 use mongodb::Client;
@@ -168,6 +169,30 @@ pub struct MongoDBDriver {
     ssh_tunnel: Option<crate::ssh::SshTunnel>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MongodbConnectionInfo {
+    pub version: Option<String>,
+    pub node_count: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MongodbDatabaseInfo {
+    pub name: String,
+    pub size_on_disk: Option<i64>,
+    pub empty: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MongodbCollectionInfo {
+    pub name: String,
+    pub database: String,
+    pub document_count: Option<i64>,
+    pub size: Option<i64>,
+}
+
 impl MongoDBDriver {
     pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
         let timeout_ms = form
@@ -328,6 +353,61 @@ impl MongoDBDriver {
             rows.push(bson_to_json(&Bson::Document(doc)));
         }
         Ok(rows)
+    }
+
+    pub async fn test_connection_info(&self) -> Result<MongodbConnectionInfo, String> {
+        let db = self.get_database("admin");
+        let result = db
+            .run_command(doc! { "serverStatus": 1 })
+            .await
+            .map_err(normalize_mongo_error)?;
+
+        let version = result.get_str("version").ok().map(|s| s.to_string());
+        let node_count = result
+            .get_document("connections")
+            .ok()
+            .and_then(|c| c.get_i32("current").ok());
+
+        Ok(MongodbConnectionInfo {
+            version,
+            node_count,
+        })
+    }
+
+    pub async fn list_databases_info(&self) -> Result<Vec<MongodbDatabaseInfo>, String> {
+        let databases = self.client.list_databases().await.map_err(normalize_mongo_error)?;
+        Ok(databases
+            .into_iter()
+            .map(|db| MongodbDatabaseInfo {
+                name: db.name,
+                size_on_disk: Some(db.size_on_disk as i64),
+                empty: Some(db.empty),
+            })
+            .collect())
+    }
+
+    pub async fn list_collections_info(
+        &self,
+        database: &str,
+    ) -> Result<Vec<MongodbCollectionInfo>, String> {
+        let db = self.client.database(database);
+        let mut cursor = db
+            .list_collections()
+            .await
+            .map_err(normalize_mongo_error)?;
+
+        let mut result = Vec::new();
+        while cursor.advance().await.map_err(normalize_mongo_error)? {
+            let collection = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            result.push(MongodbCollectionInfo {
+                name: collection.name,
+                database: database.to_string(),
+                document_count: None,
+                size: None,
+            });
+        }
+
+        Ok(result)
     }
 }
 

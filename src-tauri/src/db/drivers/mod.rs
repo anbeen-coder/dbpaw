@@ -1,5 +1,6 @@
 use self::cassandra::CassandraDriver;
 use self::clickhouse::ClickHouseDriver;
+use self::db2::Db2Driver;
 use self::duckdb::DuckdbDriver;
 use self::mongodb::MongoDBDriver;
 use self::mssql::MssqlDriver;
@@ -16,6 +17,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 
 pub mod cassandra;
 pub mod clickhouse;
+pub mod db2;
 pub mod duckdb;
 pub mod mongodb;
 pub mod mssql;
@@ -418,6 +420,10 @@ pub async fn connect(form: &ConnectionForm) -> Result<Box<dyn DatabaseDriver>, S
         }
         "oracle" => {
             let driver = OracleDriver::connect(form).await?;
+            Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
+        }
+        "db2" => {
+            let driver = Db2Driver::connect(form).await?;
             Ok(Box::new(driver) as Box<dyn DatabaseDriver>)
         }
         "mongodb" => {

@@ -1,5 +1,6 @@
 use crate::models::{
-    ConnectionForm, RoutineInfo, SchemaOverview, TableInfo, TableMetadata, TableStructure,
+    ConnectionForm, RoutineInfo, SchemaForeignKey, SchemaOverview, TableInfo, TableMetadata,
+    TableStructure,
 };
 use crate::state::AppState;
 use tauri::State;
@@ -194,6 +195,18 @@ pub async fn get_table_metadata_direct(
         let schema_clone = schema.clone();
         let table_clone = table.clone();
         async move { driver.get_table_metadata(schema_clone, table_clone).await }
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_schema_foreign_keys(
+    state: State<'_, AppState>,
+    id: i64,
+    database: Option<String>,
+) -> Result<Vec<SchemaForeignKey>, String> {
+    super::execute_with_retry(&state, id, database, |driver| {
+        async move { driver.get_schema_foreign_keys(None).await }
     })
     .await
 }

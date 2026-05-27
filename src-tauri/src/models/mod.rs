@@ -409,6 +409,20 @@ pub struct SchemaOverview {
     pub tables: Vec<TableSchema>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaForeignKey {
+    pub name: String,
+    pub source_table: String,
+    pub source_schema: Option<String>,
+    pub source_column: String,
+    pub target_table: String,
+    pub target_schema: Option<String>,
+    pub target_column: String,
+    pub on_update: Option<String>,
+    pub on_delete: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::ConnectionForm;

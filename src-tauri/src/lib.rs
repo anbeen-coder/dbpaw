@@ -157,6 +157,7 @@ pub fn run() {
             commands::metadata::get_routine_ddl,
             commands::metadata::get_table_metadata,
             commands::metadata::get_schema_overview,
+            commands::metadata::get_schema_foreign_keys,
             commands::query::execute_query,
             commands::query::get_table_data,
             commands::query::cancel_query,

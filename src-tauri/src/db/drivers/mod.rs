@@ -8,8 +8,8 @@ use self::oracle::OracleDriver;
 use self::postgres::PostgresDriver;
 use self::sqlite::SqliteDriver;
 use crate::models::{
-    ConnectionForm, QueryResult, RoutineInfo, SchemaOverview, TableDataResponse, TableInfo,
-    TableMetadata, TableStructure,
+    ConnectionForm, QueryResult, RoutineInfo, SchemaForeignKey, SchemaOverview,
+    TableDataResponse, TableInfo, TableMetadata, TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -371,6 +371,12 @@ pub trait DatabaseDriver: Send + Sync {
         self.execute_query(sql).await
     }
     async fn get_schema_overview(&self, schema: Option<String>) -> Result<SchemaOverview, String>;
+    async fn get_schema_foreign_keys(
+        &self,
+        _database: Option<&str>,
+    ) -> Result<Vec<SchemaForeignKey>, String> {
+        Ok(vec![])
+    }
     async fn close(&self);
 }
 

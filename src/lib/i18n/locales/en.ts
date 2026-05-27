@@ -397,6 +397,7 @@ export const en = {
       importSqlReadOnly: "Import SQL (Read-only, unsupported)",
       exportTable: "Export...",
       exportDatabaseSql: "Export Database SQL",
+      importConnections: "Import Connections",
     },
     importDialog: {
       title: "Import SQL",
@@ -500,6 +501,9 @@ export const en = {
       fileBrowserDesktopOnly: "File browser is only available in desktop app",
       openFileDialogFailed: "Failed to open file dialog",
       readFileFailed: "Failed to read file",
+      importConnectionsSuccess: "Successfully imported {{count}} connections",
+      importConnectionsSkipped: "Skipped {{count}} unsupported types",
+      importConnectionsFailed: "Import failed",
     },
   },
   aiSidebar: {

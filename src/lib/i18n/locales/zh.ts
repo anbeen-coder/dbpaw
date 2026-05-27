@@ -386,6 +386,7 @@ export const zh: Translations = {
       importSqlReadOnly: "导入 SQL（只读，不支持）",
       exportTable: "导出…",
       exportDatabaseSql: "导出 Database SQL",
+      importConnections: "导入连接",
     },
     importDialog: {
       title: "导入 SQL",
@@ -482,6 +483,9 @@ export const zh: Translations = {
       fileBrowserDesktopOnly: "文件浏览器仅在桌面应用可用",
       openFileDialogFailed: "打开文件对话框失败",
       readFileFailed: "读取文件失败",
+      importConnectionsSuccess: "成功导入 {{count}} 个连接",
+      importConnectionsSkipped: "跳过 {{count}} 个不支持的类型",
+      importConnectionsFailed: "导入失败",
     },
   },
   aiSidebar: {

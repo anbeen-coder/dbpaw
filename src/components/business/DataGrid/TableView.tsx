@@ -95,6 +95,16 @@ import {
   quoteIdent,
   sortRows,
 } from "./tableView/utils";
+import {
+  getNormalizedCellRange as normalizeRange,
+  buildRangeCSV,
+  buildRangeInsertSQL,
+  buildRangeUpdateSQL,
+  buildRowsTSV as buildRowsTSVFn,
+  buildRowsCSV as buildRowsCSVFn,
+  buildRowsInsertSQL as buildRowsInsertSQLFn,
+  buildRowsUpdateSQL as buildRowsUpdateSQLFn,
+} from "./tableView/selectionCopy";
 import { ComplexValueViewer } from "./ComplexValueViewer";
 import { ColumnAutocompleteInput } from "./tableView/ColumnAutocompleteInput";
 import type { ColumnAutocompleteOption } from "./tableView/columnAutocomplete";
@@ -1181,23 +1191,7 @@ export function TableView({
     INDEX_COL_WIDTH + columns.reduce((sum, c) => sum + getColWidth(c), 0);
 
   const buildRowsTSV = useCallback(
-    (rowIndexes: number[]) => {
-      const orderedRows = [...rowIndexes].sort((a, b) => a - b);
-      return orderedRows
-        .map((rowIndex) => {
-          const row = currentData[rowIndex];
-          if (!row) return "";
-          return columns
-            .map((col) => {
-              const value = getCellDisplayValue(rowIndex, col, row[col]);
-              if (value === null || value === undefined) return "";
-              return cellValueToString(value);
-            })
-            .join("\t");
-        })
-        .filter((line) => line.length > 0)
-        .join("\n");
-    },
+    (rowIndexes: number[]) => buildRowsTSVFn(rowIndexes, columns, currentData, getCellDisplayValue, cellValueToString),
     [columns, currentData, getCellDisplayValue],
   );
 
@@ -1217,13 +1211,8 @@ export function TableView({
 
   // --- Cell range copy & paste ---
   const getNormalizedCellRange = useCallback(() => {
-    const range = cellSelectionRange;
-    if (!range) return null;
-    const minRow = Math.min(range.anchor.row, range.tip.row);
-    const maxRow = Math.max(range.anchor.row, range.tip.row);
-    const minCol = Math.min(range.anchor.colIndex, range.tip.colIndex);
-    const maxCol = Math.max(range.anchor.colIndex, range.tip.colIndex);
-    return { minRow, maxRow, minCol, maxCol };
+    if (!cellSelectionRange) return null;
+    return normalizeRange(cellSelectionRange.anchor, cellSelectionRange.tip);
   }, [cellSelectionRange]);
 
   const handleCopySelection = useCallback(() => {
@@ -1262,24 +1251,7 @@ export function TableView({
   const buildSelectionCSV = useCallback(() => {
     const range = getNormalizedCellRange();
     if (!range) return "";
-    const lines: string[] = [];
-    for (let r = range.minRow; r <= range.maxRow; r++) {
-      const row = currentData[r];
-      if (!row) continue;
-      const cells: string[] = [];
-      for (let c = range.minCol; c <= range.maxCol; c++) {
-        const col = columns[c];
-        const val = getCellDisplayValue(r, col, row[col]);
-        const str = val === null || val === undefined ? "" : cellValueToString(val);
-        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-          cells.push(`"${str.replace(/"/g, '""')}"`);
-        } else {
-          cells.push(str);
-        }
-      }
-      lines.push(cells.join(","));
-    }
-    return lines.join("\n");
+    return buildRangeCSV(range, columns, currentData, getCellDisplayValue, cellValueToString);
   }, [getNormalizedCellRange, currentData, columns, getCellDisplayValue]);
 
   const buildSelectionInsertSQL = useCallback(() => {
@@ -1287,30 +1259,7 @@ export function TableView({
     if (!range || !tableContext) return "";
     const { schema, table, driver } = tableContext;
     const tableName = getQualifiedTableName(driver, schema, table);
-    const selectedCols: string[] = [];
-    for (let c = range.minCol; c <= range.maxCol; c++) {
-      selectedCols.push(columns[c]);
-    }
-    const colNames = selectedCols.map((c) => quoteIdent(driver, c)).join(", ");
-
-    const lines: string[] = [];
-    for (let r = range.minRow; r <= range.maxRow; r++) {
-      const row = currentData[r];
-      if (!row) continue;
-      const vals = selectedCols
-        .map((col) => {
-          const val = getCellDisplayValue(r, col, row[col]);
-          return formatSQLValue(
-            val === null || val === undefined ? "" : String(val),
-            row[col],
-            "copy",
-            driver,
-          );
-        })
-        .join(", ");
-      lines.push(`INSERT INTO ${tableName} (${colNames}) VALUES (${vals});`);
-    }
-    return lines.join("\n");
+    return buildRangeInsertSQL(range, columns, currentData, getCellDisplayValue, formatSQLValue, quoteIdent, driver, tableName);
   }, [getNormalizedCellRange, currentData, columns, getCellDisplayValue, tableContext]);
 
   const buildSelectionUpdateSQL = useCallback(() => {
@@ -1318,43 +1267,7 @@ export function TableView({
     if (!range || !tableContext || !canUpdateDelete || primaryKeys.length === 0) return "";
     const { schema, table, driver } = tableContext;
     const tableName = getQualifiedTableName(driver, schema, table);
-    const selectedCols: string[] = [];
-    for (let c = range.minCol; c <= range.maxCol; c++) {
-      selectedCols.push(columns[c]);
-    }
-
-    const lines: string[] = [];
-    for (let r = range.minRow; r <= range.maxRow; r++) {
-      const row = currentData[r];
-      if (!row) continue;
-
-      const setClauses = selectedCols.map((col) => {
-        const val = getCellDisplayValue(r, col, row[col]);
-        const formattedValue = formatSQLValue(
-          val === null || val === undefined ? "" : String(val),
-          row[col],
-          "copy",
-          driver,
-        );
-        return `${quoteIdent(driver, col)} = ${formattedValue}`;
-      });
-
-      const whereClauses = primaryKeys.map((pk) => {
-        const pkValue = row[pk];
-        if (pkValue === null || pkValue === undefined) {
-          return `${quoteIdent(driver, pk)} IS NULL`;
-        }
-        if (typeof pkValue === "number") {
-          return `${quoteIdent(driver, pk)} = ${pkValue}`;
-        }
-        return `${quoteIdent(driver, pk)} = '${escapeSQL(String(pkValue))}'`;
-      });
-
-      lines.push(
-        `${buildUpdateStatement(driver, tableName, setClauses.join(", "), whereClauses.join(" AND "))};`,
-      );
-    }
-    return lines.join("\n");
+    return buildRangeUpdateSQL(range, columns, currentData, primaryKeys, getCellDisplayValue, formatSQLValue, quoteIdent, escapeSQL, buildUpdateStatement, driver, tableName);
   }, [getNormalizedCellRange, currentData, columns, getCellDisplayValue, canUpdateDelete, primaryKeys, tableContext]);
 
   const applyFilter = useCallback(
@@ -1445,113 +1358,28 @@ export function TableView({
   );
 
   const buildRowsCSV = useCallback(
-    (rowIndexes: number[]) => {
-      const orderedRows = [...rowIndexes].sort((a, b) => a - b);
-      return orderedRows
-        .map((rowIndex) => {
-          const row = currentData[rowIndex];
-          if (!row) return "";
-          return columns
-            .map((col) => {
-              const value = getCellDisplayValue(rowIndex, col, row[col]);
-              if (value === null || value === undefined) return "";
-              const str = cellValueToString(value);
-              if (
-                str.includes(",") ||
-                str.includes('"') ||
-                str.includes("\n")
-              ) {
-                return `"${str.replace(/"/g, '""')}"`;
-              }
-              return str;
-            })
-            .join(",");
-        })
-        .filter((line) => line.length > 0)
-        .join("\n");
-    },
+    (rowIndexes: number[]) => buildRowsCSVFn(rowIndexes, columns, currentData, getCellDisplayValue, cellValueToString),
     [columns, currentData, getCellDisplayValue],
   );
 
   const buildRowsInsertSQL = useCallback(
     (rowIndexes: number[]) => {
       if (!tableContext) return "";
-      const orderedRows = [...rowIndexes].sort((a, b) => a - b);
       const { schema, table, driver } = tableContext;
       const tableName = getQualifiedTableName(driver, schema, table);
-      const cols = columns.map((c) => quoteIdent(driver, c)).join(", ");
-
-      return orderedRows
-        .map((rowIndex) => {
-          const row = currentData[rowIndex];
-          if (!row) return "";
-          const vals = columns
-            .map((col) => {
-              const val = getCellDisplayValue(rowIndex, col, row[col]);
-              return formatSQLValue(
-                val === null || val === undefined ? "" : String(val),
-                row[col],
-                "copy",
-                driver,
-              );
-            })
-            .join(", ");
-          return `INSERT INTO ${tableName} (${cols}) VALUES (${vals});`;
-        })
-        .filter((line) => line.length > 0)
-        .join("\n");
+      return buildRowsInsertSQLFn(rowIndexes, columns, currentData, getCellDisplayValue, formatSQLValue, quoteIdent, driver, tableName);
     },
     [columns, currentData, getCellDisplayValue, tableContext],
   );
 
   const buildRowsUpdateSQL = useCallback(
     (rowIndexes: number[]) => {
-      if (!tableContext || !canUpdateDelete || primaryKeys.length === 0)
-        return "";
-      const orderedRows = [...rowIndexes].sort((a, b) => a - b);
+      if (!tableContext || !canUpdateDelete || primaryKeys.length === 0) return "";
       const { schema, table, driver } = tableContext;
       const tableName = getQualifiedTableName(driver, schema, table);
-
-      return orderedRows
-        .map((rowIndex) => {
-          const row = currentData[rowIndex];
-          if (!row) return "";
-
-          const setClauses = columns.map((col) => {
-            const val = getCellDisplayValue(rowIndex, col, row[col]);
-            const formattedValue = formatSQLValue(
-              val === null || val === undefined ? "" : String(val),
-              row[col],
-              "copy",
-              driver,
-            );
-            return `${quoteIdent(driver, col)} = ${formattedValue}`;
-          });
-
-          const whereClauses = primaryKeys.map((pk) => {
-            const pkValue = row[pk];
-            if (pkValue === null || pkValue === undefined) {
-              return `${quoteIdent(driver, pk)} IS NULL`;
-            }
-            if (typeof pkValue === "number") {
-              return `${quoteIdent(driver, pk)} = ${pkValue}`;
-            }
-            return `${quoteIdent(driver, pk)} = '${escapeSQL(String(pkValue))}'`;
-          });
-
-          return `${buildUpdateStatement(driver, tableName, setClauses.join(", "), whereClauses.join(" AND "))};`;
-        })
-        .filter((line) => line.length > 0)
-        .join("\n");
+      return buildRowsUpdateSQLFn(rowIndexes, columns, currentData, primaryKeys, getCellDisplayValue, formatSQLValue, quoteIdent, escapeSQL, buildUpdateStatement, driver, tableName);
     },
-    [
-      columns,
-      currentData,
-      getCellDisplayValue,
-      canUpdateDelete,
-      primaryKeys,
-      tableContext,
-    ],
+    [columns, currentData, getCellDisplayValue, canUpdateDelete, primaryKeys, tableContext],
   );
 
   const normalizedSearchKeyword = searchKeyword.trim().toLowerCase();

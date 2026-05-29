@@ -92,7 +92,6 @@ export const ja: Translations = {
       description: "表示言語を選択してください",
       en: "English",
       zh: "简体中文",
-      ja: "日本語",
     },
     appearance: {
       title: "外観",
@@ -223,6 +222,14 @@ export const ja: Translations = {
       functions: "関数",
       noProcedures: "ストアドプロシージャなし",
       noFunctions: "関数なし",
+      views: "ビュー",
+      events: "イベント",
+      sequences: "シーケンス",
+      types: "タイプ",
+      noViews: "ビューなし",
+      noEvents: "イベントなし",
+      noSequences: "シーケンスなし",
+      noTypes: "タイプなし",
     },
     dialog: {
       editTitle: "データベース接続を編集",
@@ -852,5 +859,10 @@ export const ja: Translations = {
       response: "レスポンス",
       placeholder: "オプションの JSON リクエストボディ",
     },
+  },
+  erDiagram: {
+    title: "ER図",
+    noForeignKeys: "外部キー関係が見つかりません",
+    loading: "ER図を読み込み中...",
   },
 };

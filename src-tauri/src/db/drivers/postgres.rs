@@ -1629,7 +1629,8 @@ impl DatabaseDriver for PostgresDriver {
         };
 
         // Get total count (with filter applied)
-        let count_query = format!("SELECT COUNT(*) FROM {}.{}{}", schema, table, where_clause);
+        let qt = pg_qualified_table(&schema, &table);
+        let count_query = format!("SELECT COUNT(*) FROM {}{}", qt, where_clause);
         let total: i64 = sqlx::query_scalar(&count_query)
             .fetch_one(&self.pool)
             .await

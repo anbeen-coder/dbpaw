@@ -120,5 +120,5 @@ export interface TreeConfig {
   onLeafActivate?: (ctx: LeafContext) => void;
 
   // 数据库组定义
-  databaseGroups: DatabaseGroupConfig[];
+  databaseGroups?: DatabaseGroupConfig[];
 }

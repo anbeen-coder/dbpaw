@@ -100,7 +100,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siPostgresql),
-    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, { supportsSchemaNode: true }),
+    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, { supportsSchemaNode: true }, "postgres"),
   },
   {
     id: "mysql",
@@ -115,7 +115,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siMysql),
-    treeConfig: (callbacks) => createSqlTreeConfig(callbacks),
+    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, undefined, "mysql"),
   },
   {
     id: "mariadb",
@@ -130,7 +130,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siMariadb),
-    treeConfig: (callbacks) => createSqlTreeConfig(callbacks),
+    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, undefined, "mariadb"),
   },
   {
     id: "tidb",
@@ -145,7 +145,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siTidb),
-    treeConfig: (callbacks) => createSqlTreeConfig(callbacks),
+    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, undefined, "tidb"),
   },
   {
     id: "starrocks",
@@ -160,7 +160,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderLocalIcon("/icons/db/starrocks.svg"),
-    treeConfig: (callbacks) => createSqlTreeConfig(callbacks),
+    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, undefined, "starrocks"),
   },
   {
     id: "doris",
@@ -175,7 +175,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siApachedoris),
-    treeConfig: (callbacks) => createSqlTreeConfig(callbacks),
+    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, undefined, "doris"),
   },
   {
     id: "sqlite",
@@ -190,7 +190,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siSqlite),
-    treeConfig: (callbacks) => createSqlTreeConfig(callbacks),
+    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, undefined, "sqlite"),
   },
   {
     id: "duckdb",
@@ -205,7 +205,7 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siDuckdb),
-    treeConfig: (callbacks) => createSqlTreeConfig(callbacks),
+    treeConfig: (callbacks) => createSqlTreeConfig(callbacks, undefined, "duckdb"),
   },
   {
     id: "clickhouse",

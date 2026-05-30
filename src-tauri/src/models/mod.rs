@@ -197,6 +197,14 @@ pub struct TypeInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SynonymInfo {
+    pub schema: String,
+    pub name: String,
+    pub base_object_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
     pub name: String,
     pub r#type: String,

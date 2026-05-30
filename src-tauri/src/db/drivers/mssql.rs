@@ -1,8 +1,8 @@
 use super::DatabaseDriver;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
-    RoutineInfo, SchemaForeignKey, SchemaOverview, SingleResultSet, TableDataResponse, TableInfo,
-    TableMetadata, TableSchema, TableStructure,
+    RoutineInfo, SchemaForeignKey, SchemaOverview, SingleResultSet, SynonymInfo, TableDataResponse,
+    TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use bb8::{Pool, RunError};
@@ -1759,6 +1759,31 @@ impl DatabaseDriver for MssqlDriver {
                 schema: Self::parse_string(&row, 0),
                 name: Self::parse_string(&row, 1),
                 r#type: Self::parse_string(&row, 2),
+            })
+            .collect())
+    }
+
+    async fn list_synonyms(&self, schema: Option<String>) -> Result<Vec<SynonymInfo>, String> {
+        let schema_filter = schema
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| format!("AND s.name = '{}'", escape_literal(s.trim())));
+
+        let sql = format!(
+            "SELECT s.name AS schema_name, o.name AS synonym_name, 'synonym' AS base_object_type \
+             FROM sys.objects o \
+             JOIN sys.schemas s ON s.schema_id = o.schema_id \
+             WHERE o.type = 'SN' {} \
+             ORDER BY s.name, o.name",
+            schema_filter.unwrap_or_default(),
+        );
+        let rows = self.fetch_rows(&sql).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| SynonymInfo {
+                schema: Self::parse_string(&row, 0),
+                name: Self::parse_string(&row, 1),
+                base_object_type: Self::parse_string(&row, 2),
             })
             .collect())
     }

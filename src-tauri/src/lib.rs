@@ -156,6 +156,7 @@ pub fn run() {
             commands::metadata::list_events,
             commands::metadata::list_sequences,
             commands::metadata::list_types,
+            commands::metadata::list_synonyms,
             commands::metadata::get_table_structure,
             commands::metadata::get_table_ddl,
             commands::metadata::get_routine_ddl,

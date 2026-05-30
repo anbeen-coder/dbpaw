@@ -163,7 +163,7 @@ export function Sidebar({
             forceMount
             className="h-full m-0 border-0"
           >
-            <ConnectionList {...connectionListProps} />
+            <ConnectionList {...connectionListProps} simpleMode />
           </TabsContent>
           <TabsContent
             value="queries"

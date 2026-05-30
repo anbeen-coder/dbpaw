@@ -271,14 +271,55 @@ pub async fn get_table_metadata_direct(
 
 #[tauri::command]
 pub async fn get_schema_foreign_keys(
-    state: State<'_, AppState>,
+    state: &AppState,
     id: i64,
     database: Option<String>,
     schema: Option<String>,
 ) -> Result<Vec<SchemaForeignKey>, String> {
-    super::execute_with_retry(&state, id, database, |driver| {
+    super::execute_with_retry_from_app_state(state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.get_schema_foreign_keys(schema_clone.as_deref()).await }
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_structure(columns: Vec<crate::models::ColumnInfo>) -> TableStructure {
+        TableStructure { columns }
+    }
+
+    #[test]
+    fn ensure_table_structure_found_with_columns() {
+        let structure = make_structure(vec![crate::models::ColumnInfo {
+            name: "id".to_string(),
+            r#type: "int".to_string(),
+            nullable: false,
+            default_value: None,
+            primary_key: true,
+            comment: None,
+            default_constraint_name: None,
+        }]);
+        let result = ensure_table_structure_found(structure, "users");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ensure_table_structure_found_empty_columns() {
+        let structure = make_structure(vec![]);
+        let result = ensure_table_structure_found(structure, "users");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("[NOT_FOUND]"));
+        assert!(err.contains("users"));
+    }
+
+    #[test]
+    fn ensure_table_structure_error_includes_table_name() {
+        let structure = make_structure(vec![]);
+        let err = ensure_table_structure_found(structure, "orders").unwrap_err();
+        assert!(err.contains("orders"));
+    }
 }

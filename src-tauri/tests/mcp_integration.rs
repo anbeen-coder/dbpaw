@@ -232,3 +232,93 @@ fn test_mcp_method_not_found() {
 
     proc.kill().unwrap();
 }
+
+#[test]
+fn test_mcp_resources_list() {
+    let mut proc = Command::new(get_mcp_binary())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    send_request(&mut proc, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
+
+    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}"#);
+    let v: Value = serde_json::from_str(&response).unwrap();
+
+    let resources = v["result"]["resources"].as_array().unwrap();
+    assert!(resources.len() >= 1, "Expected at least 1 resource");
+
+    let names: Vec<&str> = resources.iter().map(|r| r["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"connections"), "Should contain 'connections' resource");
+
+    proc.kill().unwrap();
+}
+
+#[test]
+fn test_mcp_resources_templates_list() {
+    let mut proc = Command::new(get_mcp_binary())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    send_request(&mut proc, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
+
+    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"resources/templates/list","params":{}}"#);
+    let v: Value = serde_json::from_str(&response).unwrap();
+
+    let templates = v["result"]["resourceTemplates"].as_array().unwrap();
+    assert!(templates.len() >= 2, "Expected at least 2 resource templates");
+
+    let names: Vec<&str> = templates.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"table_list"), "Should contain 'table_list' template");
+    assert!(names.contains(&"table_detail"), "Should contain 'table_detail' template");
+
+    proc.kill().unwrap();
+}
+
+#[test]
+fn test_mcp_resources_read_connections() {
+    let mut proc = Command::new(get_mcp_binary())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    send_request(&mut proc, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
+
+    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"dbpaw://connections"}}"#);
+    let v: Value = serde_json::from_str(&response).unwrap();
+
+    // The response should have either a valid contents array or an error
+    // (error occurs when the binary has no configured database)
+    assert!(
+        v["result"]["contents"].is_array() || v.get("error").is_some(),
+        "Should have contents array or error response"
+    );
+
+    proc.kill().unwrap();
+}
+
+#[test]
+fn test_mcp_resources_read_invalid_uri() {
+    let mut proc = Command::new(get_mcp_binary())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    send_request(&mut proc, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
+
+    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"invalid://unknown"}}"#);
+    let v: Value = serde_json::from_str(&response).unwrap();
+
+    assert!(v.get("error").is_some() || v["result"]["isError"] == true, "Should return error for invalid URI");
+
+    proc.kill().unwrap();
+}

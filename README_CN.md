@@ -44,6 +44,7 @@
 - 通过 **SQL 执行日志**追踪每条查询，附带耗时与执行状态
 - 使用 Saved Queries 保存并复用常用 SQL 脚本
 - 使用 AI 侧边栏辅助写 SQL、解释查询（可选）
+- **MCP Server** — 完整 MCP 2025-03-26 协议支持，stdio + HTTP 双模传输，让 AI 助手（Claude、Cursor）直接查询数据库（[文档](docs/mcp.md)）
 - 通过 SSH 隧道访问远程数据库
 - 浏览与管理 Redis 数据：Key、String、Hash、List、Set、Sorted Set、Stream 及 JSON，支持集群与哨兵模式
 
@@ -123,6 +124,7 @@ _注意：这是因为应用尚未经过 Apple 公证。_
 
 - 开发指南：[docs/zh/Development/DEVELOPMENT.md](docs/zh/Development/DEVELOPMENT.md)
 - 贡献指南：[docs/zh/Community/CONTRIBUTING.md](docs/zh/Community/CONTRIBUTING.md)
+- MCP Server 指南：[docs/mcp.md](docs/mcp.md)
 
 ## 🏗️ 技术栈
 

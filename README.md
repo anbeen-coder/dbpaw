@@ -44,6 +44,7 @@ English | [简体中文](README_CN.md)
 - Track every query in the **SQL execution log** with timing and status
 - Save and reuse frequently used SQL scripts with Saved Queries
 - Use the AI sidebar to draft SQL and explain queries (optional)
+- **MCP Server** — full MCP 2025-03-26 protocol support with stdio + HTTP dual-mode transport, letting AI assistants (Claude, Cursor) directly query your databases ([docs](docs/mcp.md))
 - Access remote databases through SSH tunneling
 - Browse and manage Redis data: keys, Strings, Hashes, Lists, Sets, Sorted Sets, Streams, and JSON — with Cluster and Sentinel support
 
@@ -123,6 +124,7 @@ If your device is managed by an organization, you may need your IT admin to allo
 
 - Development guide: [docs/en/Development/DEVELOPMENT.md](docs/en/Development/DEVELOPMENT.md)
 - Contributing guide: [docs/en/Community/CONTRIBUTING.md](docs/en/Community/CONTRIBUTING.md)
+- MCP Server guide: [docs/mcp.md](docs/mcp.md)
 
 ## 🏗️ Tech Stack
 

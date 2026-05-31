@@ -91,6 +91,8 @@ import type { TreeCallbacks } from "@/lib/tree-adapters/types.tsx";
 import { toast } from "sonner";
 import { TreeNode } from "./connection-list/TreeNode";
 import { ConnectionDialog } from "./connection-list/ConnectionDialog";
+import { ImportDialog } from "./ImportDialog";
+import { ConnectionContextMenu } from "./ConnectionContextMenu";
 import {
   getExportDefaultName,
   getExportFilter,
@@ -660,6 +662,7 @@ export function ConnectionList({
     type: "connection" | "database" | "schema";
   }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection" });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [createStep, setCreateStep] = useState<"type" | "details">("type");
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
@@ -2850,46 +2853,6 @@ export function ConnectionList({
     setIsImportConfirmOpen(true);
   };
 
-  const handleImportConnections = async () => {
-    try {
-      const selected = await open({
-        multiple: false,
-        filters: [
-          { name: "Connection Files", extensions: ["json", "ncx"] },
-          { name: "DBeaver JSON", extensions: ["json"] },
-          { name: "Navicat NCX", extensions: ["ncx"] },
-        ],
-      });
-      if (!selected) return;
-      const filePath = Array.isArray(selected) ? selected[0] : selected;
-      if (!filePath) return;
-
-      const result = await api.connections.importFromFile(filePath);
-      if (result.imported.length > 0) {
-        toast.success(
-          t("connection.toast.importConnectionsSuccess", {
-            count: result.imported.length,
-          }),
-        );
-      }
-      if (result.skipped > 0) {
-        toast.info(
-          t("connection.toast.importConnectionsSkipped", {
-            count: result.skipped,
-          }),
-        );
-      }
-      if (result.imported.length === 0 && result.skipped === 0) {
-        toast.info(t("connection.toast.importConnectionsSuccess", { count: 0 }));
-      }
-      await fetchConnections();
-    } catch (e) {
-      toast.error(t("connection.toast.importConnectionsFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
   const handleDatabaseExport = async (
     connection: Connection,
     database: DatabaseInfo,
@@ -3020,14 +2983,6 @@ export function ConnectionList({
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
-            onClick={handleImportConnections}
-          >
-            <Upload className="w-3.5 h-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
             onClick={fetchConnections}
             loading={isLoadingConnections}
           >
@@ -3071,6 +3026,11 @@ export function ConnectionList({
             onPickSshKeyFile={() => void handlePickSshKeyFile()}
             onPickDatabaseFile={(driver) => void handlePickDatabaseFile(driver)}
           />
+          <ImportDialog
+            open={isImportDialogOpen}
+            onOpenChange={setIsImportDialogOpen}
+            onImported={fetchConnections}
+          />
         </div>
       </div>
 
@@ -3087,11 +3047,17 @@ export function ConnectionList({
           />
         </div>
       </div>
-      <div
-        className="flex-1 overflow-auto"
-        onClick={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
+      <ConnectionContextMenu
+        onNewConnection={openCreateDialog}
+        onImportConnection={() => setIsImportDialogOpen(true)}
       >
-        {filteredConnections.map((connection) => {
+        {({ onContextMenu }) => (
+          <div
+            className="flex-1 overflow-auto"
+            onClick={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
+            onContextMenu={onContextMenu}
+          >
+            {filteredConnections.map((connection) => {
           const datasourceAdapter = getDatasourceTreeAdapter(connection);
           const queriesForConnection = (
             savedQueriesByConnection[connection.id] || []
@@ -3572,7 +3538,9 @@ export function ConnectionList({
             </TreeNode>
           );
         })}
-      </div>
+          </div>
+        )}
+      </ConnectionContextMenu>
 
       {contextMenu.visible && (
         <div

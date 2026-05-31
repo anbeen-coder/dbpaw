@@ -35,7 +35,7 @@ fn test_mcp_initialize() {
 
     assert_eq!(v["jsonrpc"], "2.0");
     assert_eq!(v["id"], 1);
-    assert_eq!(v["result"]["protocolVersion"], "2024-11-05");
+    assert_eq!(v["result"]["protocolVersion"], "2025-03-26");
     assert_eq!(v["result"]["serverInfo"]["name"], "dbpaw");
 
     proc.kill().unwrap();
@@ -166,7 +166,7 @@ fn test_mcp_ping() {
 
     send_request(&mut proc, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
 
-    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
+    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"ping","params":{}}"#);
     let v: Value = serde_json::from_str(&response).unwrap();
 
     assert_eq!(v["jsonrpc"], "2.0");
@@ -190,7 +190,7 @@ fn test_mcp_initialized_notification() {
 
     // Send initialized notification (no id field — it's a notification, not a request)
     let stdin = proc.stdin.as_mut().unwrap();
-    stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n").unwrap();
+    stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}\n").unwrap();
     stdin.flush().unwrap();
 
     // Read notification response (server responds even to notifications)
@@ -200,7 +200,7 @@ fn test_mcp_initialized_notification() {
     reader.read_line(&mut notification_response).unwrap();
 
     // Verify server is still alive by sending a ping
-    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
+    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"ping","params":{}}"#);
     let v: Value = serde_json::from_str(&response).unwrap();
 
     assert_eq!(v["jsonrpc"], "2.0");
@@ -222,7 +222,7 @@ fn test_mcp_method_not_found() {
 
     send_request(&mut proc, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
 
-    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"unknown_method"}"#);
+    let response = send_request(&mut proc, r#"{"jsonrpc":"2.0","id":2,"method":"unknown_method","params":{}}"#);
     let v: Value = serde_json::from_str(&response).unwrap();
 
     assert_eq!(v["jsonrpc"], "2.0");

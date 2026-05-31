@@ -1365,6 +1365,7 @@ export function ConnectionList({
       name: table.name,
       schema: table.schema,
       columns: [],
+      type: table.type,
     }));
   };
 

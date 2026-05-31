@@ -2222,7 +2222,7 @@ export function TableView({
                             ? "bg-accent text-accent-foreground"
                             : "",
                           inRange && !selected && !editing
-                            ? "bg-primary/10"
+                            ? "bg-accent"
                             : "",
                           matched && !editing
                             ? "bg-amber-100/60 dark:bg-amber-900/20"
@@ -2471,7 +2471,7 @@ export function TableView({
                                   ? "bg-accent text-accent-foreground"
                                   : "",
                                 inRange && !selected && !editing
-                                  ? "bg-primary/10"
+                                  ? "bg-accent"
                                   : "",
                                 isRowSelected && !selected && !editing && !inRange
                                   ? "bg-accent/60"

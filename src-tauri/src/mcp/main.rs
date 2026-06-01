@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use dbpaw_lib::mcp::McpServer;
 use dbpaw_lib::mcp::transport::http::HttpTransport;
 use dbpaw_lib::state::AppState;

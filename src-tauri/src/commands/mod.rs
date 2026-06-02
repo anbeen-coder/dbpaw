@@ -2,6 +2,7 @@ pub mod ai;
 pub mod config;
 pub mod connection;
 pub mod elasticsearch;
+pub mod mcp;
 pub mod metadata;
 pub mod mongodb;
 pub mod query;

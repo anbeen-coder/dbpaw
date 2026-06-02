@@ -270,6 +270,12 @@ pub fn run() {
             commands::mongodb::mongodb_list_databases,
             commands::mongodb::mongodb_list_collections,
             commands::system::list_system_fonts,
+            commands::mcp::mcp_status,
+            commands::mcp::mcp_start,
+            commands::mcp::mcp_stop,
+            commands::mcp::mcp_get_tools,
+            commands::mcp::mcp_detect_clients,
+            commands::mcp::mcp_configure_client,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

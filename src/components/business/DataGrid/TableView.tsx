@@ -1679,9 +1679,9 @@ export function TableView({
       }
     };
 
-    window.addEventListener("keydown", handleTableHotkeys);
+    window.addEventListener("keydown", handleTableHotkeys, true);
     return () => {
-      window.removeEventListener("keydown", handleTableHotkeys);
+      window.removeEventListener("keydown", handleTableHotkeys, true);
     };
   }, [
     selectedCell,

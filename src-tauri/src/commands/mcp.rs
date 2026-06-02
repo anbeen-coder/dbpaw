@@ -10,6 +10,10 @@ fn home_dir() -> PathBuf {
         .unwrap_or_default()
 }
 
+const DEFAULT_PORT: u16 = 3100;
+const DEFAULT_HOST: &str = "127.0.0.1";
+const DEFAULT_TRANSPORT: &str = "stdio";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpStatus {
     pub running: bool,
@@ -108,7 +112,7 @@ pub async fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus, String>
     let mut status = McpStatus {
         running: false,
         pid: None,
-        transport: "stdio".to_string(),
+        transport: DEFAULT_TRANSPORT.to_string(),
         port: None,
         host: None,
     };
@@ -122,7 +126,7 @@ pub async fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus, String>
             }
             Ok(None) => {
                 status.running = true;
-                status.pid = Some(child.id());
+                status.pid = child.id();
             }
             Err(e) => {
                 return Err(format!("Failed to check process status: {}", e));
@@ -160,7 +164,7 @@ pub async fn mcp_start(
     let binary_path =
         find_mcp_binary(&app_handle).ok_or("MCP server binary not found".to_string())?;
 
-    let child = std::process::Command::new(&binary_path)
+    let child = tokio::process::Command::new(&binary_path)
         .arg("--port")
         .arg(config.port.to_string())
         .arg("--host")
@@ -171,7 +175,7 @@ pub async fn mcp_start(
         .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
     let mut lock = state.mcp_process.lock().await;
-    let pid = child.id();
+    let pid = child.id().unwrap_or(0);
     *lock = Some(child);
 
     Ok(McpStatus {
@@ -189,13 +193,16 @@ pub async fn mcp_stop(state: State<'_, AppState>) -> Result<McpStatus, String> {
     if let Some(mut child) = lock.take() {
         child
             .kill()
+            .await
             .map_err(|e| format!("Failed to stop MCP server: {}", e))?;
+        // Wait for the process to be reaped (prevents zombie processes)
+        let _ = child.wait().await;
     }
 
     Ok(McpStatus {
         running: false,
         pid: None,
-        transport: "stdio".to_string(),
+        transport: DEFAULT_TRANSPORT.to_string(),
         port: None,
         host: None,
     })
@@ -216,30 +223,28 @@ pub async fn mcp_get_tools() -> Result<Vec<ToolInfo>, String> {
 
 #[tauri::command]
 pub async fn mcp_detect_clients() -> Result<Vec<DetectedClient>, String> {
+    let claude_path = get_claude_config_path();
+    let cursor_path = get_cursor_config_path();
+    let windsurf_path = get_windsurf_config_path();
+
     let clients = vec![
         DetectedClient {
             name: "Claude Desktop".to_string(),
-            path: get_claude_config_path()
-                .to_string_lossy()
-                .to_string(),
-            exists: get_claude_config_path().exists(),
-            configured: check_client_config(&get_claude_config_path(), false),
+            path: claude_path.to_string_lossy().to_string(),
+            exists: claude_path.exists(),
+            configured: check_client_config(&claude_path, false),
         },
         DetectedClient {
             name: "Cursor".to_string(),
-            path: get_cursor_config_path()
-                .to_string_lossy()
-                .to_string(),
-            exists: get_cursor_config_path().exists(),
-            configured: check_client_config(&get_cursor_config_path(), false),
+            path: cursor_path.to_string_lossy().to_string(),
+            exists: cursor_path.exists(),
+            configured: check_client_config(&cursor_path, false),
         },
         DetectedClient {
             name: "Windsurf".to_string(),
-            path: get_windsurf_config_path()
-                .to_string_lossy()
-                .to_string(),
-            exists: get_windsurf_config_path().exists(),
-            configured: check_client_config(&get_windsurf_config_path(), false),
+            path: windsurf_path.to_string_lossy().to_string(),
+            exists: windsurf_path.exists(),
+            configured: check_client_config(&windsurf_path, false),
         },
     ];
 

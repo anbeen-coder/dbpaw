@@ -288,7 +288,7 @@ pub fn run() {
                 // Kill MCP server process if running
                 let mut lock = state.mcp_process.lock().await;
                 if let Some(mut child) = lock.take() {
-                    let _ = child.kill();
+                    let _ = child.kill().await;
                 }
                 state.pool_manager.close_all().await;
             });

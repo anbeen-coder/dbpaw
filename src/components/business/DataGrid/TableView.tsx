@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -125,6 +125,268 @@ interface InsertDraftRow {
   tempId: string;
   values: Record<string, string>;
 }
+
+function isCellInRange(
+  rowIndex: number,
+  colIndex: number,
+  range: {
+    anchor: { row: number; colIndex: number };
+    tip: { row: number; colIndex: number };
+  } | null,
+): boolean {
+  if (!range) return false;
+  const minRow = Math.min(range.anchor.row, range.tip.row);
+  const maxRow = Math.max(range.anchor.row, range.tip.row);
+  const minCol = Math.min(range.anchor.colIndex, range.tip.colIndex);
+  const maxCol = Math.max(range.anchor.colIndex, range.tip.colIndex);
+  return (
+    rowIndex >= minRow &&
+    rowIndex <= maxRow &&
+    colIndex >= minCol &&
+    colIndex <= maxCol
+  );
+}
+
+interface DataRowProps {
+  rowIndex: number;
+  row: Record<string, any>;
+  columns: string[];
+  showRowNumbers: boolean;
+  showZebraStripes: boolean;
+  startIndex: number;
+  isRowSelected: boolean;
+  isMultiRowSelection: boolean;
+  editingCell: { row: number; col: string } | null;
+  selectedCell: { row: number; col: string } | null;
+  cellSelectionRange: {
+    anchor: { row: number; colIndex: number };
+    tip: { row: number; colIndex: number };
+  } | null;
+  normalizedSearchKeyword: string;
+  matchedCellKeys: Set<string>;
+  currentSearchMatch: { row: number; col: string } | null;
+  isEditableForUpdates: boolean;
+  editValue: string;
+  editInputRef: React.RefObject<HTMLInputElement | null>;
+  getColWidth: (column: string) => number;
+  getCellDisplayValue: (
+    rowIndex: number,
+    column: string,
+    originalValue: any,
+  ) => any;
+  isCellModified: (rowIndex: number, column: string) => boolean;
+  handleCellClick: (rowIndex: number, col: string) => void;
+  handleCellDoubleClick: (
+    rowIndex: number,
+    col: string,
+    currentValue: any,
+  ) => void;
+  handleCellMouseDownForRange: (
+    e: React.MouseEvent,
+    rowIndex: number,
+    colIndex: number,
+  ) => void;
+  handleCellMouseMoveForRange: (rowIndex: number, colIndex: number) => void;
+  handleIndexMouseDown: (e: React.MouseEvent, rowIndex: number) => void;
+  handleIndexMouseEnter: (rowIndex: number) => void;
+  handleEditKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  setEditValue: (value: string) => void;
+  commitEdit: () => void;
+  setComplexViewer: (
+    viewer: { value: any; columnName: string } | null,
+  ) => void;
+  setContextMenuRow: (row: number | null) => void;
+}
+
+const DataRow = memo(function DataRow({
+  rowIndex,
+  row,
+  columns,
+  showRowNumbers,
+  showZebraStripes,
+  startIndex,
+  isRowSelected,
+  isMultiRowSelection,
+  editingCell,
+  selectedCell,
+  cellSelectionRange,
+  normalizedSearchKeyword,
+  matchedCellKeys,
+  currentSearchMatch,
+  isEditableForUpdates,
+  editValue,
+  editInputRef,
+  getColWidth,
+  getCellDisplayValue,
+  isCellModified,
+  handleCellClick,
+  handleCellDoubleClick,
+  handleCellMouseDownForRange,
+  handleCellMouseMoveForRange,
+  handleIndexMouseDown,
+  handleIndexMouseEnter,
+  handleEditKeyDown,
+  setEditValue,
+  commitEdit,
+  setComplexViewer,
+  setContextMenuRow,
+}: DataRowProps) {
+  const isEditing = useCallback(
+    (col: string) =>
+      editingCell?.row === rowIndex && editingCell?.col === col,
+    [editingCell, rowIndex],
+  );
+  const isSelected = useCallback(
+    (col: string) =>
+      selectedCell?.row === rowIndex && selectedCell?.col === col,
+    [selectedCell, rowIndex],
+  );
+
+  return (
+    <tr
+      className={[
+        "hover:bg-muted/50 border-b border-border group",
+        showZebraStripes && rowIndex % 2 === 1 ? "bg-muted/30" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {showRowNumbers && (
+        <td
+          className={[
+            "px-4 py-2 text-xs text-muted-foreground border-r border-border cursor-pointer select-none",
+            isRowSelected ? "bg-accent text-accent-foreground" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onMouseDown={(e) => handleIndexMouseDown(e, rowIndex)}
+          onMouseEnter={() => handleIndexMouseEnter(rowIndex)}
+        >
+          {startIndex + rowIndex + 1}
+        </td>
+      )}
+      {columns.map((column, colIndex) => {
+        const modified = isCellModified(rowIndex, column);
+        const displayValue = getCellDisplayValue(
+          rowIndex,
+          column,
+          row[column],
+        );
+        const editing = isEditing(column);
+        const selected = isSelected(column);
+        const inRange = isCellInRange(rowIndex, colIndex, cellSelectionRange);
+        const matched =
+          normalizedSearchKeyword.length > 0 &&
+          matchedCellKeys.has(`${rowIndex}::${column}`);
+        const activeSearchMatch =
+          !!currentSearchMatch &&
+          currentSearchMatch.row === rowIndex &&
+          currentSearchMatch.col === column;
+
+        return (
+          <td
+            key={column}
+            data-row-index={rowIndex}
+            data-col-index={colIndex}
+            className={[
+              "px-0 py-0 text-sm text-foreground font-mono border-r border-border relative group transition-all duration-150 ease-out",
+              selected && !editing ? "bg-accent text-accent-foreground" : "",
+              inRange && !selected && !editing ? "bg-accent" : "",
+              isRowSelected && !selected && !editing && !inRange
+                ? "bg-accent/60"
+                : "",
+              matched && !editing
+                ? "bg-amber-100/60 dark:bg-amber-900/20"
+                : "",
+              activeSearchMatch && !editing
+                ? "border-b-2 border-b-amber-500/70"
+                : "",
+              modified && !editing ? "border-l-2 border-l-orange-400" : "",
+              isEditableForUpdates ? "cursor-pointer" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            style={{
+              width: getColWidth(column),
+              minWidth: 50,
+            }}
+            onMouseDown={(e) =>
+              handleCellMouseDownForRange(e, rowIndex, colIndex)
+            }
+            onMouseEnter={() =>
+              handleCellMouseMoveForRange(rowIndex, colIndex)
+            }
+            onClick={() => handleCellClick(rowIndex, column)}
+            onContextMenu={() => {
+              if (isMultiRowSelection) {
+                return;
+              }
+              handleCellClick(rowIndex, column);
+              setContextMenuRow(rowIndex);
+            }}
+            onDoubleClick={() =>
+              handleCellDoubleClick(rowIndex, column, row[column])
+            }
+          >
+            {editing ? (
+              <input
+                ref={editInputRef}
+                type="text"
+                autoCapitalize="none"
+                className="w-full h-full px-4 py-2 bg-background border-2 border-primary outline-none font-mono text-sm shadow-[0_0_0_3px_rgba(var(--primary)_0.15)] animate-in fade-in zoom-in-95 duration-150"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={handleEditKeyDown}
+                onBlur={commitEdit}
+              />
+            ) : (
+              <div className="px-4 py-2 truncate">
+                {displayValue !== null && displayValue !== undefined ? (
+                  <span
+                    className={
+                      modified ? "text-orange-600 dark:text-orange-400" : ""
+                    }
+                  >
+                    {formatCellValue(displayValue)}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground italic">NULL</span>
+                )}
+                {isComplexValue(displayValue) && (
+                  <button
+                    className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground bg-background/80 rounded px-0.5 transition-opacity"
+                    title="View structured data"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setComplexViewer({
+                        value: displayValue,
+                        columnName: column,
+                      });
+                    }}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
+          </td>
+        );
+      })}
+    </tr>
+  );
+});
 
 interface TableViewProps {
   data?: any[];
@@ -279,7 +541,7 @@ export function TableView({
     anchor: { row: number; colIndex: number };
     tip: { row: number; colIndex: number };
   } | null>(null);
-  const [isCellSelecting, setIsCellSelecting] = useState(false);
+  const [, setIsCellSelecting] = useState(false);
   const cellSelectionRangeRef = useRef(cellSelectionRange);
   cellSelectionRangeRef.current = cellSelectionRange;
   const [editingCell, setEditingCell] = useState<{
@@ -330,6 +592,11 @@ export function TableView({
   const containerRef = useRef<HTMLDivElement>(null);
   const selectedCellRef = useRef<{ row: number; col: string } | null>(null);
   const selectedRowsRef = useRef<Set<number>>(new Set());
+  const editingCellRef = useRef<{ row: number; col: string } | null>(null);
+  const isCellSelectingRef = useRef(false);
+  const commitEditRef = useRef<(() => void) | null>(null);
+  const pendingChangesRef = useRef<Map<string, PendingChange>>(new Map());
+  const editValueRef = useRef("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [contextMenuRow, setContextMenuRow] = useState<number | null>(null);
 
@@ -340,6 +607,18 @@ export function TableView({
   useEffect(() => {
     selectedRowsRef.current = selectedRows;
   }, [selectedRows]);
+
+  useEffect(() => {
+    editingCellRef.current = editingCell;
+  }, [editingCell]);
+
+  useEffect(() => {
+    pendingChangesRef.current = pendingChanges;
+  }, [pendingChanges]);
+
+  useEffect(() => {
+    editValueRef.current = editValue;
+  }, [editValue]);
 
   // Sort state: controlled (via props) or uncontrolled (internal state for client-side sorting)
   const [internalSortColumn, setInternalSortColumn] = useState<
@@ -602,11 +881,9 @@ export function TableView({
   const handleCellClick = useCallback(
     (rowIndex: number, col: string) => {
       // If clicking a different cell while editing, commit current edit first
-      if (
-        editingCell &&
-        (editingCell.row !== rowIndex || editingCell.col !== col)
-      ) {
-        commitEdit();
+      const ec = editingCellRef.current;
+      if (ec && (ec.row !== rowIndex || ec.col !== col)) {
+        commitEditRef.current?.();
       }
       const nextSelectedRows = new Set<number>();
       selectedRowsRef.current = nextSelectedRows;
@@ -615,11 +892,12 @@ export function TableView({
       setIsRowSelecting(false);
       setCellSelectionRange(null);
       setIsCellSelecting(false);
+      isCellSelectingRef.current = false;
       const nextSelectedCell = { row: rowIndex, col };
       selectedCellRef.current = nextSelectedCell;
       setSelectedCell(nextSelectedCell);
     },
-    [editingCell],
+    [],
   );
 
   // --- Cell range selection (drag to select) ---
@@ -644,9 +922,10 @@ export function TableView({
   const handleCellMouseDownForRange = useCallback(
     (e: React.MouseEvent, rowIndex: number, colIndex: number) => {
       if (e.button !== 0) return;
-      if (editingCell) return;
+      if (editingCellRef.current) return;
       e.preventDefault();
       setIsCellSelecting(true);
+      isCellSelectingRef.current = true;
       setCellSelectionRange({
         anchor: { row: rowIndex, colIndex },
         tip: { row: rowIndex, colIndex },
@@ -656,12 +935,12 @@ export function TableView({
       setSelectedRows(new Set());
       selectedRowsRef.current = new Set();
     },
-    [editingCell, columns],
+    [columns],
   );
 
   const handleCellMouseMoveForRange = useCallback(
     (rowIndex: number, colIndex: number) => {
-      if (!isCellSelecting) return;
+      if (!isCellSelectingRef.current) return;
       setCellSelectionRange((prev) => {
         if (!prev) return prev;
         if (prev.tip.row === rowIndex && prev.tip.colIndex === colIndex)
@@ -669,11 +948,12 @@ export function TableView({
         return { ...prev, tip: { row: rowIndex, colIndex } };
       });
     },
-    [isCellSelecting],
+    [],
   );
 
   const handleCellMouseUpForRange = useCallback(() => {
     setIsCellSelecting(false);
+    isCellSelectingRef.current = false;
   }, []);
 
   const handleCellDoubleClick = useCallback(
@@ -681,7 +961,7 @@ export function TableView({
       if (!isEditableForUpdates) return;
       // Check if there's a pending change for this cell
       const key = `${rowIndex}_${col}`;
-      const pending = pendingChanges.get(key);
+      const pending = pendingChangesRef.current.get(key);
       const value = pending
         ? pending.newValue
         : cellValueToString(currentValue);
@@ -691,12 +971,13 @@ export function TableView({
       // Focus input on next tick
       setTimeout(() => editInputRef.current?.focus(), 0);
     },
-    [isEditableForUpdates, pendingChanges],
+    [isEditableForUpdates],
   );
 
   const commitEdit = useCallback(() => {
-    if (!editingCell) return;
-    const { row, col } = editingCell;
+    const ec = editingCellRef.current;
+    if (!ec) return;
+    const { row, col } = ec;
     const originalRow = currentData[row];
     if (!originalRow) {
       setEditingCell(null);
@@ -706,8 +987,9 @@ export function TableView({
     const originalValue = originalRow[col];
     const originalStr = cellValueToString(originalValue);
     const key = `${row}_${col}`;
+    const currentEditValue = editValueRef.current;
 
-    if (editValue !== originalStr) {
+    if (currentEditValue !== originalStr) {
       setPendingChanges((prev) => {
         const next = new Map(prev);
         next.set(key, {
@@ -715,7 +997,7 @@ export function TableView({
           sourceRowIndex: sourceRowIndex >= 0 ? sourceRowIndex : row,
           column: col,
           originalValue,
-          newValue: editValue,
+          newValue: currentEditValue,
         });
         return next;
       });
@@ -728,7 +1010,8 @@ export function TableView({
       });
     }
     setEditingCell(null);
-  }, [editingCell, editValue, data, currentData]);
+  }, [data, currentData]);
+  commitEditRef.current = commitEdit;
 
   const cancelEdit = useCallback(() => {
     setEditingCell(null);
@@ -738,13 +1021,13 @@ export function TableView({
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        commitEdit();
+        commitEditRef.current?.();
       } else if (e.key === "Escape") {
         e.preventDefault();
         cancelEdit();
       }
     },
-    [commitEdit, cancelEdit],
+    [cancelEdit],
   );
 
   const handleDiscardChanges = useCallback(() => {
@@ -2445,172 +2728,44 @@ export function TableView({
                       const rowIndex = virtualRow.index;
                       const row = currentData[rowIndex];
                       if (!row || typeof row !== "object") return null;
-                      const isEditing = (col: string) =>
-                        editingCell?.row === rowIndex && editingCell?.col === col;
-                      const isSelected = (col: string) =>
-                        selectedCell?.row === rowIndex && selectedCell?.col === col;
                       const isRowSelected = selectedRows.has(rowIndex);
 
                       return (
-                        <tr key={rowIndex} className={[
-                          "hover:bg-muted/50 border-b border-border group",
-                          showZebraStripes && rowIndex % 2 === 1 ? "bg-muted/30" : "",
-                        ].filter(Boolean).join(" ")}>
-                        {showRowNumbers && (
-                          <td
-                            className={[
-                              "px-4 py-2 text-xs text-muted-foreground border-r border-border cursor-pointer select-none",
-                              isRowSelected
-                                ? "bg-accent text-accent-foreground"
-                                : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                            onMouseDown={(e) => handleIndexMouseDown(e, rowIndex)}
-                            onMouseEnter={() => handleIndexMouseEnter(rowIndex)}
-                          >
-                            {startIndex + rowIndex + 1}
-                          </td>
-                        )}
-                        {columns.map((column, colIndex) => {
-                          const modified = isCellModified(rowIndex, column);
-                          const displayValue = getCellDisplayValue(
-                            rowIndex,
-                            column,
-                            row[column],
-                          );
-                          const editing = isEditing(column);
-                          const selected = isSelected(column);
-                          const inRange = isCellInRange(rowIndex, colIndex);
-                          const matched =
-                            normalizedSearchKeyword.length > 0 &&
-                            matchedCellKeys.has(`${rowIndex}::${column}`);
-                          const activeSearchMatch =
-                            !!currentSearchMatch &&
-                            currentSearchMatch.row === rowIndex &&
-                            currentSearchMatch.col === column;
-
-                          return (
-                            <td
-                              key={column}
-                              data-row-index={rowIndex}
-                              data-col-index={colIndex}
-                              className={[
-                                "px-0 py-0 text-sm text-foreground font-mono border-r border-border relative group transition-all duration-150 ease-out",
-                                selected && !editing
-                                  ? "bg-accent text-accent-foreground"
-                                  : "",
-                                inRange && !selected && !editing
-                                  ? "bg-accent"
-                                  : "",
-                                isRowSelected && !selected && !editing && !inRange
-                                  ? "bg-accent/60"
-                                  : "",
-                                matched && !editing
-                                  ? "bg-amber-100/60 dark:bg-amber-900/20"
-                                  : "",
-                                activeSearchMatch && !editing
-                                  ? "border-b-2 border-b-amber-500/70"
-                                  : "",
-                                modified && !editing
-                                  ? "border-l-2 border-l-orange-400"
-                                  : "",
-                                isEditableForUpdates ? "cursor-pointer" : "",
-                              ]
-                                .filter(Boolean)
-                                .join(" ")}
-                              style={{
-                                width: getColWidth(column),
-                                minWidth: 50,
-                              }}
-                              onMouseDown={(e) =>
-                                handleCellMouseDownForRange(e, rowIndex, colIndex)
-                              }
-                              onMouseEnter={() =>
-                                handleCellMouseMoveForRange(rowIndex, colIndex)
-                              }
-                              onClick={() => handleCellClick(rowIndex, column)}
-                              onContextMenu={() => {
-                                if (
-                                  selectedRows.size > 1 &&
-                                  selectedRows.has(rowIndex)
-                                ) {
-                                  return;
-                                }
-                                handleCellClick(rowIndex, column);
-                                setContextMenuRow(rowIndex);
-                              }}
-                              onDoubleClick={() =>
-                                handleCellDoubleClick(
-                                  rowIndex,
-                                  column,
-                                  row[column],
-                                )
-                              }
-                            >
-                              {editing ? (
-                                <input
-                                  ref={editInputRef}
-                                  type="text"
-                                  autoCapitalize="none"
-                                  className="w-full h-full px-4 py-2 bg-background border-2 border-primary outline-none font-mono text-sm shadow-[0_0_0_3px_rgba(var(--primary)_0.15)] animate-in fade-in zoom-in-95 duration-150"
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onKeyDown={handleEditKeyDown}
-                                  onBlur={commitEdit}
-                                />
-                              ) : (
-                                <div className="px-4 py-2 truncate">
-                                  {displayValue !== null &&
-                                  displayValue !== undefined ? (
-                                    <span
-                                      className={
-                                        modified
-                                          ? "text-orange-600 dark:text-orange-400"
-                                          : ""
-                                      }
-                                    >
-                                      {formatCellValue(displayValue)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground italic">
-                                      NULL
-                                    </span>
-                                  )}
-                                  {isComplexValue(displayValue) && (
-                                    <button
-                                      className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground bg-background/80 rounded px-0.5 transition-opacity"
-                                      title="View structured data"
-                                      onMouseDown={(e) => e.stopPropagation()}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setComplexViewer({
-                                          value: displayValue,
-                                          columnName: column,
-                                        });
-                                      }}
-                                    >
-                                      <svg
-                                        width="12"
-                                        height="12"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                      </svg>
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
+                        <DataRow
+                          key={rowIndex}
+                          rowIndex={rowIndex}
+                          row={row}
+                          columns={columns}
+                          showRowNumbers={showRowNumbers}
+                          showZebraStripes={showZebraStripes}
+                          startIndex={startIndex}
+                          isRowSelected={isRowSelected}
+                          isMultiRowSelection={isRowSelected && selectedRows.size > 1}
+                          editingCell={editingCell}
+                          selectedCell={selectedCell}
+                          cellSelectionRange={cellSelectionRange}
+                          normalizedSearchKeyword={normalizedSearchKeyword}
+                          matchedCellKeys={matchedCellKeys}
+                          currentSearchMatch={currentSearchMatch}
+                          isEditableForUpdates={isEditableForUpdates}
+                          editValue={editValue}
+                          editInputRef={editInputRef}
+                          getColWidth={getColWidth}
+                          getCellDisplayValue={getCellDisplayValue}
+                          isCellModified={isCellModified}
+                          handleCellClick={handleCellClick}
+                          handleCellDoubleClick={handleCellDoubleClick}
+                          handleCellMouseDownForRange={handleCellMouseDownForRange}
+                          handleCellMouseMoveForRange={handleCellMouseMoveForRange}
+                          handleIndexMouseDown={handleIndexMouseDown}
+                          handleIndexMouseEnter={handleIndexMouseEnter}
+                          handleEditKeyDown={handleEditKeyDown}
+                          setEditValue={setEditValue}
+                          commitEdit={commitEdit}
+                          setComplexViewer={setComplexViewer}
+                          setContextMenuRow={setContextMenuRow}
+                        />
+                      );
                     })}
                     {/* Bottom spacer for virtual scroll */}
                     {bottomSpacerHeight - draftRowsHeight > 0 && (

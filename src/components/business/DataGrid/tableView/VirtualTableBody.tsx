@@ -380,7 +380,7 @@ interface VirtualTableBodyProps {
   t: (key: string, params?: Record<string, any>) => string;
 }
 
-export const VirtualTableBody = memo(function VirtualTableBody({
+export function VirtualTableBody({
   columns,
   currentData,
   virtualizer,
@@ -667,4 +667,4 @@ export const VirtualTableBody = memo(function VirtualTableBody({
     />
     </ContextMenu>
   );
-});
+}

@@ -611,6 +611,12 @@ export function TableView({
     setSelectedRows,
     clearSelection,
     hasLocalClientSort,
+    whereInput,
+    orderByInput,
+    pageInput,
+    pageSizeInput,
+    page,
+    pageSize,
   });
 
   // Virtual scrolling — only render visible rows

@@ -42,6 +42,12 @@ interface UseCellEditingParams {
   setSelectedRows: (rows: Set<number>) => void;
   clearSelection: () => void;
   hasLocalClientSort: boolean;
+  whereInput: string;
+  orderByInput: string;
+  pageInput: string;
+  pageSizeInput: string;
+  page: number;
+  pageSize: number;
 }
 
 export function useCellEditing({
@@ -58,6 +64,12 @@ export function useCellEditing({
   setSelectedRows,
   clearSelection,
   hasLocalClientSort,
+  whereInput,
+  orderByInput,
+  pageInput,
+  pageSizeInput,
+  page,
+  pageSize,
 }: UseCellEditingParams) {
   const [editingCell, setEditingCell] = useState<{
     row: number;
@@ -469,10 +481,22 @@ export function useCellEditing({
     [],
   );
 
+  const buildRefreshParams = useCallback(() => {
+    const parsedPage = Number.parseInt(pageInput, 10);
+    const parsedLimit = Number.parseInt(pageSizeInput, 10);
+    return {
+      page: Number.isNaN(parsedPage) ? page : parsedPage,
+      limit: Number.isNaN(parsedLimit) ? pageSize : parsedLimit,
+      filter: whereInput || undefined,
+      orderBy: orderByInput || undefined,
+    };
+  }, [pageInput, pageSizeInput, page, pageSize, whereInput, orderByInput]);
+
   const refreshAfterMutation = useCallback(async () => {
     if (!onDataRefresh) return;
+    const params = buildRefreshParams();
     const runRefresh = async () => {
-      const ret = onDataRefresh();
+      const ret = onDataRefresh(params);
       if (ret && typeof (ret as Promise<unknown>).then === "function") {
         await ret;
       }
@@ -483,7 +507,7 @@ export function useCellEditing({
       await new Promise((resolve) => setTimeout(resolve, 350));
       await runRefresh();
     }
-  }, [onDataRefresh, tableContext?.driver]);
+  }, [onDataRefresh, tableContext?.driver, buildRefreshParams]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!tableContext || !canUpdateDelete || !selectedRows.size || isDeleting) {
@@ -604,7 +628,8 @@ export function useCellEditing({
 
     setIsRefreshing(true);
     try {
-      const ret = onDataRefresh();
+      const params = buildRefreshParams();
+      const ret = onDataRefresh(params);
       if (ret && typeof (ret as Promise<unknown>).then === "function") {
         await ret;
       } else {
@@ -620,6 +645,7 @@ export function useCellEditing({
     hasPendingChanges,
     onDataRefresh,
     isRefreshing,
+    buildRefreshParams,
   ]);
 
   // Helper: get display value for a cell (considering pending changes)

@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { save } from "@tauri-apps/plugin-dialog";
+
 import {
   Database,
   Table2 as TableIcon,
@@ -60,10 +60,9 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { api, getImportDriverCapability, isTauri } from "@/services/api";
+import { api, getImportDriverCapability } from "@/services/api";
 import type {
   ConnectionForm,
-  CreateDatabasePayload,
   Driver,
   RoutineType,
   SavedQuery,
@@ -76,8 +75,6 @@ import type {
 import type { DatabaseGroupConfig } from "@/lib/tree-adapters/types";
 import {
   getConnectionIcon,
-  isMysqlFamilyDriver,
-  supportsCreateDatabase,
   supportsSchemaBrowsing,
   getTreeConfig,
 } from "@/lib/driver-registry";
@@ -87,11 +84,7 @@ import { TreeNode } from "./connection-list/TreeNode";
 import { ConnectionDialog } from "./connection-list/ConnectionDialog";
 import { ImportDialog } from "./ImportDialog";
 import { ConnectionContextMenu } from "./ConnectionContextMenu";
-import {
-  getExportDefaultName,
-  getExportFilter,
-  renderConnectionStatusIndicator,
-} from "./connection-list/helpers";
+import { renderConnectionStatusIndicator } from "./connection-list/helpers";
 import { useConnectionCrud } from "./hooks/useConnectionCrud";
 import { useTreeDataFetching } from "./hooks/useTreeDataFetching";
 import { useConnectionForm } from "./hooks/useConnectionForm";
@@ -109,132 +102,13 @@ import type {
   DatabaseExportFormat,
   TableExportFormat,
   Connection,
-  CreateDatabaseForm,
   SelectedTableNode,
   DatasourceTreeAdapter,
 } from "./connection-list/types";
 import { useTreeExpansion } from "./hooks/useTreeExpansion";
 import { useRedisKeys } from "./hooks/useRedisKeys";
-
-const defaultCreateDatabaseForm: CreateDatabaseForm = {
-  name: "",
-  ifNotExists: true,
-  charset: "",
-  collation: "",
-  encoding: "",
-  lcCollate: "",
-  lcCtype: "",
-};
-
-const createDbNoneOption = "__none__";
-const postgresEncodingOptions = [
-  "UTF8",
-  "SQL_ASCII",
-  "BIG5",
-  "EUC_CN",
-  "EUC_JP",
-  "EUC_JIS_2004",
-  "EUC_KR",
-  "EUC_TW",
-  "GB18030",
-  "GBK",
-  "ISO_8859_5",
-  "ISO_8859_6",
-  "ISO_8859_7",
-  "ISO_8859_8",
-  "JOHAB",
-  "KOI8R",
-  "KOI8U",
-  "LATIN1",
-  "LATIN2",
-  "LATIN3",
-  "LATIN4",
-  "LATIN5",
-  "LATIN6",
-  "LATIN7",
-  "LATIN8",
-  "LATIN9",
-  "LATIN10",
-  "MULE_INTERNAL",
-  "SHIFT_JIS_2004",
-  "SJIS",
-  "UHC",
-  "WIN866",
-  "WIN874",
-  "WIN1250",
-  "WIN1251",
-  "WIN1252",
-  "WIN1253",
-  "WIN1254",
-  "WIN1255",
-  "WIN1256",
-  "WIN1257",
-  "WIN1258",
-];
-const postgresLocaleOptions = [
-  "en_US.UTF-8",
-  "C",
-  "C.UTF-8",
-  "zh_CN.UTF-8",
-  "ja_JP.UTF-8",
-];
-const mssqlCollationOptions = [
-  "SQL_Latin1_General_CP1_CI_AS",
-  "SQL_Latin1_General_CP1_CS_AS",
-  "SQL_Latin1_General_CP1_CI_AI",
-  "SQL_Latin1_General_CP1_CS_AI",
-  "Latin1_General_CI_AS",
-  "Latin1_General_CS_AS",
-  "Latin1_General_BIN",
-  "Latin1_General_BIN2",
-  "Latin1_General_100_CI_AS",
-  "Latin1_General_100_CS_AS",
-  "Latin1_General_100_CI_AI",
-  "Latin1_General_100_BIN2",
-  "Latin1_General_100_CI_AS_SC",
-  "Latin1_General_100_CS_AS_SC",
-  "Latin1_General_100_CI_AI_SC",
-  "Latin1_General_100_BIN2_UTF8",
-  "Latin1_General_100_CI_AS_SC_UTF8",
-  "Latin1_General_100_CI_AI_SC_UTF8",
-  "SQL_Latin1_General_CP850_CI_AS",
-  "Modern_Spanish_CI_AS",
-  "Modern_Spanish_100_CI_AS",
-  "French_CI_AS",
-  "French_100_CI_AS",
-  "German_PhoneBook_CI_AS",
-  "German_PhoneBook_100_CI_AS",
-  "Turkish_CI_AS",
-  "Turkish_100_CI_AS",
-  "Cyrillic_General_CI_AS",
-  "Cyrillic_General_100_CI_AS",
-  "Chinese_PRC_CI_AS",
-  "Chinese_PRC_CS_AS",
-  "Chinese_PRC_100_CI_AS",
-  "Chinese_PRC_100_CS_AS",
-  "Chinese_PRC_100_BIN2",
-  "Chinese_PRC_100_CI_AS_SC",
-  "Chinese_PRC_100_CI_AS_SC_UTF8",
-  "Chinese_Simplified_Pinyin_100_CI_AS",
-  "Chinese_Simplified_Pinyin_100_CS_AS",
-  "Chinese_Traditional_Stroke_Order_100_CI_AS",
-  "Japanese_CI_AS",
-  "Japanese_CS_AS",
-  "Japanese_BIN2",
-  "Japanese_XJIS_100_CI_AS",
-  "Japanese_XJIS_100_CS_AS",
-  "Japanese_XJIS_100_BIN2",
-  "Japanese_XJIS_140_CI_AS",
-  "Japanese_XJIS_140_CI_AS_KS_WS",
-  "Japanese_Bushu_Kakusu_100_CI_AS",
-  "Japanese_Bushu_Kakusu_140_CI_AS",
-  "Korean_Wansung_CI_AS",
-  "Korean_Wansung_100_CI_AS",
-  "Korean_Wansung_140_CI_AS",
-  "Korean_Unicode_CI_AS",
-  "Korean_Unicode_100_CI_AS",
-  "Korean_Unicode_140_CI_AS",
-];
+import { useImportExport } from "./hooks/useImportExport";
+import { useCreateDatabase } from "./hooks/useCreateDatabase";
 
 interface ConnectionListProps {
   onTableSelect?: (
@@ -434,12 +308,41 @@ export function ConnectionList({
     handlePickSslCaCertFile,
     handlePickSshKeyFile,
     handlePickDatabaseFile,
-    pickSingleFile,
   } = useConnectionForm({
     connections,
     setConnections,
     fetchConnections,
     onConnect,
+  });
+
+  const {
+    isCreatingDatabase,
+    isCreateDbDialogOpen,
+    setIsCreateDbDialogOpen,
+    showCreateDbAdvanced,
+    setShowCreateDbAdvanced,
+    createDbValidationMsg,
+    createDbForm,
+    setCreateDbForm,
+    mysqlCharsets,
+    mysqlCollations,
+    loadingMysqlOptions,
+    supportsCreateDatabaseForDriver,
+    isMySqlFamilyCreateDb,
+    isPostgresCreateDb,
+    isMssqlCreateDb,
+    openCreateDatabaseDialog,
+    handleCreateDatabase,
+    closeCreateDbDialog,
+    createDbNoneOption,
+    postgresEncodingOptions,
+    postgresLocaleOptions,
+    mssqlCollationOptions,
+  } = useCreateDatabase({
+    connections,
+    setExpandedConnections,
+    clearConnectionTreeCache,
+    fetchAndSetDatabases,
   });
 
   // Update refs every render so effects can read latest values without
@@ -465,19 +368,6 @@ export function ConnectionList({
   const loadingSpinner = (
     <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
   );
-  const [isCreatingDatabase, setIsCreatingDatabase] = useState(false);
-  const [isImportingSql, setIsImportingSql] = useState(false);
-  const [createDbConnectionId, setCreateDbConnectionId] = useState<
-    string | null
-  >(null);
-  const [isCreateDbDialogOpen, setIsCreateDbDialogOpen] = useState(false);
-  const [showCreateDbAdvanced, setShowCreateDbAdvanced] = useState(false);
-  const [createDbValidationMsg, setCreateDbValidationMsg] = useState<
-    string | null
-  >(null);
-  const [createDbForm, setCreateDbForm] = useState<CreateDatabaseForm>(
-    defaultCreateDatabaseForm,
-  );
   const [showElasticsearchSystemIndices, setShowElasticsearchSystemIndices] =
     useState(false);
   const [showMongoSystemCollections, setShowMongoSystemCollections] =
@@ -487,9 +377,6 @@ export function ConnectionList({
   >(null);
   const [isCreateEsIndexDialogOpen, setIsCreateEsIndexDialogOpen] =
     useState(false);
-  const [mysqlCharsets, setMysqlCharsets] = useState<string[]>([]);
-  const [mysqlCollations, setMysqlCollations] = useState<string[]>([]);
-  const [loadingMysqlOptions, setLoadingMysqlOptions] = useState(false);
   const [isLoadingQueries, setIsLoadingQueries] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const { loadRedisKeysPage } = useRedisKeys({
@@ -500,34 +387,39 @@ export function ConnectionList({
   const [savedQueriesByConnection, setSavedQueriesByConnection] = useState<
     Record<string, SavedQuery[]>
   >({});
-  const [pendingImport, setPendingImport] = useState<{
-    connectionId: string;
-    databaseName: string;
-    driver: Driver;
-    filePath: string;
-  } | null>(null);
-  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
-  const [pendingDatabaseExport, setPendingDatabaseExport] = useState<{
-    connectionId: string;
-    databaseName: string;
-    driver: Driver;
-    format: DatabaseExportFormat;
-  } | null>(null);
-  const [isDatabaseExportDialogOpen, setIsDatabaseExportDialogOpen] =
-    useState(false);
-  const [isExportingDatabaseSql, setIsExportingDatabaseSql] = useState(false);
-  const [pendingTableExport, setPendingTableExport] = useState<{
-    connection: Connection;
-    database: DatabaseInfo;
-    table: TableInfo;
-  } | null>(null);
-  const [isTableExportDialogOpen, setIsTableExportDialogOpen] = useState(false);
-  const [isExportingTable, setIsExportingTable] = useState(false);
-  const [tableExportFormat, setTableExportFormat] =
-    useState<TableExportFormat>("csv");
 
-  const supportsCreateDatabaseForDriver = (driver: Driver) =>
-    supportsCreateDatabase(driver);
+  const {
+    isImportingSql,
+    pendingImport,
+    setPendingImport,
+    isImportConfirmOpen,
+    setIsImportConfirmOpen,
+    pendingDatabaseExport,
+    setPendingDatabaseExport,
+    isDatabaseExportDialogOpen,
+    setIsDatabaseExportDialogOpen,
+    isExportingDatabaseSql,
+    pendingTableExport,
+    setPendingTableExport,
+    isTableExportDialogOpen,
+    setIsTableExportDialogOpen,
+    isExportingTable,
+    tableExportFormat,
+    setTableExportFormat,
+    handleTableExportDialog,
+    handleTableExportConfirm,
+    handleDatabaseImport,
+    handleDatabaseExport,
+    handleConfirmDatabaseExport,
+    handleConfirmImport,
+  } = useImportExport({
+    connections,
+    onExportTable,
+    onExportDatabase,
+    handleRefreshDatabaseTables,
+  });
+
+
   const supportsSchemaNodeForDriver = (driver: Driver) =>
     supportsSchemaBrowsing(driver);
   const getSchemaNodeKey = (databaseKey: string, schema: string) =>
@@ -538,53 +430,6 @@ export function ConnectionList({
     schemaName: string,
     tableName: string,
   ) => `${connectionId}-${databaseName}-${schemaName}-${tableName}`;
-
-  const createDbTargetConnection = useMemo(
-    () => connections.find((conn) => conn.id === createDbConnectionId) || null,
-    [connections, createDbConnectionId],
-  );
-  const createDbTargetDriver = createDbTargetConnection?.type;
-  const isMySqlFamilyCreateDb = createDbTargetDriver
-    ? isMysqlFamilyDriver(createDbTargetDriver as any)
-    : false;
-  const isPostgresCreateDb = createDbTargetDriver === "postgres";
-  const isMssqlCreateDb = createDbTargetDriver === "mssql";
-
-  useEffect(() => {
-    if (
-      !isCreateDbDialogOpen ||
-      !isMySqlFamilyCreateDb ||
-      !createDbConnectionId
-    )
-      return;
-    setLoadingMysqlOptions(true);
-    api.connections
-      .getMysqlCharsets(Number(createDbConnectionId))
-      .then(setMysqlCharsets)
-      .catch(() => setMysqlCharsets(["utf8mb4", "utf8", "latin1"]))
-      .finally(() => setLoadingMysqlOptions(false));
-  }, [isCreateDbDialogOpen, isMySqlFamilyCreateDb, createDbConnectionId]);
-
-  useEffect(() => {
-    if (
-      !isCreateDbDialogOpen ||
-      !isMySqlFamilyCreateDb ||
-      !createDbConnectionId
-    )
-      return;
-    api.connections
-      .getMysqlCollations(
-        Number(createDbConnectionId),
-        createDbForm.charset || undefined,
-      )
-      .then(setMysqlCollations)
-      .catch(() => setMysqlCollations([]));
-  }, [
-    isCreateDbDialogOpen,
-    isMySqlFamilyCreateDb,
-    createDbConnectionId,
-    createDbForm.charset,
-  ]);
 
   const getConnectionStatusLabel = (connection: Connection) => {
     if (connection.connectState === "success") {
@@ -1449,275 +1294,6 @@ export function ConnectionList({
     }
 
     onCreateQuery(Number(connectionId), resolvedDatabaseName, connection.type);
-  };
-
-  const openCreateDatabaseDialog = (connectionId: string) => {
-    const connection = connections.find((conn) => conn.id === connectionId);
-    if (!connection || !supportsCreateDatabaseForDriver(connection.type)) {
-      return;
-    }
-    setCreateDbConnectionId(connectionId);
-    setCreateDbValidationMsg(null);
-    setShowCreateDbAdvanced(false);
-    setCreateDbForm(defaultCreateDatabaseForm);
-    setIsCreateDbDialogOpen(true);
-  };
-
-  const handleCreateDatabase = async () => {
-    const connection = createDbTargetConnection;
-    if (!connection || !supportsCreateDatabaseForDriver(connection.type))
-      return;
-
-    const name = createDbForm.name.trim();
-    if (!name) {
-      setCreateDbValidationMsg(
-        t("connection.createDbDialog.validation.requiredName"),
-      );
-      return;
-    }
-
-    const payload: CreateDatabasePayload = {
-      name,
-      ifNotExists: createDbForm.ifNotExists,
-    };
-    if (isMySqlFamilyCreateDb) {
-      if (createDbForm.charset.trim())
-        payload.charset = createDbForm.charset.trim();
-      if (createDbForm.collation.trim()) {
-        payload.collation = createDbForm.collation.trim();
-      }
-    } else if (isPostgresCreateDb) {
-      if (createDbForm.encoding.trim())
-        payload.encoding = createDbForm.encoding.trim();
-      if (createDbForm.lcCollate.trim()) {
-        payload.lcCollate = createDbForm.lcCollate.trim();
-      }
-      if (createDbForm.lcCtype.trim())
-        payload.lcCtype = createDbForm.lcCtype.trim();
-    } else if (isMssqlCreateDb) {
-      if (createDbForm.collation.trim()) {
-        payload.collation = createDbForm.collation.trim();
-      }
-    }
-
-    setCreateDbValidationMsg(null);
-    setIsCreatingDatabase(true);
-    try {
-      await api.connections.createDatabase(Number(connection.id), payload);
-      toast.success(t("connection.toast.createDatabaseSuccess"), {
-        description: name,
-      });
-      setIsCreateDbDialogOpen(false);
-      clearConnectionTreeCache(connection.id);
-      const loaded = await fetchAndSetDatabases(connection.id);
-      if (loaded) {
-        setExpandedConnections((prev) => {
-          const next = new Set(prev);
-          next.add(connection.id);
-          return next;
-        });
-      }
-    } catch (e) {
-      toast.error(t("connection.toast.createDatabaseFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsCreatingDatabase(false);
-    }
-  };
-
-  const handleTableExportDialog = (
-    connection: Connection,
-    database: DatabaseInfo,
-    table: TableInfo,
-  ) => {
-    if (!onExportTable) return;
-    if (!isTauri()) {
-      toast.error(t("connection.toast.exportDesktopOnly"));
-      return;
-    }
-    setPendingTableExport({ connection, database, table });
-    setTableExportFormat("csv");
-    setIsTableExportDialogOpen(true);
-  };
-
-  const handleTableExportConfirm = async () => {
-    if (!pendingTableExport || !onExportTable) return;
-    const { connection, database, table } = pendingTableExport;
-    try {
-      setIsExportingTable(true);
-      const selected = await save({
-        title: t("connection.toast.saveExportFile"),
-        defaultPath: getExportDefaultName(table.name, tableExportFormat),
-        filters: getExportFilter(tableExportFormat),
-      });
-      if (!selected) return;
-      const filePath = Array.isArray(selected) ? selected[0] : selected;
-      if (!filePath) return;
-      setIsTableExportDialogOpen(false);
-      onExportTable(
-        {
-          connectionId: Number(connection.id),
-          database: database.name,
-          schema: table.schema,
-          table: table.name,
-          driver: connection.type,
-        },
-        tableExportFormat,
-        filePath,
-      );
-      setPendingTableExport(null);
-    } catch (e) {
-      toast.error(t("connection.toast.openSaveDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsExportingTable(false);
-    }
-  };
-
-  const handleDatabaseImport = async (
-    connectionId: string,
-    databaseName: string,
-  ) => {
-    const connection = connections.find((conn) => conn.id === connectionId);
-    if (!connection) return;
-
-    const capability = getImportDriverCapability(connection.type);
-    if (capability === "read_only_not_supported") {
-      toast.error(t("connection.toast.importReadOnlyDriver"));
-      return;
-    }
-
-    if (capability !== "supported") {
-      toast.error(t("connection.toast.importUnsupportedDriver"));
-      return;
-    }
-
-    if (!isTauri()) {
-      toast.error(t("connection.toast.importDesktopOnly"));
-      return;
-    }
-
-    const selectedPath = await pickSingleFile({
-      title: t("connection.toast.selectImportSqlFile"),
-      filters: [{ name: "SQL", extensions: ["sql"] }],
-    });
-    if (!selectedPath) return;
-
-    setPendingImport({
-      connectionId,
-      databaseName,
-      driver: connection.type,
-      filePath: selectedPath,
-    });
-    setIsImportConfirmOpen(true);
-  };
-
-  const handleDatabaseExport = async (
-    connection: Connection,
-    database: DatabaseInfo,
-  ) => {
-    if (!onExportDatabase) return;
-    if (!isTauri()) {
-      toast.error(t("connection.toast.exportDesktopOnly"));
-      return;
-    }
-
-    setPendingDatabaseExport({
-      connectionId: connection.id,
-      databaseName: database.name,
-      driver: connection.type,
-      format: "sql_full",
-    });
-    setIsDatabaseExportDialogOpen(true);
-  };
-
-  const handleConfirmDatabaseExport = async () => {
-    if (!pendingDatabaseExport || !onExportDatabase) return;
-    if (!isTauri()) {
-      toast.error(t("connection.toast.exportDesktopOnly"));
-      return;
-    }
-
-    setIsExportingDatabaseSql(true);
-    try {
-      const suffix =
-        pendingDatabaseExport.format === "sql_ddl"
-          ? "ddl"
-          : pendingDatabaseExport.format === "sql_dml"
-            ? "dml"
-            : "full";
-      const selected = await save({
-        title: t("connection.toast.saveExportFile"),
-        defaultPath: getExportDefaultName(
-          `${pendingDatabaseExport.databaseName}_${suffix}`,
-          pendingDatabaseExport.format,
-        ),
-        filters: getExportFilter(pendingDatabaseExport.format),
-      });
-      if (!selected) return;
-      const filePath = Array.isArray(selected) ? selected[0] : selected;
-      if (!filePath) return;
-
-      onExportDatabase({
-        connectionId: Number(pendingDatabaseExport.connectionId),
-        database: pendingDatabaseExport.databaseName,
-        driver: pendingDatabaseExport.driver,
-        format: pendingDatabaseExport.format,
-        filePath,
-      });
-      setIsDatabaseExportDialogOpen(false);
-      setPendingDatabaseExport(null);
-    } catch (e) {
-      toast.error(t("connection.toast.openSaveDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsExportingDatabaseSql(false);
-    }
-  };
-
-  const handleConfirmImport = async () => {
-    if (!pendingImport) return;
-
-    setIsImportingSql(true);
-    try {
-      const result = await api.transfer.importSqlFile({
-        id: Number(pendingImport.connectionId),
-        database: pendingImport.databaseName,
-        filePath: pendingImport.filePath,
-        driver: pendingImport.driver,
-      });
-
-      if (result.error || result.failedAt) {
-        toast.error(t("connection.toast.importFailed"), {
-          description: result.error || t("common.unknown"),
-        });
-      } else {
-        toast.success(
-          t("connection.toast.importSuccess", {
-            count: result.successStatements,
-          }),
-          {
-            description: pendingImport.filePath,
-          },
-        );
-      }
-
-      await handleRefreshDatabaseTables(
-        pendingImport.connectionId,
-        pendingImport.databaseName,
-      );
-    } catch (e) {
-      toast.error(t("connection.toast.importFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsImportingSql(false);
-      setIsImportConfirmOpen(false);
-      setPendingImport(null);
-    }
   };
 
   const contextMenuConnection = contextMenu.connectionId
@@ -2641,14 +2217,10 @@ export function ConnectionList({
       <Dialog
         open={isCreateDbDialogOpen}
         onOpenChange={(open) => {
-          setIsCreateDbDialogOpen(open);
           if (!open) {
-            setCreateDbValidationMsg(null);
-            setCreateDbConnectionId(null);
-            setShowCreateDbAdvanced(false);
-            setCreateDbForm(defaultCreateDatabaseForm);
-            setMysqlCharsets([]);
-            setMysqlCollations([]);
+            closeCreateDbDialog();
+          } else {
+            setIsCreateDbDialogOpen(true);
           }
         }}
       >

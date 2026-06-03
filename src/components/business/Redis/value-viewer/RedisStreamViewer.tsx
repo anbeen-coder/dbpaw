@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -70,6 +71,7 @@ import {
   type RedisXPendingEntry,
   type RedisXPendingSummary,
 } from "@/services/api";
+import { errorMessage } from "@/lib/errors";
 
 const DEFAULT_PAGE_SIZE = 200;
 
@@ -285,7 +287,7 @@ export function RedisStreamViewer({
       count = overrides?.count ?? resolvePageSize(browser.countInput);
     } catch (e) {
       toast.error("Invalid stream range", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
       return;
     }
@@ -318,7 +320,7 @@ export function RedisStreamViewer({
         mode === "append"
           ? "Failed to load more stream entries"
           : "Failed to load stream entries",
-        { description: e instanceof Error ? e.message : String(e) },
+        { description: errorMessage(e) },
       );
     } finally {
       setIsLoadingView(false);
@@ -368,7 +370,7 @@ export function RedisStreamViewer({
       await refreshView();
     } catch (e) {
       toast.error("Failed to create group", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -397,7 +399,7 @@ export function RedisStreamViewer({
       await refreshView();
     } catch (e) {
       toast.error("Failed to delete group", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -417,7 +419,7 @@ export function RedisStreamViewer({
       await refreshView();
     } catch (e) {
       toast.error("Failed to reset group cursor", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -448,7 +450,7 @@ export function RedisStreamViewer({
         }));
       } catch (e) {
         toast.error("Failed to load pending info", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setPendingLoading((s) => ({ ...s, [groupName]: false }));
@@ -475,7 +477,7 @@ export function RedisStreamViewer({
       setSelectedPendingIds(new Set());
     } catch (e) {
       toast.error("Failed to load pending entries", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setPendingLoading((s) => ({ ...s, [groupName]: false }));
@@ -498,7 +500,7 @@ export function RedisStreamViewer({
       await refreshView();
     } catch (e) {
       toast.error("Failed to acknowledge", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -523,7 +525,7 @@ export function RedisStreamViewer({
       await loadPendingDetails(groupName);
     } catch (e) {
       toast.error("Failed to claim entry", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -544,7 +546,7 @@ export function RedisStreamViewer({
       await refreshView();
     } catch (e) {
       toast.error("Failed to trim stream", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -571,7 +573,7 @@ export function RedisStreamViewer({
       setXrgEntries(entries);
     } catch (e) {
       toast.error("Failed to read from consumer group", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsLoadingXrg(false);
@@ -1473,7 +1475,7 @@ function StreamEntriesTable({
   );
 }
 
-function StreamEntryRow({
+const StreamEntryRow = memo(function StreamEntryRow({
   entry,
   expanded,
   onToggle,
@@ -1572,7 +1574,7 @@ function StreamEntryRow({
       )}
     </>
   );
-}
+});
 
 // ── Dialog Components ───────────────────────────────────────────────────────
 

@@ -22,6 +22,7 @@ import { ChatComposer } from "./chat/ChatComposer";
 import { ChatMessageList } from "./chat/ChatMessageList";
 import { type SelectedTableRef } from "./chat/TableSelector";
 import { useTranslation } from "react-i18next";
+import { errorMessage } from "@/lib/errors";
 
 interface AISidebarProps {
   connectionId?: number;
@@ -145,7 +146,7 @@ export function AISidebar({
       }
     } catch (e) {
       toast.error(t("aiSidebar.errors.loadConversation"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -408,7 +409,7 @@ export function AISidebar({
       if (!errorNotifiedRef.current) {
         toast.error(t("aiSidebar.errors.sendFailed"), {
           id: "ai-request-error",
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       }
     }
@@ -424,7 +425,7 @@ export function AISidebar({
       await reloadConversations();
     } catch (e) {
       toast.error(t("aiSidebar.errors.deleteConversation"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };

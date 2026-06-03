@@ -77,6 +77,7 @@ import { CLICKHOUSE_COMPLETIONS } from "./clickhouseKeywords";
 import { useTranslation } from "react-i18next";
 import { buildSqlContextualCompletion } from "./sqlCompletionContext";
 import { SingleResultState } from "@/lib/queryExecutionState";
+import { errorMessage } from "@/lib/errors";
 
 type SqlSyntaxPalette = {
   keyword: string;
@@ -419,7 +420,7 @@ export function SqlEditor({
     } catch (e) {
       console.error("Format failed:", e);
       toast.error(t("sqlEditor.error.formatFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsFormatting(false);
@@ -461,7 +462,7 @@ export function SqlEditor({
       } catch (e) {
         console.error("Failed to save query", e);
         toast.error(t("sqlEditor.save.failed"), {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       }
     },
@@ -504,7 +505,7 @@ export function SqlEditor({
         if (!filePath) return;
       } catch (e) {
         toast.error(t("sqlEditor.export.openSaveDialogFailed"), {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
         return;
       }
@@ -526,7 +527,7 @@ export function SqlEditor({
         );
       } catch (e) {
         toast.error(t("sqlEditor.export.failed"), {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       }
     },

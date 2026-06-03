@@ -25,6 +25,7 @@ import type {
   ElasticsearchDetailMode,
 } from "./types";
 import { formatJson } from "./elasticsearch-index-management";
+import { errorMessage } from "@/lib/errors";
 
 const DEFAULT_DOCUMENT_SOURCE = "{\n  \n}";
 
@@ -91,7 +92,7 @@ export function ElasticsearchDocumentDetail({
         setEditorSource(formatJson(doc.source));
       } catch (e) {
         toast.error("Failed to load document", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setIsLoadingDocument(false);
@@ -147,7 +148,7 @@ export function ElasticsearchDocumentDetail({
       toast.success(`HTTP ${response.status} · ${response.tookMs}ms`);
     } catch (e) {
       toast.error("Elasticsearch request failed", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsExecutingRaw(false);

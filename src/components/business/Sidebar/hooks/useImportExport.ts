@@ -12,6 +12,7 @@ import type {
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { getExportDefaultName, getExportFilter } from "../connection-list/helpers";
+import { errorMessage } from "@/lib/errors";
 
 export function useImportExport(params: {
   connections: Connection[];
@@ -111,7 +112,7 @@ export function useImportExport(params: {
       setPendingTableExport(null);
     } catch (e) {
       toast.error(t("connection.toast.openSaveDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsExportingTable(false);
@@ -216,7 +217,7 @@ export function useImportExport(params: {
       setPendingDatabaseExport(null);
     } catch (e) {
       toast.error(t("connection.toast.openSaveDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsExportingDatabaseSql(false);
@@ -256,7 +257,7 @@ export function useImportExport(params: {
       );
     } catch (e) {
       toast.error(t("connection.toast.importFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsImportingSql(false);

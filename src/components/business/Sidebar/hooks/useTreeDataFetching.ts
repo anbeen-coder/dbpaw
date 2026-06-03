@@ -16,6 +16,7 @@ import type {
 } from "@/services/api";
 import { supportsRoutines } from "@/lib/driver-registry";
 import { groupSqlObjectsBySchema } from "../connection-list/helpers";
+import { errorMessage } from "@/lib/errors";
 
 export function useTreeDataFetching(params: {
   connections: Connection[];
@@ -89,7 +90,7 @@ export function useTreeDataFetching(params: {
     } catch (e) {
       console.warn(
         "listRoutines failed",
-        e instanceof Error ? e.message : String(e),
+        errorMessage(e),
       );
       return [];
     }
@@ -263,7 +264,7 @@ export function useTreeDataFetching(params: {
     } catch (e) {
       console.error(
         "listTables failed",
-        e instanceof Error ? e.message : String(e),
+        errorMessage(e),
       );
       return [];
     }
@@ -328,7 +329,7 @@ export function useTreeDataFetching(params: {
     } catch (e) {
       console.error(
         "getTableMetadata failed",
-        e instanceof Error ? e.message : String(e),
+        errorMessage(e),
       );
     }
   };

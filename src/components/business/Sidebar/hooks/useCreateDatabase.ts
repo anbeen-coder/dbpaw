@@ -5,6 +5,7 @@ import type { Connection, CreateDatabaseForm } from "../connection-list/types";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { supportsCreateDatabase, isMysqlFamilyDriver } from "@/lib/driver-registry";
+import { errorMessage } from "@/lib/errors";
 
 const defaultCreateDatabaseForm: CreateDatabaseForm = {
   name: "",
@@ -272,7 +273,7 @@ export function useCreateDatabase(params: {
       }
     } catch (e) {
       toast.error(t("connection.toast.createDatabaseFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsCreatingDatabase(false);

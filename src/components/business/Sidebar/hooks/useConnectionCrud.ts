@@ -9,6 +9,7 @@ import {
   sanitizeConnectionErrorMessage,
   buildFormFromConnection,
 } from "../connection-list/helpers";
+import { errorMessage } from "@/lib/errors";
 
 export const mapSavedConnection = (
   c: SavedConnection,
@@ -81,7 +82,7 @@ export function useConnectionCrud(params: {
       );
       setConnections((prev) => mergeConnections(mapped, prev));
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       console.error("listConnections failed", message);
       toast.error(t("connection.toast.loadConnectionsFailed"), {
         description: message,
@@ -132,7 +133,7 @@ export function useConnectionCrud(params: {
       );
       return true;
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       const sanitizedMessage = sanitizeConnectionErrorMessage(message);
       console.error("listDatabasesById failed", message);
       setConnections((prev) =>
@@ -272,7 +273,7 @@ export function useConnectionCrud(params: {
       toast.success(t("connection.toast.duplicateSuccess"));
     } catch (e) {
       toast.error(t("connection.toast.duplicateFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -309,7 +310,7 @@ export function useConnectionCrud(params: {
     } catch (e) {
       console.error(
         "deleteConnection failed",
-        e instanceof Error ? e.message : String(e),
+        errorMessage(e),
       );
     } finally {
       setIsDeleting(false);

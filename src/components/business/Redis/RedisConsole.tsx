@@ -3,6 +3,7 @@ import { Loader2, Play, Terminal, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/services/api";
+import { errorMessage } from "@/lib/errors";
 
 interface HistoryEntry {
   id: number;
@@ -57,7 +58,7 @@ export function RedisConsole({ connectionId, database }: RedisConsoleProps) {
           {
             id,
             command: trimmed,
-            output: e instanceof Error ? e.message : String(e),
+            output: errorMessage(e),
             isError: true,
           },
         ]);

@@ -27,6 +27,7 @@ import type {
   ElasticsearchField,
   ElasticsearchSort,
 } from "./types";
+import { errorMessage } from "@/lib/errors";
 
 const DEFAULT_PAGE_SIZE = 50;
 const DEFAULT_VISIBLE_COLUMNS = ["_id", "_score", "_source"];
@@ -92,7 +93,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
       setFields(extractFieldsFromIndexMapping(nextMapping));
     } catch (e) {
       toast.error("Failed to load Elasticsearch metadata", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsLoadingMeta(false);
@@ -116,7 +117,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
         setResult(response);
       } catch (e) {
         toast.error("Elasticsearch search failed", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setIsSearching(false);
@@ -232,7 +233,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
         await loadMetadata();
       } catch (e) {
         toast.error("Failed to save document", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
         throw e;
       }
@@ -256,7 +257,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
         await loadMetadata();
       } catch (e) {
         toast.error("Failed to delete document", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
         throw e;
       }
@@ -284,7 +285,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
         }
       } catch (e) {
         toast.error(`Failed to ${action} Elasticsearch index`, {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setIsManagingIndex(false);
@@ -335,7 +336,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
       await loadMetadata();
     } catch (e) {
       toast.error("Failed to import Elasticsearch documents", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsBulkImporting(false);
@@ -371,7 +372,7 @@ export function ElasticsearchIndexView({ connectionId, index }: Props) {
       });
     } catch (e) {
       toast.error("Failed to export Elasticsearch documents", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsBulkExporting(false);

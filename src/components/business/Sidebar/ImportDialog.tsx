@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { api, isTauri } from "@/services/api";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/errors";
 
 interface ImportDialogProps {
   open: boolean;
@@ -66,7 +67,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
       onOpenChange(false);
     } catch (e) {
       toast.error(t("connection.toast.importConnectionsFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setLoading(null);

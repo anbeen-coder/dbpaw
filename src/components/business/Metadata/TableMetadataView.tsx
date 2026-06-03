@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { errorMessage } from "@/lib/errors";
 
 function extractCreateTableStatement(ddl: string): string {
   const trimmed = ddl.trim();
@@ -100,7 +101,7 @@ export function TableMetadataView({
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorMessage(e));
       })
       .finally(() => {
         if (cancelled) return;
@@ -115,7 +116,7 @@ export function TableMetadataView({
       })
       .catch((e) => {
         if (cancelled) return;
-        setDdlError(e instanceof Error ? e.message : String(e));
+        setDdlError(errorMessage(e));
       })
       .finally(() => {
         if (cancelled) return;

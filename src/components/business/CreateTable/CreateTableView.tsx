@@ -48,6 +48,7 @@ import {
   validateColumns,
   validateIndexDefs,
 } from "@/lib/sql-gen/tableValidation";
+import { errorMessage } from "@/lib/errors";
 import { IndexEditorSection } from "./IndexEditorSection";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -285,7 +286,7 @@ export function CreateTableView({
       onSuccess(tableName.trim());
     } catch (e) {
       toast.error(t("createTable.toast.error"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsExecuting(false);

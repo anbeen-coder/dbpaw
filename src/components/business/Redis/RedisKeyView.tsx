@@ -39,6 +39,7 @@ import type {
   RedisBitmapBit,
 } from "@/services/api";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/errors";
 import { RedisStringViewer } from "./value-viewer/RedisStringViewer";
 import { RedisHashViewer } from "./value-viewer/RedisHashViewer";
 import { RedisListViewer } from "./value-viewer/RedisListViewer";
@@ -356,7 +357,7 @@ export function RedisKeyView({
       setOriginalLoadedCount(count);
     } catch (e) {
       toast.error("Failed to load Redis key", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsLoading(false);
@@ -393,7 +394,7 @@ export function RedisKeyView({
       );
     } catch (e) {
       toast.error("Failed to load more items", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsLoadingMore(false);
@@ -424,7 +425,7 @@ export function RedisKeyView({
           forceRename,
         );
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = errorMessage(e);
         if (msg.includes("already exists") && !forceRename) {
           setPendingAction("force_rename");
           return;
@@ -503,7 +504,7 @@ export function RedisKeyView({
       parsedTtl = parseRedisTtlSeconds(ttl);
     } catch (e) {
       toast.error("Invalid TTL", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
       return;
     }
@@ -514,7 +515,7 @@ export function RedisKeyView({
       await load();
     } catch (e) {
       toast.error("Failed to update TTL", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsSaving(false);
@@ -541,7 +542,7 @@ export function RedisKeyView({
         await doSave();
       } catch (e) {
         toast.error("Failed to save Redis key", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setIsSaving(false);
@@ -552,7 +553,7 @@ export function RedisKeyView({
       parseRedisTtlSeconds(ttl);
     } catch (e) {
       toast.error("Failed to save Redis key", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
       return;
     }
@@ -565,7 +566,7 @@ export function RedisKeyView({
         await doSave();
       } catch (e) {
         toast.error("Failed to save Redis key", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setIsSaving(false);
@@ -597,7 +598,7 @@ export function RedisKeyView({
       }
     } catch (e) {
       toast.error("Operation failed", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsSaving(false);
@@ -871,7 +872,7 @@ export function RedisKeyView({
                   await load();
                 } catch (e) {
                   toast.error("Failed to update bitmap", {
-                    description: e instanceof Error ? e.message : String(e),
+                    description: errorMessage(e),
                   });
                 }
               }}
@@ -909,7 +910,7 @@ export function RedisKeyView({
                     await load();
                   } catch (e) {
                     toast.error("Failed to increment", {
-                      description: e instanceof Error ? e.message : String(e),
+                      description: errorMessage(e),
                     });
                   }
                 }}
@@ -924,7 +925,7 @@ export function RedisKeyView({
                     await load();
                   } catch (e) {
                     toast.error("Failed to increment", {
-                      description: e instanceof Error ? e.message : String(e),
+                      description: errorMessage(e),
                     });
                   }
                 }}
@@ -945,7 +946,7 @@ export function RedisKeyView({
                   await load();
                 } catch (e) {
                   toast.error("Failed to increment", {
-                    description: e instanceof Error ? e.message : String(e),
+                    description: errorMessage(e),
                   });
                 }
               }}
@@ -1087,7 +1088,7 @@ export function RedisKeyView({
                   await load();
                 } catch (e) {
                   toast.error("Failed to update score", {
-                    description: e instanceof Error ? e.message : String(e),
+                    description: errorMessage(e),
                   });
                 }
               }}
@@ -1151,7 +1152,7 @@ export function RedisKeyView({
                   await load();
                 } catch (e) {
                   toast.error("Failed to pop min", {
-                    description: e instanceof Error ? e.message : String(e),
+                    description: errorMessage(e),
                   });
                 }
               }}
@@ -1167,7 +1168,7 @@ export function RedisKeyView({
                   await load();
                 } catch (e) {
                   toast.error("Failed to pop max", {
-                    description: e instanceof Error ? e.message : String(e),
+                    description: errorMessage(e),
                   });
                 }
               }}

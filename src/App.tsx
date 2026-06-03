@@ -61,6 +61,7 @@ import {
   SavedQuery,
 } from "@/services/api";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/errors";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { UpdaterChecker } from "@/components/updater-checker";
@@ -534,20 +535,16 @@ export default function App() {
       fetchEditorDatabases(connectionId, initialDatabase),
       fetchEditorSchemaOverview(connectionId, initialDatabase),
     ]).then(([availableDatabasesResult, schemaOverviewResult]) => {
-      if (availableDatabasesResult.status === "rejected") {
+          if (availableDatabasesResult.status === "rejected") {
         console.error(
           "Failed to load editor databases:",
-          availableDatabasesResult.reason instanceof Error
-            ? availableDatabasesResult.reason.message
-            : String(availableDatabasesResult.reason),
+          errorMessage(availableDatabasesResult.reason),
         );
       }
       if (schemaOverviewResult.status === "rejected") {
         console.error(
           "Failed to load schema overview:",
-          schemaOverviewResult.reason instanceof Error
-            ? schemaOverviewResult.reason.message
-            : String(schemaOverviewResult.reason),
+          errorMessage(schemaOverviewResult.reason),
         );
       }
 
@@ -634,7 +631,7 @@ export default function App() {
           } catch (e) {
             console.error(
               "Failed to load editor databases for saved query",
-              e instanceof Error ? e.message : String(e),
+              errorMessage(e),
             );
           }
           database = resolvePreferredDatabase({
@@ -653,7 +650,7 @@ export default function App() {
             } catch (e) {
               console.error(
                 "Failed to load schema overview for saved query",
-                e instanceof Error ? e.message : String(e),
+                errorMessage(e),
               );
             }
           }
@@ -747,10 +744,10 @@ export default function App() {
       } catch (e) {
         if (schemaOverviewRequestKeysRef.current.get(tabId) !== requestKey)
           return;
-        const errorMessage = e instanceof Error ? e.message : String(e);
-        console.error("Failed to switch editor database", errorMessage);
+        const message = errorMessage(e);
+        console.error("Failed to switch editor database", message);
         toast.error(t("app.error.loadSchemaOverview"), {
-          description: errorMessage,
+          description: message,
         });
       }
     },
@@ -822,15 +819,15 @@ export default function App() {
         ),
       );
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error("execute_query failed:", errorMessage);
+      const message = errorMessage(e);
+      console.error("execute_query failed:", message);
       setTabs((prev) =>
         prev.map((t) =>
           applyQueryCompletionToTab(t, tabId, queryId, {
             data: [],
             columns: [],
             executionTime: "0ms",
-            error: errorMessage,
+            error: message,
           }),
         ),
       );
@@ -921,13 +918,13 @@ export default function App() {
         ),
       );
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error("get_table_data failed", errorMessage);
+      const message = errorMessage(e);
+      console.error("get_table_data failed", message);
       setTabs((prev) =>
         prev.map((t) => (t.id === tabId ? { ...t, isLoading: false } : t)),
       );
       toast.error(t("app.error.loadTableData"), {
-        description: errorMessage,
+        description: message,
       });
     }
   };
@@ -1163,7 +1160,7 @@ export default function App() {
       );
     } catch (e) {
       toast.error(t("app.error.exportFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -1191,7 +1188,7 @@ export default function App() {
       );
     } catch (e) {
       toast.error(t("app.error.exportFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -1384,10 +1381,10 @@ export default function App() {
         }),
       );
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error("handleTableRefresh failed", errorMessage);
+      const message = errorMessage(e);
+      console.error("handleTableRefresh failed", message);
       toast.error(t("app.error.refreshTable"), {
-        description: errorMessage,
+        description: message,
       });
     }
   };
@@ -1428,10 +1425,10 @@ export default function App() {
         }),
       );
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error("handlePageChange failed", errorMessage);
+      const message = errorMessage(e);
+      console.error("handlePageChange failed", message);
       toast.error(t("app.error.changePage"), {
-        description: errorMessage,
+        description: message,
       });
     }
   };
@@ -1473,10 +1470,10 @@ export default function App() {
         }),
       );
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error("handlePageSizeChange failed", errorMessage);
+      const message = errorMessage(e);
+      console.error("handlePageSizeChange failed", message);
       toast.error(t("app.error.changePageSize"), {
-        description: errorMessage,
+        description: message,
       });
     }
   };
@@ -1531,10 +1528,10 @@ export default function App() {
         }),
       );
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error("handleSortChange failed", errorMessage);
+      const message = errorMessage(e);
+      console.error("handleSortChange failed", message);
       toast.error(t("app.error.sortTable"), {
-        description: errorMessage,
+        description: message,
       });
     }
   };
@@ -1590,10 +1587,10 @@ export default function App() {
         }),
       );
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error("handleFilterChange failed", errorMessage);
+      const message = errorMessage(e);
+      console.error("handleFilterChange failed", message);
       toast.error(t("app.error.filterTable"), {
-        description: errorMessage,
+        description: message,
       });
     }
   };
@@ -1659,7 +1656,7 @@ export default function App() {
         );
       } catch (e) {
         toast.error(t("app.error.saveQuery"), {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
         throw e;
       }

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { errorMessage } from "@/lib/errors";
 
 interface RoutineMetadataViewProps {
   connectionId: number;
@@ -41,7 +42,7 @@ export function RoutineMetadataView({
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorMessage(e));
       })
       .finally(() => {
         if (cancelled) return;

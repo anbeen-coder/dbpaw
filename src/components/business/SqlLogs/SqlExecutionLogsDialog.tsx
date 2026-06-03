@@ -8,6 +8,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/errors";
 
 const SOURCE_LABELS: Record<string, string> = {
   sql_editor: "SQL Editor",
@@ -39,7 +40,7 @@ export function SqlExecutionLogsDropdown() {
       setLogs(items);
     } catch (e) {
       toast.error("Failed to load SQL logs", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setLoading(false);
@@ -57,7 +58,7 @@ export function SqlExecutionLogsDropdown() {
       toast.success("SQL copied");
     } catch (e) {
       toast.error("Copy failed", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   }, []);

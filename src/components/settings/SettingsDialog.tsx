@@ -37,6 +37,7 @@ import {
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { errorMessage } from "@/lib/errors";
 
 import {
   Dialog,
@@ -417,7 +418,7 @@ export function SettingsDialog({
       toast.success(t("settings.aiProviders.saveSuccess"));
     } catch (e) {
       toast.error(t("settings.aiProviders.saveFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -431,7 +432,7 @@ export function SettingsDialog({
       toast.success(t("settings.aiProviders.clearSuccess"));
     } catch (e) {
       toast.error(t("settings.aiProviders.clearFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -446,7 +447,7 @@ export function SettingsDialog({
       toast.success(t("settings.aiProviders.deleteSuccess"));
     } catch (e) {
       toast.error(t("settings.aiProviders.deleteFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setDeletingProviderId(null);

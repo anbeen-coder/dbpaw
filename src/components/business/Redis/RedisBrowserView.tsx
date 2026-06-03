@@ -40,6 +40,7 @@ import { cn } from "@/components/ui/utils";
 import { RedisKeyView } from "./RedisKeyView";
 import { isRedisClusterDatabaseList, parseMsetInput } from "./redis-utils";
 import { TYPE_COLORS, TYPE_DISPLAY_LABEL } from "./redis-type-colors";
+import { errorMessage } from "@/lib/errors";
 
 const SCAN_LIMIT = 200;
 
@@ -119,7 +120,7 @@ export function RedisBrowserView({
         setRequiresPattern(false);
       } catch (e) {
         toast.error("Failed to scan keys", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setIsLoading(false);
@@ -146,7 +147,7 @@ export function RedisBrowserView({
         }
       } catch (e) {
         toast.error("Failed to load Redis databases", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       }
     };
@@ -250,7 +251,7 @@ export function RedisBrowserView({
       void scan(pattern, "0", false);
     } catch (e) {
       toast.error("Batch operation failed", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setBatchLoading(false);
@@ -268,7 +269,7 @@ export function RedisBrowserView({
       setMgetDialogOpen(true);
     } catch (e) {
       toast.error("MGET failed", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setBatchLoading(false);
@@ -293,7 +294,7 @@ export function RedisBrowserView({
       void scan(pattern, "0", false);
     } catch (e) {
       toast.error("MSET failed", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setMsetLoading(false);
@@ -317,7 +318,7 @@ export function RedisBrowserView({
       setMsetImportText(content);
     } catch (e) {
       toast.error("Failed to read file", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };
@@ -693,7 +694,7 @@ export function RedisBrowserView({
                     }
                   } catch (e) {
                     toast.error("Export failed", {
-                      description: e instanceof Error ? e.message : String(e),
+                      description: errorMessage(e),
                     });
                   }
                 }}

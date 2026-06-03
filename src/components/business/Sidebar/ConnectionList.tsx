@@ -94,6 +94,7 @@ import { useCreateDatabase } from "./hooks/useCreateDatabase";
 import { CreateDatabaseDialog } from "./connection-list/CreateDatabaseDialog";
 import { TableExportDialog, DatabaseExportDialog } from "./connection-list/ExportDialogs";
 import { ImportConfirmDialog } from "./connection-list/ImportConfirmDialog";
+import { errorMessage } from "@/lib/errors";
 
 interface ConnectionListProps {
   onTableSelect?: (
@@ -569,7 +570,7 @@ export function ConnectionList({
       );
       setSavedQueriesByConnection(grouped);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       console.error("Failed to fetch saved queries for tree", message);
       toast.error(t("connection.toast.loadQueriesFailed"), {
         description: message,
@@ -621,7 +622,7 @@ export function ConnectionList({
       await handleRefreshDatabaseTables(connectionId, databaseName);
     } catch (e) {
       toast.error(`Failed to ${action} Elasticsearch index`, {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };

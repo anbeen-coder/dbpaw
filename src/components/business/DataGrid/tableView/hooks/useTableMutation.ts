@@ -3,6 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { api, isTauri } from "@/services/api";
 import type { TransferFormat } from "@/services/api";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/errors";
 
 interface UseTableMutationParams {
   tableContext?: {
@@ -63,7 +64,7 @@ export function useTableMutation({
         if (!filePath) return;
       } catch (e) {
         toast.error("Failed to open save dialog", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
         return;
       }
@@ -91,7 +92,7 @@ export function useTableMutation({
         });
       } catch (e) {
         toast.error("Export failed", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setIsExporting(false);

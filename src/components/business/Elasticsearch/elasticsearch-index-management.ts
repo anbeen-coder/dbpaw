@@ -1,5 +1,6 @@
 import { api } from "@/services/api";
 import type { ElasticsearchField } from "./types";
+import { errorMessage } from "@/lib/errors";
 
 export type ElasticsearchIndexAction = "refresh" | "open" | "close" | "delete";
 
@@ -20,7 +21,7 @@ export function parseElasticsearchIndexBody(raw: string): {
     }
     return { body };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    return { error: errorMessage(e) };
   }
 }
 

@@ -53,6 +53,7 @@ import {
   validateIndexDefs,
 } from "@/lib/sql-gen/tableValidation";
 import { IndexEditorSection } from "./IndexEditorSection";
+import { errorMessage } from "@/lib/errors";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -285,7 +286,7 @@ export function AlterTableView({
       onSuccess();
     } catch (e) {
       toast.error(t("alterTable.toast.error"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setIsExecuting(false);

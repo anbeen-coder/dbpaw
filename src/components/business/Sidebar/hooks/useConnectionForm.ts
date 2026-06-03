@@ -14,6 +14,7 @@ import { mapSavedConnection } from "./useConnectionCrud";
 import { supportsSSLCA } from "@/lib/driver-registry";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
+import { errorMessage } from "@/lib/errors";
 
 const defaultConnectionDriver: Driver = "postgres";
 
@@ -100,7 +101,7 @@ export function useConnectionForm(params: {
       return null;
     } catch (e) {
       toast.error(t("connection.toast.openFileDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
       return null;
     }
@@ -123,7 +124,7 @@ export function useConnectionForm(params: {
       setForm((f) => ({ ...f, sslCaCert: content }));
     } catch (e) {
       toast.error(t("connection.toast.readFileFailed"), {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };

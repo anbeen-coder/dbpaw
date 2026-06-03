@@ -24,6 +24,7 @@ import type {
   RedisGeoSearchResult,
   RedisKeyExtra,
 } from "@/services/api";
+import { errorMessage } from "@/lib/errors";
 
 interface ZSetMember {
   member: string;
@@ -114,7 +115,7 @@ export function RedisGeoViewer({
         }
       } catch (e) {
         toast.error("Failed to lookup coordinates", {
-          description: e instanceof Error ? e.message : String(e),
+          description: errorMessage(e),
         });
       } finally {
         setLoadingPos((prev) => {
@@ -158,7 +159,7 @@ export function RedisGeoViewer({
       onRefresh();
     } catch (e) {
       toast.error("Failed to add location", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setAdding(false);
@@ -183,7 +184,7 @@ export function RedisGeoViewer({
     } catch (e) {
       setDistResult(null);
       toast.error("Failed to calculate distance", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setDistLoading(false);
@@ -214,7 +215,7 @@ export function RedisGeoViewer({
     } catch (e) {
       setSearchResults(null);
       toast.error("Failed to search nearby locations", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     } finally {
       setSearchLoading(false);

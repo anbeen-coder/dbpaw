@@ -1,4 +1,4 @@
-import type { ReactNode, MouseEvent } from "react";
+import { memo, type ReactNode, type MouseEvent } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
 
 export interface TreeNodeProps {
@@ -20,7 +20,7 @@ export interface TreeNodeProps {
   actions?: ReactNode;
 }
 
-export function TreeNode({
+export const TreeNode = memo(function TreeNode({
   level,
   children,
   icon,
@@ -87,4 +87,4 @@ export function TreeNode({
       {isExpanded && children}
     </div>
   );
-}
+});

@@ -18,6 +18,7 @@ import {
   DEFAULT_ELASTICSEARCH_INDEX_BODY,
   parseElasticsearchIndexBody,
 } from "./elasticsearch-index-management";
+import { errorMessage } from "@/lib/errors";
 
 interface Props {
   open: boolean;
@@ -76,7 +77,7 @@ export function CreateElasticsearchIndexDialog({
       reset();
     } catch (e) {
       toast.error("Failed to create Elasticsearch index", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
       return;
     } finally {
@@ -87,7 +88,7 @@ export function CreateElasticsearchIndexDialog({
       await onCreated(index);
     } catch (e) {
       toast.error("Index created, but failed to refresh the index list", {
-        description: e instanceof Error ? e.message : String(e),
+        description: errorMessage(e),
       });
     }
   };

@@ -3,6 +3,7 @@ import { api } from "@/services/api";
 import type { ColumnInfo } from "@/services/api";
 import { cellValueToString, escapeSQL, formatSQLValue, formatInsertSQLValue, getQualifiedTableName, quoteIdent, isInsertColumnRequired, isClickHouseMergeTreeEngine, canMutateClickHouseTable, buildUpdateStatement, buildDeleteStatement } from "../utils";
 import type { ColumnAutocompleteOption } from "../columnAutocomplete";
+import { errorMessage } from "@/lib/errors";
 
 export interface PendingChange {
   rowIndex: number;
@@ -539,7 +540,7 @@ export function useCellEditing({
       await refreshAfterMutation();
     } catch (e) {
       setSaveError(
-        `Delete failed:\n${sql}\n  -> ${e instanceof Error ? e.message : String(e)}`,
+        `Delete failed:\n${sql}\n  -> ${errorMessage(e)}`,
       );
     } finally {
       setIsDeleting(false);
@@ -590,7 +591,7 @@ export function useCellEditing({
         );
       } catch (e) {
         errors.push(
-          `${sql}\n  -> ${e instanceof Error ? e.message : String(e)}`,
+          `${sql}\n  -> ${errorMessage(e)}`,
         );
       }
     }

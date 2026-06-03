@@ -45,8 +45,19 @@ function getErrorCategory(code: number): ParsedError['category'] {
 }
 
 /**
+ * Extract error message from unknown error value.
+ * Use this in catch blocks instead of `e instanceof Error ? e.message : String(e)`.
+ *
+ * @example
+ * try { ... } catch (e) { console.error(errorMessage(e)); }
+ */
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
  * Get user-friendly error message from error string.
- * 
+ *
  * @example
  * getFriendlyErrorMessage('[ERR-1001] timeout (check network)')
  * // 'Connection failed: timeout. check network'

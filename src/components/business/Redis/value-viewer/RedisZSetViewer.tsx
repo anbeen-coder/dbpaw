@@ -39,6 +39,7 @@ import type {
   RedisZRangeByScoreResult,
 } from "@/services/api";
 import { parseRedisZSetScore } from "../redis-utils";
+import { errorMessage } from "@/lib/errors";
 
 interface ZSetMember {
   member: string;
@@ -234,7 +235,7 @@ export function RedisZSetViewer({
     try {
       score = parseRedisZSetScore(editingScore);
     } catch (e) {
-      setScoreError(e instanceof Error ? e.message : String(e));
+      setScoreError(errorMessage(e));
       return;
     }
     onChange(value.map((m) => (m.member === member ? { member, score } : m)));
@@ -259,7 +260,7 @@ export function RedisZSetViewer({
     try {
       score = parseRedisZSetScore(newScore);
     } catch (e) {
-      setScoreError(e instanceof Error ? e.message : String(e));
+      setScoreError(errorMessage(e));
       return;
     }
     const existing = value.findIndex((item) => item.member === m);

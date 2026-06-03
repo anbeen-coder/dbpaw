@@ -113,6 +113,7 @@ import type { ColumnAutocompleteOption } from "./tableView/columnAutocomplete";
 import { useTableSort } from "./tableView/hooks/useTableSort";
 import { useTablePagination } from "./tableView/hooks/useTablePagination";
 import { useColumnState } from "./tableView/hooks/useColumnState";
+import { useCellSelection } from "./tableView/hooks/useCellSelection";
 import { toast } from "sonner";
 
 interface PendingChange {
@@ -483,22 +484,23 @@ export function TableView({
   >({});
 
   // --- Cell selection & editing state ---
-  const [selectedCell, setSelectedCell] = useState<{
-    row: number;
-    col: string;
-  } | null>(null);
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-  const [rowSelectionAnchor, setRowSelectionAnchor] = useState<number | null>(
-    null,
-  );
-  const [isRowSelecting, setIsRowSelecting] = useState(false);
-  const [cellSelectionRange, setCellSelectionRange] = useState<{
-    anchor: { row: number; colIndex: number };
-    tip: { row: number; colIndex: number };
-  } | null>(null);
-  const [, setIsCellSelecting] = useState(false);
-  const cellSelectionRangeRef = useRef(cellSelectionRange);
-  cellSelectionRangeRef.current = cellSelectionRange;
+  const {
+    selectedCell,
+    selectedCellRef,
+    setSelectedCell,
+    selectedRows,
+    selectedRowsRef,
+    setSelectedRows,
+    cellSelectionRange,
+    cellSelectionRangeRef,
+    handleCellClick: handleCellClickBase,
+    handleCellMouseDownForRange: handleCellMouseDownForRangeBase,
+    handleCellMouseMoveForRange,
+    handleCellMouseUpForRange,
+    handleIndexMouseDown,
+    handleIndexMouseEnter,
+    clearSelection,
+  } = useCellSelection();
   const [editingCell, setEditingCell] = useState<{
     row: number;
     col: string;
@@ -545,23 +547,12 @@ export function TableView({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const selectedCellRef = useRef<{ row: number; col: string } | null>(null);
-  const selectedRowsRef = useRef<Set<number>>(new Set());
   const editingCellRef = useRef<{ row: number; col: string } | null>(null);
-  const isCellSelectingRef = useRef(false);
   const commitEditRef = useRef<(() => void) | null>(null);
   const pendingChangesRef = useRef<Map<string, PendingChange>>(new Map());
   const editValueRef = useRef("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [contextMenuRow, setContextMenuRow] = useState<number | null>(null);
-
-  useEffect(() => {
-    selectedCellRef.current = selectedCell;
-  }, [selectedCell]);
-
-  useEffect(() => {
-    selectedRowsRef.current = selectedRows;
-  }, [selectedRows]);
 
   useEffect(() => {
     editingCellRef.current = editingCell;
@@ -766,17 +757,11 @@ export function TableView({
     setPendingChanges(new Map());
     setInsertDraftRows([]);
     setEditingCell(null);
-    selectedCellRef.current = null;
-    setSelectedCell(null);
-    const nextSelectedRows = new Set<number>();
-    selectedRowsRef.current = nextSelectedRows;
-    setSelectedRows(nextSelectedRows);
-    setRowSelectionAnchor(null);
-    setIsRowSelecting(false);
+    clearSelection();
     setDeleteDialogOpen(false);
     setIsDeleting(false);
     setSaveError(null);
-  }, [data, page]);
+  }, [data, page, clearSelection]);
 
   const isClickHouseDriver = tableContext?.driver === "clickhouse";
   const hasPrimaryKeys = primaryKeys.length > 0;
@@ -835,76 +820,18 @@ export function TableView({
       if (ec && (ec.row !== rowIndex || ec.col !== col)) {
         commitEditRef.current?.();
       }
-      const nextSelectedRows = new Set<number>();
-      selectedRowsRef.current = nextSelectedRows;
-      setSelectedRows(nextSelectedRows);
-      setRowSelectionAnchor(null);
-      setIsRowSelecting(false);
-      setCellSelectionRange(null);
-      setIsCellSelecting(false);
-      isCellSelectingRef.current = false;
-      const nextSelectedCell = { row: rowIndex, col };
-      selectedCellRef.current = nextSelectedCell;
-      setSelectedCell(nextSelectedCell);
+      handleCellClickBase(rowIndex, col);
     },
-    [],
-  );
-
-  // --- Cell range selection (drag to select) ---
-  const isCellInRange = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      const range = cellSelectionRange;
-      if (!range) return false;
-      const minRow = Math.min(range.anchor.row, range.tip.row);
-      const maxRow = Math.max(range.anchor.row, range.tip.row);
-      const minCol = Math.min(range.anchor.colIndex, range.tip.colIndex);
-      const maxCol = Math.max(range.anchor.colIndex, range.tip.colIndex);
-      return (
-        rowIndex >= minRow &&
-        rowIndex <= maxRow &&
-        colIndex >= minCol &&
-        colIndex <= maxCol
-      );
-    },
-    [cellSelectionRange],
+    [handleCellClickBase],
   );
 
   const handleCellMouseDownForRange = useCallback(
     (e: React.MouseEvent, rowIndex: number, colIndex: number) => {
-      if (e.button !== 0) return;
       if (editingCellRef.current) return;
-      e.preventDefault();
-      setIsCellSelecting(true);
-      isCellSelectingRef.current = true;
-      setCellSelectionRange({
-        anchor: { row: rowIndex, colIndex },
-        tip: { row: rowIndex, colIndex },
-      });
-      setSelectedCell({ row: rowIndex, col: columns[colIndex] });
-      selectedCellRef.current = { row: rowIndex, col: columns[colIndex] };
-      setSelectedRows(new Set());
-      selectedRowsRef.current = new Set();
+      handleCellMouseDownForRangeBase(e, rowIndex, colIndex, columns);
     },
-    [columns],
+    [handleCellMouseDownForRangeBase, columns],
   );
-
-  const handleCellMouseMoveForRange = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      if (!isCellSelectingRef.current) return;
-      setCellSelectionRange((prev) => {
-        if (!prev) return prev;
-        if (prev.tip.row === rowIndex && prev.tip.colIndex === colIndex)
-          return prev;
-        return { ...prev, tip: { row: rowIndex, colIndex } };
-      });
-    },
-    [],
-  );
-
-  const handleCellMouseUpForRange = useCallback(() => {
-    setIsCellSelecting(false);
-    isCellSelectingRef.current = false;
-  }, []);
 
   const handleCellDoubleClick = useCallback(
     (rowIndex: number, col: string, currentValue: any) => {
@@ -1017,44 +944,6 @@ export function TableView({
         });
     },
     [t],
-  );
-
-  const selectSingleRow = useCallback((rowIndex: number) => {
-    const nextSelectedRows = new Set([rowIndex]);
-    selectedRowsRef.current = nextSelectedRows;
-    setSelectedRows(nextSelectedRows);
-  }, []);
-
-  const selectRowRange = useCallback((anchor: number, current: number) => {
-    const start = Math.min(anchor, current);
-    const end = Math.max(anchor, current);
-    const next = new Set<number>();
-    for (let i = start; i <= end; i++) {
-      next.add(i);
-    }
-    selectedRowsRef.current = next;
-    setSelectedRows(next);
-  }, []);
-
-  const handleIndexMouseDown = useCallback(
-    (e: React.MouseEvent, rowIndex: number) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      selectedCellRef.current = null;
-      setSelectedCell(null);
-      setIsRowSelecting(true);
-      setRowSelectionAnchor(rowIndex);
-      selectSingleRow(rowIndex);
-    },
-    [selectSingleRow],
-  );
-
-  const handleIndexMouseEnter = useCallback(
-    (rowIndex: number) => {
-      if (!isRowSelecting || rowSelectionAnchor === null) return;
-      selectRowRange(rowSelectionAnchor, rowIndex);
-    },
-    [isRowSelecting, rowSelectionAnchor, selectRowRange],
   );
 
   // --- SQL generation & save ---
@@ -1750,16 +1639,6 @@ export function TableView({
     });
   }, [insertDraftRows, pendingFocusDraftId]);
 
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      setIsRowSelecting(false);
-    };
-    window.addEventListener("mouseup", handleGlobalMouseUp);
-    return () => {
-      window.removeEventListener("mouseup", handleGlobalMouseUp);
-    };
-  }, []);
-
   const match = useShortcutMatcher();
 
   useEffect(() => {
@@ -2375,7 +2254,7 @@ export function TableView({
                     const selected =
                       selectedCell?.row === rowIndex &&
                       selectedCell?.col === column;
-                    const inRange = isCellInRange(rowIndex, colIndex);
+                    const inRange = isCellInRange(rowIndex, colIndex, cellSelectionRange);
                     const matched =
                       normalizedSearchKeyword.length > 0 &&
                       matchedCellKeys.has(`${rowIndex}::${column}`);

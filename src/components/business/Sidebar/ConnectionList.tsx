@@ -4,11 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
-import { save, open } from "@tauri-apps/plugin-dialog";
-import { readTextFile } from "@tauri-apps/plugin-fs";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   Database,
   Table2 as TableIcon,
@@ -79,7 +77,6 @@ import type { DatabaseGroupConfig } from "@/lib/tree-adapters/types";
 import {
   getConnectionIcon,
   isMysqlFamilyDriver,
-  supportsSSLCA,
   supportsCreateDatabase,
   supportsSchemaBrowsing,
   getTreeConfig,
@@ -91,19 +88,14 @@ import { ConnectionDialog } from "./connection-list/ConnectionDialog";
 import { ImportDialog } from "./ImportDialog";
 import { ConnectionContextMenu } from "./ConnectionContextMenu";
 import {
-  buildFormFromConnection,
   getExportDefaultName,
   getExportFilter,
   renderConnectionStatusIndicator,
 } from "./connection-list/helpers";
-import { useConnectionCrud, mapSavedConnection } from "./hooks/useConnectionCrud";
+import { useConnectionCrud } from "./hooks/useConnectionCrud";
 import { useTreeDataFetching } from "./hooks/useTreeDataFetching";
+import { useConnectionForm } from "./hooks/useConnectionForm";
 import { useTranslation } from "react-i18next";
-import {
-  buildConnectionFormDefaults,
-  normalizeConnectionFormInput,
-} from "@/lib/connection-form/rules";
-import { validateConnectionFormInput } from "@/lib/connection-form/validate";
 import { CreateElasticsearchIndexDialog } from "@/components/business/Elasticsearch/CreateElasticsearchIndexDialog";
 import {
   elasticsearchIndexActionSuccessMessage,
@@ -243,8 +235,6 @@ const mssqlCollationOptions = [
   "Korean_Unicode_100_CI_AS",
   "Korean_Unicode_140_CI_AS",
 ];
-
-const defaultConnectionDriver: Driver = "postgres";
 
 interface ConnectionListProps {
   onTableSelect?: (
@@ -419,6 +409,39 @@ export function ConnectionList({
     getAdapter: (connection) => getDatasourceTreeAdapter(connection),
   });
 
+  const {
+    isDialogOpen,
+    setIsDialogOpen,
+    isImportDialogOpen,
+    setIsImportDialogOpen,
+    dialogMode,
+    createStep,
+    setCreateStep,
+    form,
+    setForm,
+    validationMsg,
+    testMsg,
+    requiredOk,
+    isTesting,
+    isConnecting,
+    isSavingEdit,
+    handleTestConnection,
+    handleDialogSubmit,
+    closeConnectionDialog,
+    openCreateDialog,
+    openEditDialog,
+    handleCreateDriverSelect,
+    handlePickSslCaCertFile,
+    handlePickSshKeyFile,
+    handlePickDatabaseFile,
+    pickSingleFile,
+  } = useConnectionForm({
+    connections,
+    setConnections,
+    fetchConnections,
+    onConnect,
+  });
+
   // Update refs every render so effects can read latest values without
   // listing them as deps (avoids re-firing on every connection state update).
   connectionsRef.current = connections;
@@ -438,20 +461,10 @@ export function ConnectionList({
     databaseName?: string | null;
     schemaName?: string | null;
     type: "connection" | "database" | "schema";
-  }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection" });
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
-  const [createStep, setCreateStep] = useState<"type" | "details">("type");
-  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
-    null,
-  );
+  }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection"   });
   const loadingSpinner = (
     <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
   );
-  const [isTesting, setIsTesting] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isCreatingDatabase, setIsCreatingDatabase] = useState(false);
   const [isImportingSql, setIsImportingSql] = useState(false);
   const [createDbConnectionId, setCreateDbConnectionId] = useState<
@@ -478,15 +491,6 @@ export function ConnectionList({
   const [mysqlCollations, setMysqlCollations] = useState<string[]>([]);
   const [loadingMysqlOptions, setLoadingMysqlOptions] = useState(false);
   const [isLoadingQueries, setIsLoadingQueries] = useState(false);
-  const [testMsg, setTestMsg] = useState<{
-    ok: boolean;
-    text: string;
-    latency?: number;
-  } | null>(null);
-  const [validationMsg, setValidationMsg] = useState<string | null>(null);
-  const [form, setForm] = useState<ConnectionForm>(
-    buildConnectionFormDefaults(defaultConnectionDriver),
-  );
   const [searchTerm, setSearchTerm] = useState("");
   const { loadRedisKeysPage } = useRedisKeys({
     connectionsRef,
@@ -715,98 +719,6 @@ export function ConnectionList({
     }
   }, [searchTerm, filteredConnections, showSavedQueriesInTree]);
 
-  const normalizedForm = useMemo(
-    () => normalizeConnectionFormInput(form),
-    [form],
-  );
-  const validationIssues = useMemo(
-    () =>
-      validateConnectionFormInput(
-        normalizedForm,
-        dialogMode === "edit" ? "edit" : "create",
-      ),
-    [normalizedForm, dialogMode],
-  );
-  const requiredOk = useMemo(() => {
-    return validationIssues.length === 0;
-  }, [validationIssues]);
-
-  const validateSslSettings = () => {
-    if (!form.ssl || !supportsSSLCA(form.driver)) {
-      return null;
-    }
-    if (form.sslMode === "verify_ca" && !(form.sslCaCert || "").trim()) {
-      return t("connection.dialog.sslValidation.caRequired");
-    }
-    return null;
-  };
-
-  const getFirstValidationMessage = () => {
-    if (validationIssues.length === 0) {
-      return null;
-    }
-    const issue = validationIssues[0];
-    return t(issue.key);
-  };
-
-  const pickSingleFile = async (params: {
-    title: string;
-    filters?: { name: string; extensions: string[] }[];
-  }) => {
-    if (!isTauri()) {
-      toast.info(t("connection.toast.fileBrowserDesktopOnly"));
-      return null;
-    }
-    try {
-      const selected = await open({
-        title: params.title,
-        multiple: false,
-        filters: params.filters,
-      });
-      if (selected && typeof selected === "string") {
-        return selected;
-      }
-      return null;
-    } catch (e) {
-      toast.error(t("connection.toast.openFileDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-      return null;
-    }
-  };
-
-  const handlePickSslCaCertFile = async () => {
-    const selectedPath = await pickSingleFile({
-      title: t("connection.dialog.sslCaFileDialogTitle"),
-      filters: [
-        {
-          name: t("connection.dialog.fileFilterCert"),
-          extensions: ["pem", "crt", "cer"],
-        },
-        { name: t("connection.dialog.fileFilterAll"), extensions: ["*"] },
-      ],
-    });
-    if (!selectedPath) return;
-    try {
-      const content = await readTextFile(selectedPath);
-      setForm((f) => ({ ...f, sslCaCert: content }));
-    } catch (e) {
-      toast.error(t("connection.toast.readFileFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
-  const handlePickSshKeyFile = async () => {
-    const selectedPath = await pickSingleFile({
-      title: t("connection.dialog.sshKeyFileDialogTitle"),
-      // SSH private keys are often extensionless (for example ~/.ssh/id_rsa),
-      // so filtering by extension can hide valid keys in the native picker.
-    });
-    if (!selectedPath) return;
-    setForm((f) => ({ ...f, sshKeyPath: selectedPath }));
-  };
-
   useEffect(() => {
     fetchConnections();
   }, []);
@@ -815,33 +727,6 @@ export function ConnectionList({
     if (!showSavedQueriesInTree) return;
     void fetchSavedQueriesByConnection();
   }, [showSavedQueriesInTree, lastUpdated]);
-
-  const handlePickDatabaseFile = async (driver: Driver) => {
-    const selected = await pickSingleFile({
-      title:
-        driver === "duckdb"
-          ? t("connection.dialog.fileDialogTitleDuckdb")
-          : t("connection.dialog.fileDialogTitle"),
-      filters: [
-        {
-          name:
-            driver === "duckdb"
-              ? t("connection.dialog.fileFilterDuckdb")
-              : t("connection.dialog.fileFilterSqlite"),
-          extensions:
-            driver === "duckdb"
-              ? ["duckdb", "db"]
-              : ["sqlite", "db", "sqlite3", "db3"],
-        },
-        {
-          name: t("connection.dialog.fileFilterAll"),
-          extensions: ["*"],
-        },
-      ],
-    });
-    if (!selected) return;
-    setForm((current) => ({ ...current, filePath: selected }));
-  };
 
   const fetchSavedQueriesByConnection = async () => {
     setIsLoadingQueries(true);
@@ -1639,146 +1524,6 @@ export function ConnectionList({
     } finally {
       setIsCreatingDatabase(false);
     }
-  };
-
-  const handleTestConnection = async () => {
-    try {
-      setValidationMsg(null);
-      const fieldValidationError = getFirstValidationMessage();
-      if (fieldValidationError) {
-        setValidationMsg(fieldValidationError);
-        return;
-      }
-      const sslError = validateSslSettings();
-      if (sslError) {
-        setValidationMsg(sslError);
-        return;
-      }
-      setIsTesting(true);
-      setTestMsg(null);
-      const res = await api.connections.testEphemeral(normalizedForm);
-      setTestMsg({
-        ok: res.success,
-        text: res.message,
-        latency: res.latencyMs,
-      });
-    } catch (e: any) {
-      setTestMsg({ ok: false, text: String(e?.message || e) });
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  const handleConnect = async () => {
-    if (!requiredOk) {
-      setValidationMsg(getFirstValidationMessage());
-      return;
-    }
-    setValidationMsg(null);
-    const sslError = validateSslSettings();
-    if (sslError) {
-      setValidationMsg(sslError);
-      return;
-    }
-    setIsConnecting(true);
-    try {
-      const res = await api.connections.create(normalizedForm);
-      setConnections((prev) => [
-        mapSavedConnection(res, t("common.unknown")),
-        ...prev,
-      ]);
-      setIsDialogOpen(false);
-      setCreateStep("type");
-      setForm(buildConnectionFormDefaults(defaultConnectionDriver));
-      if (onConnect) onConnect(normalizedForm);
-    } catch (e: any) {
-      setValidationMsg(String(e?.message || e));
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingConnectionId) return;
-    if (!requiredOk) {
-      setValidationMsg(getFirstValidationMessage());
-      return;
-    }
-
-    setValidationMsg(null);
-    const sslError = validateSslSettings();
-    if (sslError) {
-      setValidationMsg(sslError);
-      return;
-    }
-    setIsSavingEdit(true);
-    try {
-      await api.connections.update(Number(editingConnectionId), normalizedForm);
-      await fetchConnections();
-      setIsDialogOpen(false);
-      setDialogMode("create");
-      setCreateStep("type");
-      setEditingConnectionId(null);
-      setForm(buildConnectionFormDefaults(defaultConnectionDriver));
-    } catch (e: any) {
-      setValidationMsg(String(e?.message || e));
-    } finally {
-      setIsSavingEdit(false);
-    }
-  };
-
-  const handleDialogSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (dialogMode === "edit") {
-      void handleSaveEdit();
-      return;
-    }
-    void handleConnect();
-  };
-
-  const resetConnectionDialogFeedback = () => {
-    setValidationMsg(null);
-    setTestMsg(null);
-  };
-
-  const closeConnectionDialog = () => {
-    setIsDialogOpen(false);
-    setDialogMode("create");
-    setCreateStep("type");
-    setEditingConnectionId(null);
-    resetConnectionDialogFeedback();
-    setForm(buildConnectionFormDefaults(defaultConnectionDriver));
-  };
-
-  const openCreateDialog = () => {
-    setDialogMode("create");
-    setCreateStep("type");
-    setEditingConnectionId(null);
-    resetConnectionDialogFeedback();
-    setForm(buildConnectionFormDefaults(defaultConnectionDriver));
-    setIsDialogOpen(true);
-  };
-
-  const openEditDialog = (connectionId: string) => {
-    const conn = connections.find((c) => c.id === connectionId);
-    if (!conn) return;
-
-    setDialogMode("edit");
-    setCreateStep("details");
-    setEditingConnectionId(connectionId);
-    resetConnectionDialogFeedback();
-    setForm(buildFormFromConnection(conn));
-    setIsDialogOpen(true);
-  };
-
-  const handleCreateDriverSelect = (driver: Driver) => {
-    setForm((current) =>
-      buildConnectionFormDefaults(driver, {
-        name: current.name,
-      }),
-    );
-    resetConnectionDialogFeedback();
-    setCreateStep("details");
   };
 
   const handleTableExportDialog = (

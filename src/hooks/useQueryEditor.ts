@@ -262,7 +262,7 @@ export function useQueryEditor({
     async (tabId: string, sql: string) => {
       const tab = tabs.find((t) => t.id === tabId);
       if (!tab || !tab.connectionId) {
-        alert(t("app.error.selectConnectionFirst"));
+        toast.info(t("app.error.selectConnectionFirst"));
         return;
       }
 

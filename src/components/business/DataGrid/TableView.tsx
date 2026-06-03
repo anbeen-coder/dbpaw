@@ -74,7 +74,6 @@ import { isEditableTarget } from "@/lib/keyboard";
 import { useShortcutMatcher } from "@/contexts/ShortcutsContext";
 import {
   buildFilterExpression,
-  collectSearchMatches,
   createSingleAndDoubleClickHandler,
   cellValueToString,
   formatCellValue,
@@ -108,6 +107,7 @@ import { useCellSelection } from "./tableView/hooks/useCellSelection";
 import { useCellEditing } from "./tableView/hooks/useCellEditing";
 import type { PendingChange } from "./tableView/hooks/useCellEditing";
 import { useTableMutation } from "./tableView/hooks/useTableMutation";
+import { useTableSearch } from "./tableView/hooks/useTableSearch";
 import { toast } from "sonner";
 
 function isCellInRange(
@@ -482,14 +482,10 @@ export function TableView({
     handleIndexMouseEnter,
     clearSelection,
   } = useCellSelection();
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchKeyword, setSearchKeyword] = useState("");
-  const [searchCursorIndex, setSearchCursorIndex] = useState(-1);
   const [complexViewer, setComplexViewer] = useState<{
     value: unknown;
     columnName: string;
   } | null>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [contextMenuRow, setContextMenuRow] = useState<number | null>(null);
@@ -614,6 +610,31 @@ export function TableView({
     pageSizeInput,
     page,
     pageSize,
+  });
+
+  // --- Search hook ---
+  const {
+    isSearchOpen,
+    setIsSearchOpen,
+    searchKeyword,
+    setSearchKeyword,
+    searchCursorIndex,
+    searchInputRef,
+    normalizedSearchKeyword,
+    searchMatches,
+    matchedRows,
+    matchedCellKeys,
+    currentSearchMatch,
+    focusSearchInput,
+    handleSearchEnter,
+  } = useTableSearch({
+    currentData,
+    columns,
+    editingCell,
+    commitEdit,
+    getCellDisplayValue,
+    setSelectedCell,
+    containerRef,
   });
 
   // Virtual scrolling — only render visible rows
@@ -886,81 +907,8 @@ export function TableView({
     [columns, currentData, getCellDisplayValue, canUpdateDelete, primaryKeys, tableContext],
   );
 
-  const normalizedSearchKeyword = searchKeyword.trim().toLowerCase();
-
-  const searchMatches = useMemo(() => {
-    return collectSearchMatches(
-      currentData,
-      columns,
-      normalizedSearchKeyword,
-      getCellDisplayValue,
-    );
-  }, [normalizedSearchKeyword, currentData, columns, getCellDisplayValue]);
-
-  const matchedRows = useMemo(() => {
-    const rows = new Set<number>();
-    searchMatches.forEach((match) => {
-      rows.add(match.row);
-    });
-    return rows;
-  }, [searchMatches]);
-
-  const matchedCellKeys = useMemo(() => {
-    const keys = new Set<string>();
-    searchMatches.forEach((match) => {
-      keys.add(`${match.row}::${match.col}`);
-    });
-    return keys;
-  }, [searchMatches]);
-
-  const currentSearchMatch =
-    searchCursorIndex >= 0 && searchCursorIndex < searchMatches.length
-      ? searchMatches[searchCursorIndex]
-      : null;
-
   // Correctly calculate start index for display
   const startIndex = (page - 1) * pageSize;
-
-  const focusSearchInput = useCallback(() => {
-    setTimeout(() => searchInputRef.current?.focus(), 0);
-  }, []);
-
-  const jumpToSearchMatch = useCallback(
-    (matchIndex: number) => {
-      if (!searchMatches.length) return;
-      const safeIndex =
-        ((matchIndex % searchMatches.length) + searchMatches.length) %
-        searchMatches.length;
-      const nextMatch = searchMatches[safeIndex];
-
-      if (editingCell) {
-        commitEdit();
-      }
-
-      setSelectedCell({ row: nextMatch.row, col: nextMatch.col });
-      setSearchCursorIndex(safeIndex);
-
-      requestAnimationFrame(() => {
-        const row = nextMatch.row;
-        const colIndex = nextMatch.colIndex;
-        const target = containerRef.current?.querySelector<HTMLElement>(
-          `td[data-row-index="${row}"][data-col-index="${colIndex}"]`,
-        );
-        target?.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-          inline: "nearest",
-        });
-      });
-    },
-    [searchMatches, editingCell, commitEdit],
-  );
-
-  const handleSearchEnter = useCallback(() => {
-    if (!searchMatches.length) return;
-    const nextIndex = searchCursorIndex < 0 ? 0 : searchCursorIndex + 1;
-    jumpToSearchMatch(nextIndex);
-  }, [searchMatches, searchCursorIndex, jumpToSearchMatch]);
 
   useEffect(() => {
     const clickStates = headerClickStateRef.current;
@@ -973,26 +921,6 @@ export function TableView({
       });
     };
   }, []);
-
-  useEffect(() => {
-    setSearchCursorIndex(-1);
-  }, [normalizedSearchKeyword]);
-
-  useEffect(() => {
-    if (!searchMatches.length) {
-      setSearchCursorIndex(-1);
-      return;
-    }
-    if (searchCursorIndex >= searchMatches.length) {
-      setSearchCursorIndex(0);
-    }
-  }, [searchMatches, searchCursorIndex]);
-
-  useEffect(() => {
-    if (isSearchOpen) {
-      focusSearchInput();
-    }
-  }, [isSearchOpen, focusSearchInput]);
 
   useEffect(() => {
     if (!pendingFocusDraftId) return;

@@ -157,7 +157,7 @@ export function Sidebar({
             {t("sidebar.tabs.queries")}
           </TabsTrigger>
         </TabsList>
-        <div className="flex-1 overflow-hidden mt-2">
+        <div className="flex-1 overflow-hidden mt-2 relative">
           <TabsContent
             value="connections"
             forceMount

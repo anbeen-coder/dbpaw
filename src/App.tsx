@@ -92,7 +92,7 @@ import {
 } from "@/lib/sqlEditorDatabase";
 import { getSetting } from "@/services/store";
 
-interface TabItem {
+export interface TabItem {
   id: string;
   type:
     | "editor"

@@ -112,6 +112,7 @@ import { ComplexValueViewer } from "./ComplexValueViewer";
 import { ColumnAutocompleteInput } from "./tableView/ColumnAutocompleteInput";
 import type { ColumnAutocompleteOption } from "./tableView/columnAutocomplete";
 import { useTableSort } from "./tableView/hooks/useTableSort";
+import { useTablePagination } from "./tableView/hooks/useTablePagination";
 import { toast } from "sonner";
 
 interface PendingChange {
@@ -469,11 +470,6 @@ export function TableView({
   showZebraStripes = false,
 }: TableViewProps) {
   const { t } = useTranslation();
-  const PAGE_SIZE_OPTIONS = ["10", "50", "100", "200", "500", "1000"] as const;
-  const [whereInput, setWhereInput] = useState(controlledFilter || "");
-  const [orderByInput, setOrderByInput] = useState(controlledOrderBy || "");
-  const [pageInput, setPageInput] = useState(String(page));
-  const [pageSizeInput, setPageSizeInput] = useState(String(pageSize));
   const [viewMode, setViewMode] = useState<"table" | "column">("table");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const columnWidthsRef = useRef<Record<string, number>>({});
@@ -506,27 +502,6 @@ export function TableView({
       setColumnWidths((prev) => ({ ...prev, ...newWidths }));
     }
   }, [data, columns]);
-
-  useEffect(() => {
-    setWhereInput(controlledFilter || "");
-  }, [controlledFilter]);
-
-  useEffect(() => {
-    setOrderByInput(controlledOrderBy || "");
-  }, [controlledOrderBy]);
-
-  useEffect(() => {
-    setPageInput(String(page));
-  }, [page]);
-
-  useEffect(() => {
-    const next = String(pageSize);
-    setPageSizeInput(
-      PAGE_SIZE_OPTIONS.includes(next as (typeof PAGE_SIZE_OPTIONS)[number])
-        ? next
-        : "100",
-    );
-  }, [pageSize]);
 
   // --- Cell selection & editing state ---
   const [selectedCell, setSelectedCell] = useState<{
@@ -631,6 +606,51 @@ export function TableView({
     controlledSortColumn,
     controlledSortDirection,
     onSortChange,
+  });
+
+  // Client-side sorting (used in uncontrolled mode, e.g. SQL query results)
+  const sortedData = useMemo(() => {
+    if (isControlledSort || !activeSortColumn || !activeSortDirection) {
+      return data;
+    }
+    return sortRows(data, activeSortColumn, activeSortDirection);
+  }, [data, isControlledSort, activeSortColumn, activeSortDirection]);
+
+  // If external pagination is used (onPageChange provided), we assume data is already the current page
+  // Otherwise we slice locally
+  const currentData = useMemo(
+    () =>
+      onPageChange
+        ? sortedData
+        : sortedData.slice((page - 1) * pageSize, page * pageSize),
+    [onPageChange, page, pageSize, sortedData],
+  );
+
+  // If using external pagination, totalPages is based on total count
+  // Otherwise fallback to filtered data length
+  const totalPages = Math.ceil((total || sortedData.length) / pageSize);
+
+  const {
+    whereInput,
+    setWhereInput,
+    orderByInput,
+    setOrderByInput,
+    pageInput,
+    setPageInput,
+    pageSizeInput,
+    handlePageInputCommit,
+    handlePageSizeChange,
+    handlePrevPage,
+    handleNextPage,
+    PAGE_SIZE_OPTIONS,
+  } = useTablePagination({
+    page,
+    pageSize,
+    controlledFilter,
+    controlledOrderBy,
+    totalPages,
+    onPageChange,
+    onPageSizeChange,
   });
 
   // Refs for table header cells to measure actual width
@@ -820,28 +840,6 @@ export function TableView({
   ]);
   const pendingMutationCount = pendingChanges.size + insertDraftRows.length;
   const hasPendingChanges = pendingMutationCount > 0;
-
-  // Client-side sorting (used in uncontrolled mode, e.g. SQL query results)
-  const sortedData = useMemo(() => {
-    if (isControlledSort || !activeSortColumn || !activeSortDirection) {
-      return data;
-    }
-    return sortRows(data, activeSortColumn, activeSortDirection);
-  }, [data, isControlledSort, activeSortColumn, activeSortDirection]);
-
-  // If external pagination is used (onPageChange provided), we assume data is already the current page
-  // Otherwise we slice locally
-  const currentData = useMemo(
-    () =>
-      onPageChange
-        ? sortedData
-        : sortedData.slice((page - 1) * pageSize, page * pageSize),
-    [onPageChange, page, pageSize, sortedData],
-  );
-
-  // If using external pagination, totalPages is based on total count
-  // Otherwise fallback to filtered data length
-  const totalPages = Math.ceil((total || sortedData.length) / pageSize);
 
   // Virtual scrolling — only render visible rows
   const virtualizer = useVirtualizer({
@@ -1737,38 +1735,6 @@ export function TableView({
     const nextIndex = searchCursorIndex < 0 ? 0 : searchCursorIndex + 1;
     jumpToSearchMatch(nextIndex);
   }, [searchMatches, searchCursorIndex, jumpToSearchMatch]);
-
-  const handlePrevPage = () => {
-    if (page > 1) {
-      onPageChange?.(page - 1);
-    }
-  };
-
-  const handleNextPage = () => {
-    if (page < totalPages) {
-      onPageChange?.(page + 1);
-    }
-  };
-
-  const handlePageInputCommit = () => {
-    const parsed = Number.parseInt(pageInput, 10);
-    const maxPage = Math.max(totalPages, 1);
-    const nextPage = Number.isNaN(parsed)
-      ? page
-      : Math.min(Math.max(parsed, 1), maxPage);
-    setPageInput(String(nextPage));
-    if (nextPage !== page) {
-      onPageChange?.(nextPage);
-    }
-  };
-
-  const handlePageSizeChange = (value: string) => {
-    setPageSizeInput(value);
-    const nextPageSize = Number.parseInt(value, 10);
-    if (!Number.isNaN(nextPageSize) && nextPageSize !== pageSize) {
-      onPageSizeChange?.(nextPageSize);
-    }
-  };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!resizingRef.current) return;

@@ -10,8 +10,6 @@ fn home_dir() -> PathBuf {
         .unwrap_or_default()
 }
 
-const DEFAULT_PORT: u16 = 3100;
-const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_TRANSPORT: &str = "stdio";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

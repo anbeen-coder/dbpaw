@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use crate::db::local::LocalDb;
 use crate::state::AppState;
 use std::sync::Arc;

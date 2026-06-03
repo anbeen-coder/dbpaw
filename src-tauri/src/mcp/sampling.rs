@@ -1,5 +1,3 @@
-use super::types::*;
-
 pub struct SamplingHandler;
 
 impl SamplingHandler {

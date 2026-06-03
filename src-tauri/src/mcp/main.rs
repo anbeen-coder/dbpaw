@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             server.run().await?;
         }
         "http" => {
-            let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
+            let _addr: SocketAddr = format!("{}:{}", host, port).parse()?;
             let http_transport = HttpTransport::new();
             let mut server = McpServer::with_transport(state, Box::new(http_transport));
             tokio::select! {

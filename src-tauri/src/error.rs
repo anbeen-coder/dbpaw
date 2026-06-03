@@ -32,6 +32,7 @@ pub mod codes {
 }
 
 /// Structured error type with numeric codes
+#[derive(Debug)]
 pub enum AppError {
     /// Connection-related errors
     ConnectionFailed {
@@ -92,5 +93,25 @@ impl fmt::Display for AppError {
 impl From<AppError> for String {
     fn from(err: AppError) -> Self {
         err.to_string()
+    }
+}
+
+impl std::error::Error for AppError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            AppError::ConnectionFailed { source, .. } => {
+                source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
+            }
+            AppError::Query { source, .. } => {
+                source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
+            }
+            AppError::Ai { source, .. } => {
+                source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
+            }
+            AppError::Internal { source, .. } => {
+                source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
+            }
+            _ => None,
+        }
     }
 }

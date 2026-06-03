@@ -35,25 +35,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -100,7 +83,6 @@ import type {
   SchemaInfo,
   DatabaseInfo,
   DatabaseExportFormat,
-  TableExportFormat,
   Connection,
   SelectedTableNode,
   DatasourceTreeAdapter,
@@ -109,6 +91,9 @@ import { useTreeExpansion } from "./hooks/useTreeExpansion";
 import { useRedisKeys } from "./hooks/useRedisKeys";
 import { useImportExport } from "./hooks/useImportExport";
 import { useCreateDatabase } from "./hooks/useCreateDatabase";
+import { CreateDatabaseDialog } from "./connection-list/CreateDatabaseDialog";
+import { TableExportDialog, DatabaseExportDialog } from "./connection-list/ExportDialogs";
+import { ImportConfirmDialog } from "./connection-list/ImportConfirmDialog";
 
 interface ConnectionListProps {
   onTableSelect?: (
@@ -318,7 +303,6 @@ export function ConnectionList({
   const {
     isCreatingDatabase,
     isCreateDbDialogOpen,
-    setIsCreateDbDialogOpen,
     showCreateDbAdvanced,
     setShowCreateDbAdvanced,
     createDbValidationMsg,
@@ -334,10 +318,6 @@ export function ConnectionList({
     openCreateDatabaseDialog,
     handleCreateDatabase,
     closeCreateDbDialog,
-    createDbNoneOption,
-    postgresEncodingOptions,
-    postgresLocaleOptions,
-    mssqlCollationOptions,
   } = useCreateDatabase({
     connections,
     setExpandedConnections,
@@ -2214,309 +2194,23 @@ export function ConnectionList({
           }
         }}
       />
-      <Dialog
-        open={isCreateDbDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeCreateDbDialog();
-          } else {
-            setIsCreateDbDialogOpen(true);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("connection.createDbDialog.title")}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="create-db-name">
-                {t("connection.createDbDialog.fields.name")}{" "}
-                <span className="text-red-600">*</span>
-              </Label>
-              <Input
-                id="create-db-name"
-                value={createDbForm.name}
-                onChange={(e) =>
-                  setCreateDbForm((prev) => ({ ...prev, name: e.target.value }))
-                }
-                placeholder={t("connection.createDbDialog.placeholders.name")}
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="create-db-if-not-exists"
-                checked={createDbForm.ifNotExists}
-                onCheckedChange={(checked) =>
-                  setCreateDbForm((prev) => ({
-                    ...prev,
-                    ifNotExists: checked === true,
-                  }))
-                }
-              />
-              <Label htmlFor="create-db-if-not-exists">
-                {t("connection.createDbDialog.fields.ifNotExists")}
-              </Label>
-            </div>
-            <div>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-8 px-0"
-                onClick={() => setShowCreateDbAdvanced((prev) => !prev)}
-              >
-                {showCreateDbAdvanced
-                  ? t("connection.createDbDialog.hideAdvanced")
-                  : t("connection.createDbDialog.showAdvanced")}
-              </Button>
-            </div>
-            {showCreateDbAdvanced && (
-              <div className="border p-3 rounded-md space-y-3 bg-muted/20">
-                {isMySqlFamilyCreateDb && (
-                  <>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-charset">
-                        {t("connection.createDbDialog.fields.charset")}
-                      </Label>
-                      <Select
-                        value={createDbForm.charset || createDbNoneOption}
-                        disabled={loadingMysqlOptions}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            charset: v === createDbNoneOption ? "" : v,
-                            collation: "",
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-charset">
-                          <SelectValue
-                            placeholder={
-                              loadingMysqlOptions
-                                ? t("common.loading")
-                                : t(
-                                    "connection.createDbDialog.placeholders.charset",
-                                  )
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {mysqlCharsets.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-collation">
-                        {t("connection.createDbDialog.fields.collation")}
-                      </Label>
-                      <Select
-                        value={createDbForm.collation || createDbNoneOption}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            collation: v === createDbNoneOption ? "" : v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-collation">
-                          <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.collation",
-                            )}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {mysqlCollations.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
-                {isPostgresCreateDb && (
-                  <>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-encoding">
-                        {t("connection.createDbDialog.fields.encoding")}
-                      </Label>
-                      <Select
-                        value={createDbForm.encoding || createDbNoneOption}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            encoding: v === createDbNoneOption ? "" : v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-encoding">
-                          <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.encoding",
-                            )}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {postgresEncodingOptions.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-lc-collate">
-                        {t("connection.createDbDialog.fields.lcCollate")}
-                      </Label>
-                      <Select
-                        value={createDbForm.lcCollate || createDbNoneOption}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            lcCollate: v === createDbNoneOption ? "" : v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-lc-collate">
-                          <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.lcCollate",
-                            )}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {postgresLocaleOptions.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-lc-ctype">
-                        {t("connection.createDbDialog.fields.lcCtype")}
-                      </Label>
-                      <Select
-                        value={createDbForm.lcCtype || createDbNoneOption}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            lcCtype: v === createDbNoneOption ? "" : v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-lc-ctype">
-                          <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.lcCtype",
-                            )}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {postgresLocaleOptions.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
-                {isMssqlCreateDb && (
-                  <div className="grid gap-2">
-                    <Label htmlFor="create-db-collation">
-                      {t("connection.createDbDialog.fields.collation")}
-                    </Label>
-                    <Select
-                      value={createDbForm.collation || createDbNoneOption}
-                      onValueChange={(v) =>
-                        setCreateDbForm((prev) => ({
-                          ...prev,
-                          collation: v === createDbNoneOption ? "" : v,
-                        }))
-                      }
-                    >
-                      <SelectTrigger id="create-db-collation">
-                        <SelectValue
-                          placeholder={t(
-                            "connection.createDbDialog.placeholders.collation",
-                          )}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={createDbNoneOption}>
-                          {t("connection.createDbDialog.defaultOption")}
-                        </SelectItem>
-                        {mssqlCollationOptions.map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {opt}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-            )}
-            {createDbValidationMsg && (
-              <Alert variant="destructive">
-                <AlertTitle>
-                  {t("connection.dialog.validationFailed")}
-                </AlertTitle>
-                <AlertDescription>{createDbValidationMsg}</AlertDescription>
-              </Alert>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isCreatingDatabase}
-                onClick={() => setIsCreateDbDialogOpen(false)}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="button"
-                disabled={isCreatingDatabase}
-                onClick={() => void handleCreateDatabase()}
-              >
-                {isCreatingDatabase ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("connection.createDbDialog.creating")}
-                  </>
-                ) : (
-                  t("connection.createDbDialog.confirm")
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CreateDatabaseDialog
+        isOpen={isCreateDbDialogOpen}
+        onClose={closeCreateDbDialog}
+        form={createDbForm}
+        setForm={setCreateDbForm}
+        showAdvanced={showCreateDbAdvanced}
+        setShowAdvanced={setShowCreateDbAdvanced}
+        validationMsg={createDbValidationMsg}
+        isCreating={isCreatingDatabase}
+        mysqlCharsets={mysqlCharsets}
+        mysqlCollations={mysqlCollations}
+        loadingMysqlOptions={loadingMysqlOptions}
+        isMySqlFamily={isMySqlFamilyCreateDb}
+        isPostgres={isPostgresCreateDb}
+        isMssql={isMssqlCreateDb}
+        onCreate={handleCreateDatabase}
+      />
       <AlertDialog
         open={!!deleteTargetConnectionId}
         onOpenChange={(open) => {
@@ -2553,269 +2247,51 @@ export function ConnectionList({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog
-        open={isImportConfirmOpen}
-        onOpenChange={(open) => {
-          setIsImportConfirmOpen(open);
-          if (!open && !isImportingSql) {
+      <ImportConfirmDialog
+        isOpen={isImportConfirmOpen}
+        isImporting={isImportingSql}
+        databaseName={pendingImport?.databaseName}
+        filePath={pendingImport?.filePath}
+        onConfirm={handleConfirmImport}
+        onCancel={() => {
+          setIsImportConfirmOpen(false);
+          if (!isImportingSql) {
             setPendingImport(null);
           }
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("connection.importDialog.title")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("connection.importDialog.description", {
-                database: pendingImport?.databaseName || "",
-              })}
-            </AlertDialogDescription>
-            <div className="text-xs text-muted-foreground font-mono break-all mt-2">
-              {pendingImport?.filePath || ""}
-            </div>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isImportingSql}>
-              {t("common.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isImportingSql || !pendingImport}
-              onClick={async (e) => {
-                e.preventDefault();
-                await handleConfirmImport();
-              }}
-            >
-              {isImportingSql ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("connection.importDialog.importing")}
-                </>
-              ) : (
-                t("connection.importDialog.confirm")
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <Dialog
-        open={isTableExportDialogOpen}
-        onOpenChange={(open) => {
-          setIsTableExportDialogOpen(open);
-          if (!open && !isExportingTable) {
+      />
+      <TableExportDialog
+        isOpen={isTableExportDialogOpen}
+        onClose={() => {
+          setIsTableExportDialogOpen(false);
+          if (!isExportingTable) {
             setPendingTableExport(null);
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("connection.tableExportDialog.title")}</DialogTitle>
-            <DialogDescription>
-              {t("connection.tableExportDialog.description", {
-                table: pendingTableExport?.table.name || "",
-              })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <RadioGroup
-              value={tableExportFormat}
-              onValueChange={(value: TableExportFormat) =>
-                setTableExportFormat(value)
-              }
-            >
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="csv" id="table-export-csv" />
-                <div className="grid gap-1">
-                  <Label htmlFor="table-export-csv" className="cursor-pointer">
-                    {t("connection.tableExportDialog.formatCsv")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatCsvDesc")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="json" id="table-export-json" />
-                <div className="grid gap-1">
-                  <Label htmlFor="table-export-json" className="cursor-pointer">
-                    {t("connection.tableExportDialog.formatJson")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatJsonDesc")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_ddl" id="table-export-sql-ddl" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="table-export-sql-ddl"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.tableExportDialog.formatSqlDdl")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatSqlDdlDesc")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_dml" id="table-export-sql-dml" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="table-export-sql-dml"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.tableExportDialog.formatSqlDml")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatSqlDmlDesc")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_full" id="table-export-sql-full" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="table-export-sql-full"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.tableExportDialog.formatSqlFull")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatSqlFullDesc")}
-                  </p>
-                </div>
-              </label>
-            </RadioGroup>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isExportingTable}
-                onClick={() => setIsTableExportDialogOpen(false)}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="button"
-                disabled={isExportingTable || !pendingTableExport}
-                onClick={() => void handleTableExportConfirm()}
-              >
-                {isExportingTable ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("connection.exportDialog.exporting")}
-                  </>
-                ) : (
-                  t("connection.tableExportDialog.exportButton")
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={isDatabaseExportDialogOpen}
-        onOpenChange={(open) => {
-          setIsDatabaseExportDialogOpen(open);
-          if (!open && !isExportingDatabaseSql) {
+        format={tableExportFormat}
+        setFormat={setTableExportFormat}
+        isExporting={isExportingTable}
+        onConfirm={handleTableExportConfirm}
+        tableName={pendingTableExport?.table.name}
+      />
+      <DatabaseExportDialog
+        isOpen={isDatabaseExportDialogOpen}
+        onClose={() => {
+          setIsDatabaseExportDialogOpen(false);
+          if (!isExportingDatabaseSql) {
             setPendingDatabaseExport(null);
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("connection.exportDialog.title")}</DialogTitle>
-            <DialogDescription>
-              {t("connection.exportDialog.description", {
-                database: pendingDatabaseExport?.databaseName || "",
-              })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <RadioGroup
-              value={pendingDatabaseExport?.format || "sql_full"}
-              onValueChange={(value: DatabaseExportFormat) =>
-                setPendingDatabaseExport((prev) =>
-                  prev ? { ...prev, format: value } : prev,
-                )
-              }
-            >
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_ddl" id="database-export-sql-ddl" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="database-export-sql-ddl"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.exportDialog.options.sqlDdl.label")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.exportDialog.options.sqlDdl.description")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_dml" id="database-export-sql-dml" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="database-export-sql-dml"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.exportDialog.options.sqlDml.label")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.exportDialog.options.sqlDml.description")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem
-                  value="sql_full"
-                  id="database-export-sql-full"
-                />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="database-export-sql-full"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.exportDialog.options.sqlFull.label")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.exportDialog.options.sqlFull.description")}
-                  </p>
-                </div>
-              </label>
-            </RadioGroup>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isExportingDatabaseSql}
-                onClick={() => setIsDatabaseExportDialogOpen(false)}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="button"
-                disabled={isExportingDatabaseSql || !pendingDatabaseExport}
-                onClick={() => void handleConfirmDatabaseExport()}
-              >
-                {isExportingDatabaseSql ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("connection.exportDialog.exporting")}
-                  </>
-                ) : (
-                  t("connection.exportDialog.confirm")
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        isExporting={isExportingDatabaseSql}
+        onConfirm={handleConfirmDatabaseExport}
+        databaseName={pendingDatabaseExport?.databaseName}
+        format={pendingDatabaseExport?.format || "sql_full"}
+        onFormatChange={(value: DatabaseExportFormat) =>
+          setPendingDatabaseExport((prev) =>
+            prev ? { ...prev, format: value } : prev,
+          )
+        }
+      />
     </div>
   );
 }

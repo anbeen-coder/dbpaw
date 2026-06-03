@@ -16,9 +16,9 @@ const defaultCreateDatabaseForm: CreateDatabaseForm = {
   lcCtype: "",
 };
 
-const createDbNoneOption = "__none__";
+export const createDbNoneOption = "__none__";
 
-const postgresEncodingOptions = [
+export const postgresEncodingOptions = [
   "UTF8",
   "SQL_ASCII",
   "BIG5",
@@ -63,7 +63,7 @@ const postgresEncodingOptions = [
   "WIN1258",
 ];
 
-const postgresLocaleOptions = [
+export const postgresLocaleOptions = [
   "en_US.UTF-8",
   "C",
   "C.UTF-8",
@@ -71,7 +71,7 @@ const postgresLocaleOptions = [
   "ja_JP.UTF-8",
 ];
 
-const mssqlCollationOptions = [
+export const mssqlCollationOptions = [
   "SQL_Latin1_General_CP1_CI_AS",
   "SQL_Latin1_General_CP1_CS_AS",
   "SQL_Latin1_General_CP1_CI_AI",

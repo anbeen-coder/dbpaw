@@ -1,4 +1,7 @@
 import { CircleDot, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import type { ConnectionForm } from "@/services/api";
+import { buildConnectionFormDefaults } from "@/lib/connection-form/rules";
+import type { Connection, TableInfo, RoutineInfo, SchemaInfo } from "./types";
 
 export { getConnectionIcon } from "@/lib/driver-registry";
 
@@ -92,3 +95,113 @@ export const renderConnectionStatusIndicator = (
     />
   );
 };
+
+export const buildFormFromConnection = (
+  connection: Pick<
+    Connection,
+    | "type"
+    | "name"
+    | "host"
+    | "port"
+    | "database"
+    | "username"
+    | "ssl"
+    | "sslMode"
+    | "sslCaCert"
+    | "filePath"
+    | "sshEnabled"
+    | "sshHost"
+    | "sshPort"
+    | "sshUsername"
+    | "sshKeyPath"
+    | "mode"
+    | "seedNodes"
+    | "sentinels"
+    | "connectTimeoutMs"
+    | "serviceName"
+    | "sentinelPassword"
+    | "authMode"
+    | "apiKeyId"
+    | "apiKeySecret"
+    | "apiKeyEncoded"
+    | "cloudId"
+    | "authSource"
+  >,
+  overrides: Partial<ConnectionForm> = {},
+): ConnectionForm =>
+  buildConnectionFormDefaults(connection.type, {
+    name: connection.name,
+    host: connection.host || "",
+    port: Number(connection.port) || undefined,
+    database: connection.database || "",
+    schema: connection.type === "postgres" ? "public" : "",
+    username: connection.username || "",
+    password: "",
+    ssl: connection.ssl || false,
+    sslMode: connection.sslMode || "require",
+    sslCaCert: connection.sslCaCert || "",
+    filePath: connection.filePath || "",
+    sshEnabled: connection.sshEnabled || false,
+    sshHost: connection.sshHost || "",
+    sshPort: connection.sshPort || undefined,
+    sshUsername: connection.sshUsername || "",
+    sshPassword: "",
+    sshKeyPath: connection.sshKeyPath || "",
+    mode: connection.mode,
+    seedNodes: connection.seedNodes || [],
+    sentinels: connection.sentinels || [],
+    connectTimeoutMs: connection.connectTimeoutMs,
+    serviceName: connection.serviceName || "",
+    sentinelPassword: "",
+    authMode: connection.authMode || "none",
+    apiKeyId: connection.apiKeyId || "",
+    apiKeySecret: "",
+    apiKeyEncoded: "",
+    cloudId: connection.cloudId || "",
+    authSource: connection.authSource || "",
+    ...overrides,
+  });
+
+export function groupSqlObjectsBySchema(
+  tables: TableInfo[],
+  routines: RoutineInfo[],
+): SchemaInfo[] {
+  const groupedTables = tables.reduce<Record<string, TableInfo[]>>(
+    (acc, table) => {
+      const schemaName = (table.schema || "").trim() || "public";
+      const current = acc[schemaName] || [];
+      current.push(table);
+      acc[schemaName] = current;
+      return acc;
+    },
+    {},
+  );
+  const groupedRoutines = routines.reduce<Record<string, RoutineInfo[]>>(
+    (acc, routine) => {
+      const schemaName = (routine.schema || "").trim() || "dbo";
+      const current = acc[schemaName] || [];
+      current.push(routine);
+      acc[schemaName] = current;
+      return acc;
+    },
+    {},
+  );
+  const schemaNames = Array.from(
+    new Set([...Object.keys(groupedTables), ...Object.keys(groupedRoutines)]),
+  ).sort((a, b) => a.localeCompare(b));
+
+  return schemaNames.map((name) => {
+    const schemaTables = groupedTables[name] || [];
+    const schemaRoutines = groupedRoutines[name] || [];
+    return {
+      name,
+      tables: [...schemaTables].sort((a, b) => a.name.localeCompare(b.name)),
+      procedures: schemaRoutines
+        .filter((routine) => routine.type === "procedure")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      functions: schemaRoutines
+        .filter((routine) => routine.type === "function")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  });
+}

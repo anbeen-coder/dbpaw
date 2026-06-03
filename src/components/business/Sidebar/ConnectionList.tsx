@@ -4,11 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
-import { save, open } from "@tauri-apps/plugin-dialog";
-import { readTextFile } from "@tauri-apps/plugin-fs";
+
 import {
   Database,
   Table2 as TableIcon,
@@ -37,39 +35,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { api, getImportDriverCapability, isTauri } from "@/services/api";
+import { api, getImportDriverCapability } from "@/services/api";
 import type {
   ConnectionForm,
-  CreateDatabasePayload,
   Driver,
   RoutineType,
   SavedQuery,
-  SavedConnection,
   EventInfo,
   SequenceInfo,
   TypeInfo,
@@ -79,10 +58,6 @@ import type {
 import type { DatabaseGroupConfig } from "@/lib/tree-adapters/types";
 import {
   getConnectionIcon,
-  isMysqlFamilyDriver,
-  supportsSSLCA,
-  supportsCreateDatabase,
-  supportsRoutines,
   supportsSchemaBrowsing,
   getTreeConfig,
 } from "@/lib/driver-registry";
@@ -92,326 +67,33 @@ import { TreeNode } from "./connection-list/TreeNode";
 import { ConnectionDialog } from "./connection-list/ConnectionDialog";
 import { ImportDialog } from "./ImportDialog";
 import { ConnectionContextMenu } from "./ConnectionContextMenu";
-import {
-  getExportDefaultName,
-  getExportFilter,
-  mergeConnections,
-  renderConnectionStatusIndicator,
-  sanitizeConnectionErrorMessage,
-} from "./connection-list/helpers";
+import { renderConnectionStatusIndicator } from "./connection-list/helpers";
+import { useConnectionCrud } from "./hooks/useConnectionCrud";
+import { useTreeDataFetching } from "./hooks/useTreeDataFetching";
+import { useConnectionForm } from "./hooks/useConnectionForm";
 import { useTranslation } from "react-i18next";
-import {
-  buildConnectionFormDefaults,
-  normalizeConnectionFormInput,
-} from "@/lib/connection-form/rules";
-import { validateConnectionFormInput } from "@/lib/connection-form/validate";
 import { CreateElasticsearchIndexDialog } from "@/components/business/Elasticsearch/CreateElasticsearchIndexDialog";
 import {
   elasticsearchIndexActionSuccessMessage,
   executeElasticsearchIndexAction,
   type ElasticsearchIndexAction,
 } from "@/components/business/Elasticsearch/elasticsearch-index-management";
-import { useRedisKeys } from "./hooks/useRedisKeys";
 import type {
   TableInfo,
-  RoutineInfo,
   SchemaInfo,
   DatabaseInfo,
+  DatabaseExportFormat,
   Connection,
+  SelectedTableNode,
   DatasourceTreeAdapter,
 } from "./connection-list/types";
-
-type DatabaseExportFormat = "sql_dml" | "sql_ddl" | "sql_full";
-type TableExportFormat = "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full";
-
-function groupSqlObjectsBySchema(
-  tables: TableInfo[],
-  routines: RoutineInfo[],
-): SchemaInfo[] {
-  const groupedTables = tables.reduce<Record<string, TableInfo[]>>(
-    (acc, table) => {
-      const schemaName = (table.schema || "").trim() || "public";
-      const current = acc[schemaName] || [];
-      current.push(table);
-      acc[schemaName] = current;
-      return acc;
-    },
-    {},
-  );
-  const groupedRoutines = routines.reduce<Record<string, RoutineInfo[]>>(
-    (acc, routine) => {
-      const schemaName = (routine.schema || "").trim() || "dbo";
-      const current = acc[schemaName] || [];
-      current.push(routine);
-      acc[schemaName] = current;
-      return acc;
-    },
-    {},
-  );
-  const schemaNames = Array.from(
-    new Set([...Object.keys(groupedTables), ...Object.keys(groupedRoutines)]),
-  ).sort((a, b) => a.localeCompare(b));
-
-  return schemaNames.map((name) => {
-    const schemaTables = groupedTables[name] || [];
-    const schemaRoutines = groupedRoutines[name] || [];
-    return {
-      name,
-      tables: [...schemaTables].sort((a, b) => a.name.localeCompare(b.name)),
-      procedures: schemaRoutines
-        .filter((routine) => routine.type === "procedure")
-        .sort((a, b) => a.name.localeCompare(b.name)),
-      functions: schemaRoutines
-        .filter((routine) => routine.type === "function")
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    };
-  });
-}
-
-interface CreateDatabaseForm {
-  name: string;
-  ifNotExists: boolean;
-  charset: string;
-  collation: string;
-  encoding: string;
-  lcCollate: string;
-  lcCtype: string;
-}
-
-type SelectedTableNode = {
-  key: string;
-  connectionId: number;
-  database: string;
-  table: string;
-  schema: string;
-};
-
-const defaultCreateDatabaseForm: CreateDatabaseForm = {
-  name: "",
-  ifNotExists: true,
-  charset: "",
-  collation: "",
-  encoding: "",
-  lcCollate: "",
-  lcCtype: "",
-};
-
-const createDbNoneOption = "__none__";
-const postgresEncodingOptions = [
-  "UTF8",
-  "SQL_ASCII",
-  "BIG5",
-  "EUC_CN",
-  "EUC_JP",
-  "EUC_JIS_2004",
-  "EUC_KR",
-  "EUC_TW",
-  "GB18030",
-  "GBK",
-  "ISO_8859_5",
-  "ISO_8859_6",
-  "ISO_8859_7",
-  "ISO_8859_8",
-  "JOHAB",
-  "KOI8R",
-  "KOI8U",
-  "LATIN1",
-  "LATIN2",
-  "LATIN3",
-  "LATIN4",
-  "LATIN5",
-  "LATIN6",
-  "LATIN7",
-  "LATIN8",
-  "LATIN9",
-  "LATIN10",
-  "MULE_INTERNAL",
-  "SHIFT_JIS_2004",
-  "SJIS",
-  "UHC",
-  "WIN866",
-  "WIN874",
-  "WIN1250",
-  "WIN1251",
-  "WIN1252",
-  "WIN1253",
-  "WIN1254",
-  "WIN1255",
-  "WIN1256",
-  "WIN1257",
-  "WIN1258",
-];
-const postgresLocaleOptions = [
-  "en_US.UTF-8",
-  "C",
-  "C.UTF-8",
-  "zh_CN.UTF-8",
-  "ja_JP.UTF-8",
-];
-const mssqlCollationOptions = [
-  "SQL_Latin1_General_CP1_CI_AS",
-  "SQL_Latin1_General_CP1_CS_AS",
-  "SQL_Latin1_General_CP1_CI_AI",
-  "SQL_Latin1_General_CP1_CS_AI",
-  "Latin1_General_CI_AS",
-  "Latin1_General_CS_AS",
-  "Latin1_General_BIN",
-  "Latin1_General_BIN2",
-  "Latin1_General_100_CI_AS",
-  "Latin1_General_100_CS_AS",
-  "Latin1_General_100_CI_AI",
-  "Latin1_General_100_BIN2",
-  "Latin1_General_100_CI_AS_SC",
-  "Latin1_General_100_CS_AS_SC",
-  "Latin1_General_100_CI_AI_SC",
-  "Latin1_General_100_BIN2_UTF8",
-  "Latin1_General_100_CI_AS_SC_UTF8",
-  "Latin1_General_100_CI_AI_SC_UTF8",
-  "SQL_Latin1_General_CP850_CI_AS",
-  "Modern_Spanish_CI_AS",
-  "Modern_Spanish_100_CI_AS",
-  "French_CI_AS",
-  "French_100_CI_AS",
-  "German_PhoneBook_CI_AS",
-  "German_PhoneBook_100_CI_AS",
-  "Turkish_CI_AS",
-  "Turkish_100_CI_AS",
-  "Cyrillic_General_CI_AS",
-  "Cyrillic_General_100_CI_AS",
-  "Chinese_PRC_CI_AS",
-  "Chinese_PRC_CS_AS",
-  "Chinese_PRC_100_CI_AS",
-  "Chinese_PRC_100_CS_AS",
-  "Chinese_PRC_100_BIN2",
-  "Chinese_PRC_100_CI_AS_SC",
-  "Chinese_PRC_100_CI_AS_SC_UTF8",
-  "Chinese_Simplified_Pinyin_100_CI_AS",
-  "Chinese_Simplified_Pinyin_100_CS_AS",
-  "Chinese_Traditional_Stroke_Order_100_CI_AS",
-  "Japanese_CI_AS",
-  "Japanese_CS_AS",
-  "Japanese_BIN2",
-  "Japanese_XJIS_100_CI_AS",
-  "Japanese_XJIS_100_CS_AS",
-  "Japanese_XJIS_100_BIN2",
-  "Japanese_XJIS_140_CI_AS",
-  "Japanese_XJIS_140_CI_AS_KS_WS",
-  "Japanese_Bushu_Kakusu_100_CI_AS",
-  "Japanese_Bushu_Kakusu_140_CI_AS",
-  "Korean_Wansung_CI_AS",
-  "Korean_Wansung_100_CI_AS",
-  "Korean_Wansung_140_CI_AS",
-  "Korean_Unicode_CI_AS",
-  "Korean_Unicode_100_CI_AS",
-  "Korean_Unicode_140_CI_AS",
-];
-
-const defaultConnectionDriver: Driver = "postgres";
-
-const buildFormFromConnection = (
-  connection: Pick<
-    Connection,
-    | "type"
-    | "name"
-    | "host"
-    | "port"
-    | "database"
-    | "username"
-    | "ssl"
-    | "sslMode"
-    | "sslCaCert"
-    | "filePath"
-    | "sshEnabled"
-    | "sshHost"
-    | "sshPort"
-    | "sshUsername"
-    | "sshKeyPath"
-    | "mode"
-    | "seedNodes"
-    | "sentinels"
-    | "connectTimeoutMs"
-    | "serviceName"
-    | "sentinelPassword"
-    | "authMode"
-    | "apiKeyId"
-    | "apiKeySecret"
-    | "apiKeyEncoded"
-    | "cloudId"
-    | "authSource"
-  >,
-  overrides: Partial<ConnectionForm> = {},
-): ConnectionForm =>
-  buildConnectionFormDefaults(connection.type, {
-    name: connection.name,
-    host: connection.host || "",
-    port: Number(connection.port) || undefined,
-    database: connection.database || "",
-    schema: connection.type === "postgres" ? "public" : "",
-    username: connection.username || "",
-    password: "",
-    ssl: connection.ssl || false,
-    sslMode: connection.sslMode || "require",
-    sslCaCert: connection.sslCaCert || "",
-    filePath: connection.filePath || "",
-    sshEnabled: connection.sshEnabled || false,
-    sshHost: connection.sshHost || "",
-    sshPort: connection.sshPort || undefined,
-    sshUsername: connection.sshUsername || "",
-    sshPassword: "",
-    sshKeyPath: connection.sshKeyPath || "",
-    mode: connection.mode,
-    seedNodes: connection.seedNodes || [],
-    sentinels: connection.sentinels || [],
-    connectTimeoutMs: connection.connectTimeoutMs,
-    serviceName: connection.serviceName || "",
-    sentinelPassword: "",
-    authMode: connection.authMode || "none",
-    apiKeyId: connection.apiKeyId || "",
-    apiKeySecret: "",
-    apiKeyEncoded: "",
-    cloudId: connection.cloudId || "",
-    authSource: connection.authSource || "",
-    ...overrides,
-  });
-
-const mapSavedConnection = (
-  c: SavedConnection,
-  fallbackName: string,
-): Connection => ({
-  id: String(c.id),
-  name: c.name || fallbackName,
-  type: (c.dbType as Driver) || "postgres",
-  host: c.host || "",
-  port: String(c.port || ""),
-  database: c.database || "",
-  username: c.username || "",
-  ssl: c.ssl || false,
-  sslMode: c.sslMode || "require",
-  sslCaCert: c.sslCaCert || "",
-  filePath: c.filePath || "",
-  sshEnabled: c.sshEnabled || false,
-  sshHost: c.sshHost || "",
-  sshPort: c.sshPort || 22,
-  sshUsername: c.sshUsername || "root",
-  sshPassword: c.sshPassword || "",
-  sshKeyPath: c.sshKeyPath || "",
-  mode: c.mode || undefined,
-  seedNodes: c.seedNodes || [],
-  sentinels: c.sentinels || [],
-  connectTimeoutMs: c.connectTimeoutMs || undefined,
-  serviceName: c.serviceName || undefined,
-  sentinelPassword: c.sentinelPassword || "",
-  authMode: c.authMode || "none",
-  apiKeyId: c.apiKeyId || "",
-  apiKeySecret: c.apiKeySecret || "",
-  apiKeyEncoded: c.apiKeyEncoded || "",
-  cloudId: c.cloudId || "",
-  authSource: c.authSource || "",
-  isConnected: false,
-  connectState: "idle",
-  connectError: undefined,
-  databases: [],
-});
+import { useTreeExpansion } from "./hooks/useTreeExpansion";
+import { useRedisKeys } from "./hooks/useRedisKeys";
+import { useImportExport } from "./hooks/useImportExport";
+import { useCreateDatabase } from "./hooks/useCreateDatabase";
+import { CreateDatabaseDialog } from "./connection-list/CreateDatabaseDialog";
+import { TableExportDialog, DatabaseExportDialog } from "./connection-list/ExportDialogs";
+import { ImportConfirmDialog } from "./connection-list/ImportConfirmDialog";
 
 interface ConnectionListProps {
   onTableSelect?: (
@@ -516,54 +198,137 @@ export function ConnectionList({
   const tableNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const handledRevealRequestIdRef = useRef<number | null>(null);
   const handledRedisRefreshIdRef = useRef<number | null>(null);
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [expandedConnections, setExpandedConnections] = useState<Set<string>>(
-    new Set(),
-  );
-  const [expandedDatabases, setExpandedDatabases] = useState<Set<string>>(
-    new Set(),
-  );
-  // These refs are updated every render so effects can read latest values without
-  // listing them as deps (avoids re-firing on every connection state update).
-  const connectionsRef = useRef(connections);
-  connectionsRef.current = connections;
-  const expandedDatabasesRef = useRef(expandedDatabases);
-  expandedDatabasesRef.current = expandedDatabases;
+  const {
+    expandedConnections,
+    setExpandedConnections,
+    expandedDatabases,
+    setExpandedDatabases,
+    expandedDatabaseGroups,
+    setExpandedDatabaseGroups,
+    expandedQueryGroups,
+    setExpandedQueryGroups,
+    expandedSchemas,
+    setExpandedSchemas,
+    expandedGroupNodes,
+    expandedTables,
+    setExpandedTables,
+    connectionsRef,
+    expandedDatabasesRef,
+    toggleConnection,
+    toggleDatabase,
+    toggleQueryGroup,
+    toggleDatabaseGroup,
+    toggleSchema,
+    toggleGroupNode,
+    toggleTable,
+  } = useTreeExpansion();
 
-  const getDatasourceTreeAdapterRef = useRef<
-    (connection: Connection) => DatasourceTreeAdapter
-  >(() => {
-    throw new Error("getDatasourceTreeAdapter not yet initialized");
+  const {
+    connections,
+    setConnections,
+    isLoadingConnections,
+    isDeleting,
+    deleteTargetConnectionId,
+    setDeleteTargetConnectionId,
+    fetchConnections,
+    connectConnection,
+    fetchAndSetDatabases,
+    clearConnectionTreeCache,
+    handleReconnect,
+    handleDuplicateConnection,
+    handleDeleteConnection,
+  } = useConnectionCrud({
+    setExpandedConnections,
+    setExpandedDatabases,
+    setExpandedSchemas,
+    setExpandedTables,
+    listDatabases: (connection) =>
+      getDatasourceTreeAdapter(connection).listDatabases(),
   });
 
-  const [expandedDatabaseGroups, setExpandedDatabaseGroups] = useState<
-    Set<string>
-  >(new Set());
-  const [expandedQueryGroups, setExpandedQueryGroups] = useState<Set<string>>(
-    new Set(),
-  );
-  const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(
-    new Set(),
-  );
-  const [expandedGroupNodes, setExpandedGroupNodes] = useState<Set<string>>(
-    new Set(),
-  );
-  const [databaseEvents, setDatabaseEvents] = useState<
-    Map<string, EventInfo[]>
-  >(new Map());
-  const [databaseSequences, setDatabaseSequences] = useState<
-    Map<string, SequenceInfo[]>
-  >(new Map());
-  const [databaseTypes, setDatabaseTypes] = useState<Map<string, TypeInfo[]>>(
-    new Map(),
-  );
-  const [databaseSynonyms, setDatabaseSynonyms] = useState<
-    Map<string, SynonymInfo[]>
-  >(new Map());
-  const [databasePackages, setDatabasePackages] = useState<
-    Map<string, PackageInfo[]>
-  >(new Map());
-  const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
+  const {
+    databaseEvents,
+    databaseSequences,
+    databaseTypes,
+    databaseSynonyms,
+    databasePackages,
+    loadingDatabaseKeys,
+    setLoadingDatabaseKeys,
+    loadingTableKeys,
+    setLoadingTableKeys,
+    fetchSqlTablesAsTableInfo,
+    fetchAndSetTables,
+    fetchAndSetTableColumns,
+    handleRefreshDatabaseTables,
+  } = useTreeDataFetching({
+    connections,
+    setConnections,
+    setExpandedSchemas,
+    setExpandedTables,
+    getAdapter: (connection) => getDatasourceTreeAdapter(connection),
+  });
+
+  const {
+    isDialogOpen,
+    setIsDialogOpen,
+    isImportDialogOpen,
+    setIsImportDialogOpen,
+    dialogMode,
+    createStep,
+    setCreateStep,
+    form,
+    setForm,
+    validationMsg,
+    testMsg,
+    requiredOk,
+    isTesting,
+    isConnecting,
+    isSavingEdit,
+    handleTestConnection,
+    handleDialogSubmit,
+    closeConnectionDialog,
+    openCreateDialog,
+    openEditDialog,
+    handleCreateDriverSelect,
+    handlePickSslCaCertFile,
+    handlePickSshKeyFile,
+    handlePickDatabaseFile,
+  } = useConnectionForm({
+    connections,
+    setConnections,
+    fetchConnections,
+    onConnect,
+  });
+
+  const {
+    isCreatingDatabase,
+    isCreateDbDialogOpen,
+    showCreateDbAdvanced,
+    setShowCreateDbAdvanced,
+    createDbValidationMsg,
+    createDbForm,
+    setCreateDbForm,
+    mysqlCharsets,
+    mysqlCollations,
+    loadingMysqlOptions,
+    supportsCreateDatabaseForDriver,
+    isMySqlFamilyCreateDb,
+    isPostgresCreateDb,
+    isMssqlCreateDb,
+    openCreateDatabaseDialog,
+    handleCreateDatabase,
+    closeCreateDbDialog,
+  } = useCreateDatabase({
+    connections,
+    setExpandedConnections,
+    clearConnectionTreeCache,
+    fetchAndSetDatabases,
+  });
+
+  // Update refs every render so effects can read latest values without
+  // listing them as deps (avoids re-firing on every connection state update).
+  connectionsRef.current = connections;
+  expandedDatabasesRef.current = expandedDatabases;
   const [selectedTableNode, setSelectedTableNode] =
     useState<SelectedTableNode | null>(null);
   const selectedTableKey = selectedTableNode?.key ?? null;
@@ -579,42 +344,9 @@ export function ConnectionList({
     databaseName?: string | null;
     schemaName?: string | null;
     type: "connection" | "database" | "schema";
-  }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection" });
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
-  const [createStep, setCreateStep] = useState<"type" | "details">("type");
-  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
-    null,
-  );
-  const [loadingDatabaseKeys, setLoadingDatabaseKeys] = useState<Set<string>>(
-    new Set(),
-  );
-  const [loadingTableKeys, setLoadingTableKeys] = useState<Set<string>>(
-    new Set(),
-  );
+  }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection"   });
   const loadingSpinner = (
     <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-  );
-  const [isTesting, setIsTesting] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isCreatingDatabase, setIsCreatingDatabase] = useState(false);
-  const [isImportingSql, setIsImportingSql] = useState(false);
-  const [deleteTargetConnectionId, setDeleteTargetConnectionId] = useState<
-    string | null
-  >(null);
-  const [createDbConnectionId, setCreateDbConnectionId] = useState<
-    string | null
-  >(null);
-  const [isCreateDbDialogOpen, setIsCreateDbDialogOpen] = useState(false);
-  const [showCreateDbAdvanced, setShowCreateDbAdvanced] = useState(false);
-  const [createDbValidationMsg, setCreateDbValidationMsg] = useState<
-    string | null
-  >(null);
-  const [createDbForm, setCreateDbForm] = useState<CreateDatabaseForm>(
-    defaultCreateDatabaseForm,
   );
   const [showElasticsearchSystemIndices, setShowElasticsearchSystemIndices] =
     useState(false);
@@ -625,60 +357,49 @@ export function ConnectionList({
   >(null);
   const [isCreateEsIndexDialogOpen, setIsCreateEsIndexDialogOpen] =
     useState(false);
-  const [mysqlCharsets, setMysqlCharsets] = useState<string[]>([]);
-  const [mysqlCollations, setMysqlCollations] = useState<string[]>([]);
-  const [loadingMysqlOptions, setLoadingMysqlOptions] = useState(false);
-  const [isLoadingConnections, setIsLoadingConnections] = useState(false);
   const [isLoadingQueries, setIsLoadingQueries] = useState(false);
-  const [testMsg, setTestMsg] = useState<{
-    ok: boolean;
-    text: string;
-    latency?: number;
-  } | null>(null);
-  const [validationMsg, setValidationMsg] = useState<string | null>(null);
-  const [form, setForm] = useState<ConnectionForm>(
-    buildConnectionFormDefaults(defaultConnectionDriver),
-  );
   const [searchTerm, setSearchTerm] = useState("");
-
   const { loadRedisKeysPage } = useRedisKeys({
     connectionsRef,
     setConnections,
     searchTerm,
-    getDatasourceTreeAdapter: (conn) => getDatasourceTreeAdapterRef.current(conn),
   });
-
   const [savedQueriesByConnection, setSavedQueriesByConnection] = useState<
     Record<string, SavedQuery[]>
   >({});
-  const [pendingImport, setPendingImport] = useState<{
-    connectionId: string;
-    databaseName: string;
-    driver: Driver;
-    filePath: string;
-  } | null>(null);
-  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
-  const [pendingDatabaseExport, setPendingDatabaseExport] = useState<{
-    connectionId: string;
-    databaseName: string;
-    driver: Driver;
-    format: DatabaseExportFormat;
-  } | null>(null);
-  const [isDatabaseExportDialogOpen, setIsDatabaseExportDialogOpen] =
-    useState(false);
-  const [isExportingDatabaseSql, setIsExportingDatabaseSql] = useState(false);
-  const [pendingTableExport, setPendingTableExport] = useState<{
-    connection: Connection;
-    database: DatabaseInfo;
-    table: TableInfo;
-  } | null>(null);
-  const [isTableExportDialogOpen, setIsTableExportDialogOpen] = useState(false);
-  const [isExportingTable, setIsExportingTable] = useState(false);
-  const [tableExportFormat, setTableExportFormat] =
-    useState<TableExportFormat>("csv");
 
-  const supportsCreateDatabaseForDriver = (driver: Driver) =>
-    supportsCreateDatabase(driver);
+  const {
+    isImportingSql,
+    pendingImport,
+    setPendingImport,
+    isImportConfirmOpen,
+    setIsImportConfirmOpen,
+    pendingDatabaseExport,
+    setPendingDatabaseExport,
+    isDatabaseExportDialogOpen,
+    setIsDatabaseExportDialogOpen,
+    isExportingDatabaseSql,
+    pendingTableExport,
+    setPendingTableExport,
+    isTableExportDialogOpen,
+    setIsTableExportDialogOpen,
+    isExportingTable,
+    tableExportFormat,
+    setTableExportFormat,
+    handleTableExportDialog,
+    handleTableExportConfirm,
+    handleDatabaseImport,
+    handleDatabaseExport,
+    handleConfirmDatabaseExport,
+    handleConfirmImport,
+  } = useImportExport({
+    connections,
+    onExportTable,
+    onExportDatabase,
+    handleRefreshDatabaseTables,
+  });
+
+
   const supportsSchemaNodeForDriver = (driver: Driver) =>
     supportsSchemaBrowsing(driver);
   const getSchemaNodeKey = (databaseKey: string, schema: string) =>
@@ -689,53 +410,6 @@ export function ConnectionList({
     schemaName: string,
     tableName: string,
   ) => `${connectionId}-${databaseName}-${schemaName}-${tableName}`;
-
-  const createDbTargetConnection = useMemo(
-    () => connections.find((conn) => conn.id === createDbConnectionId) || null,
-    [connections, createDbConnectionId],
-  );
-  const createDbTargetDriver = createDbTargetConnection?.type;
-  const isMySqlFamilyCreateDb = createDbTargetDriver
-    ? isMysqlFamilyDriver(createDbTargetDriver as any)
-    : false;
-  const isPostgresCreateDb = createDbTargetDriver === "postgres";
-  const isMssqlCreateDb = createDbTargetDriver === "mssql";
-
-  useEffect(() => {
-    if (
-      !isCreateDbDialogOpen ||
-      !isMySqlFamilyCreateDb ||
-      !createDbConnectionId
-    )
-      return;
-    setLoadingMysqlOptions(true);
-    api.connections
-      .getMysqlCharsets(Number(createDbConnectionId))
-      .then(setMysqlCharsets)
-      .catch(() => setMysqlCharsets(["utf8mb4", "utf8", "latin1"]))
-      .finally(() => setLoadingMysqlOptions(false));
-  }, [isCreateDbDialogOpen, isMySqlFamilyCreateDb, createDbConnectionId]);
-
-  useEffect(() => {
-    if (
-      !isCreateDbDialogOpen ||
-      !isMySqlFamilyCreateDb ||
-      !createDbConnectionId
-    )
-      return;
-    api.connections
-      .getMysqlCollations(
-        Number(createDbConnectionId),
-        createDbForm.charset || undefined,
-      )
-      .then(setMysqlCollations)
-      .catch(() => setMysqlCollations([]));
-  }, [
-    isCreateDbDialogOpen,
-    isMySqlFamilyCreateDb,
-    createDbConnectionId,
-    createDbForm.charset,
-  ]);
 
   const getConnectionStatusLabel = (connection: Connection) => {
     if (connection.connectState === "success") {
@@ -870,98 +544,6 @@ export function ConnectionList({
     }
   }, [searchTerm, filteredConnections, showSavedQueriesInTree]);
 
-  const normalizedForm = useMemo(
-    () => normalizeConnectionFormInput(form),
-    [form],
-  );
-  const validationIssues = useMemo(
-    () =>
-      validateConnectionFormInput(
-        normalizedForm,
-        dialogMode === "edit" ? "edit" : "create",
-      ),
-    [normalizedForm, dialogMode],
-  );
-  const requiredOk = useMemo(() => {
-    return validationIssues.length === 0;
-  }, [validationIssues]);
-
-  const validateSslSettings = () => {
-    if (!form.ssl || !supportsSSLCA(form.driver)) {
-      return null;
-    }
-    if (form.sslMode === "verify_ca" && !(form.sslCaCert || "").trim()) {
-      return t("connection.dialog.sslValidation.caRequired");
-    }
-    return null;
-  };
-
-  const getFirstValidationMessage = () => {
-    if (validationIssues.length === 0) {
-      return null;
-    }
-    const issue = validationIssues[0];
-    return t(issue.key);
-  };
-
-  const pickSingleFile = async (params: {
-    title: string;
-    filters?: { name: string; extensions: string[] }[];
-  }) => {
-    if (!isTauri()) {
-      toast.info(t("connection.toast.fileBrowserDesktopOnly"));
-      return null;
-    }
-    try {
-      const selected = await open({
-        title: params.title,
-        multiple: false,
-        filters: params.filters,
-      });
-      if (selected && typeof selected === "string") {
-        return selected;
-      }
-      return null;
-    } catch (e) {
-      toast.error(t("connection.toast.openFileDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-      return null;
-    }
-  };
-
-  const handlePickSslCaCertFile = async () => {
-    const selectedPath = await pickSingleFile({
-      title: t("connection.dialog.sslCaFileDialogTitle"),
-      filters: [
-        {
-          name: t("connection.dialog.fileFilterCert"),
-          extensions: ["pem", "crt", "cer"],
-        },
-        { name: t("connection.dialog.fileFilterAll"), extensions: ["*"] },
-      ],
-    });
-    if (!selectedPath) return;
-    try {
-      const content = await readTextFile(selectedPath);
-      setForm((f) => ({ ...f, sslCaCert: content }));
-    } catch (e) {
-      toast.error(t("connection.toast.readFileFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
-  const handlePickSshKeyFile = async () => {
-    const selectedPath = await pickSingleFile({
-      title: t("connection.dialog.sshKeyFileDialogTitle"),
-      // SSH private keys are often extensionless (for example ~/.ssh/id_rsa),
-      // so filtering by extension can hide valid keys in the native picker.
-    });
-    if (!selectedPath) return;
-    setForm((f) => ({ ...f, sshKeyPath: selectedPath }));
-  };
-
   useEffect(() => {
     fetchConnections();
   }, []);
@@ -970,52 +552,6 @@ export function ConnectionList({
     if (!showSavedQueriesInTree) return;
     void fetchSavedQueriesByConnection();
   }, [showSavedQueriesInTree, lastUpdated]);
-
-  const fetchConnections = async () => {
-    setIsLoadingConnections(true);
-    try {
-      const conns = await api.connections.list();
-      const mapped = conns.map((c) =>
-        mapSavedConnection(c, t("common.unknown")),
-      );
-      setConnections((prev) => mergeConnections(mapped, prev));
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      console.error("listConnections failed", message);
-      toast.error(t("connection.toast.loadConnectionsFailed"), {
-        description: message,
-      });
-    } finally {
-      setIsLoadingConnections(false);
-    }
-  };
-
-  const handlePickDatabaseFile = async (driver: Driver) => {
-    const selected = await pickSingleFile({
-      title:
-        driver === "duckdb"
-          ? t("connection.dialog.fileDialogTitleDuckdb")
-          : t("connection.dialog.fileDialogTitle"),
-      filters: [
-        {
-          name:
-            driver === "duckdb"
-              ? t("connection.dialog.fileFilterDuckdb")
-              : t("connection.dialog.fileFilterSqlite"),
-          extensions:
-            driver === "duckdb"
-              ? ["duckdb", "db"]
-              : ["sqlite", "db", "sqlite3", "db3"],
-        },
-        {
-          name: t("connection.dialog.fileFilterAll"),
-          extensions: ["*"],
-        },
-      ],
-    });
-    if (!selected) return;
-    setForm((current) => ({ ...current, filePath: selected }));
-  };
 
   const fetchSavedQueriesByConnection = async () => {
     setIsLoadingQueries(true);
@@ -1043,149 +579,6 @@ export function ConnectionList({
     }
   };
 
-  const toggleConnection = (id: string) => {
-    const connection = connections.find((conn) => conn.id === id);
-    if (!connection) return;
-    if (connection.connectState !== "success") return;
-
-    const newExpanded = new Set(expandedConnections);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
-    setExpandedConnections(newExpanded);
-  };
-
-  const fetchAndSetDatabases = async (
-    connectionId: string,
-  ): Promise<boolean> => {
-    try {
-      const current = connections.find((conn) => conn.id === connectionId);
-      if (!current) return false;
-
-      // For Redis, fetch full database info including key counts
-      let databases: DatabaseInfo[];
-      if (current.type === "redis") {
-        const redisDbs = await api.redis.listDatabases(Number(current.id));
-        databases = redisDbs.map((db) => ({
-          name: db.name,
-          schemas: [],
-          tables: [],
-          routines: [],
-          redisKeyCount: db.keyCount,
-        }));
-      } else {
-        const dbNames = await getDatasourceTreeAdapter(current).listDatabases();
-        databases = dbNames.map((name) => ({
-          name,
-          schemas: [],
-          tables: [],
-          routines: [],
-        }));
-      }
-
-      setConnections((prev) =>
-        prev.map((conn) => {
-          if (conn.id !== connectionId) return conn;
-          return {
-            ...conn,
-            isConnected: true,
-            connectState: "success",
-            connectError: undefined,
-            databases,
-          };
-        }),
-      );
-      return true;
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      const sanitizedMessage = sanitizeConnectionErrorMessage(message);
-      console.error("listDatabasesById failed", message);
-      setConnections((prev) =>
-        prev.map((conn) => {
-          if (conn.id !== connectionId) return conn;
-          return {
-            ...conn,
-            isConnected: false,
-            connectState: "error",
-            connectError: sanitizedMessage || message,
-            databases: [],
-          };
-        }),
-      );
-      toast.error(t("connection.toast.loadDatabasesFailed"), {
-        description: sanitizedMessage || message,
-      });
-      return false;
-    }
-  };
-
-  const connectConnection = async (
-    connectionId: string,
-    options?: { resetTree?: boolean },
-  ) => {
-    const target = connections.find((conn) => conn.id === connectionId);
-    if (!target || target.connectState === "connecting") return;
-
-    if (options?.resetTree) {
-      setExpandedConnections((prev) => {
-        const next = new Set(prev);
-        next.delete(connectionId);
-        return next;
-      });
-      setExpandedDatabases((prev) => {
-        const next = new Set(
-          [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
-        );
-        return next;
-      });
-      setExpandedSchemas((prev) => {
-        const next = new Set(
-          [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
-        );
-        return next;
-      });
-      setExpandedTables((prev) => {
-        const next = new Set(
-          [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
-        );
-        return next;
-      });
-    }
-
-    setConnections((prev) =>
-      prev.map((conn) => {
-        if (conn.id !== connectionId) return conn;
-        return {
-          ...conn,
-          isConnected: false,
-          connectState: "connecting",
-          connectError: undefined,
-          databases: options?.resetTree ? [] : conn.databases,
-        };
-      }),
-    );
-
-    const ok = await fetchAndSetDatabases(connectionId);
-    if (ok) {
-      setExpandedConnections((prev) => {
-        const next = new Set(prev);
-        next.add(connectionId);
-        return next;
-      });
-      return;
-    }
-
-    setExpandedConnections((prev) => {
-      const next = new Set(prev);
-      next.delete(connectionId);
-      return next;
-    });
-  };
-
-
-
   useEffect(() => {
     connectionsRef.current.forEach((conn) => {
       if (getDatasourceTreeAdapter(conn).isDatabaseExpandable) return;
@@ -1197,107 +590,6 @@ export function ConnectionList({
       });
     });
   }, [searchTerm, loadRedisKeysPage]);
-
-  const fetchSqlTablesAsTableInfo = async (
-    connectionId: string,
-    databaseName: string,
-  ): Promise<TableInfo[]> => {
-    const tables = await api.metadata.listTables(
-      Number(connectionId),
-      databaseName,
-    );
-    return tables.map((table) => ({
-      name: table.name,
-      schema: table.schema,
-      columns: [],
-      type: table.type,
-    }));
-  };
-
-  const fetchSqlRoutinesAsRoutineInfo = async (
-    connectionId: string,
-    databaseName: string,
-    driver: Driver,
-  ): Promise<RoutineInfo[]> => {
-    if (!supportsRoutines(driver)) return [];
-    try {
-      const routines = await api.metadata.listRoutines(
-        Number(connectionId),
-        databaseName,
-      );
-      return routines.map((routine) => ({
-        name: routine.name,
-        schema: routine.schema,
-        type: routine.type,
-      }));
-    } catch (e) {
-      console.warn(
-        "listRoutines failed",
-        e instanceof Error ? e.message : String(e),
-      );
-      return [];
-    }
-  };
-
-  const fetchEvents = async (
-    connectionId: string,
-    databaseName: string,
-  ): Promise<EventInfo[]> => {
-    try {
-      return await api.metadata.listEvents(connectionId, databaseName);
-    } catch (err) {
-      console.error("Failed to fetch events:", err);
-      return [];
-    }
-  };
-
-  const fetchSequences = async (
-    connectionId: string,
-    databaseName: string,
-  ): Promise<SequenceInfo[]> => {
-    try {
-      return await api.metadata.listSequences(connectionId, databaseName);
-    } catch (err) {
-      console.error("Failed to fetch sequences:", err);
-      return [];
-    }
-  };
-
-  const fetchTypes = async (
-    connectionId: string,
-    databaseName: string,
-  ): Promise<TypeInfo[]> => {
-    try {
-      return await api.metadata.listTypes(connectionId, databaseName);
-    } catch (err) {
-      console.error("Failed to fetch types:", err);
-      return [];
-    }
-  };
-
-  const fetchSynonyms = async (
-    connectionId: string,
-    databaseName: string,
-  ): Promise<SynonymInfo[]> => {
-    try {
-      return await api.metadata.listSynonyms(connectionId, databaseName);
-    } catch (err) {
-      console.error("Failed to fetch synonyms:", err);
-      return [];
-    }
-  };
-
-  const fetchPackages = async (
-    connectionId: string,
-    databaseName: string,
-  ): Promise<PackageInfo[]> => {
-    try {
-      return await api.metadata.listPackages(connectionId, databaseName);
-    } catch (err) {
-      console.error("Failed to fetch packages:", err);
-      return [];
-    }
-  };
 
   const openCreateElasticsearchIndexDialog = (
     connectionId: string,
@@ -1706,112 +998,6 @@ export function ConnectionList({
     };
   };
 
-  getDatasourceTreeAdapterRef.current = getDatasourceTreeAdapter;
-
-  const fetchAndSetTables = async (
-    connectionId: string,
-    databaseName: string,
-    options?: { force?: boolean },
-  ): Promise<TableInfo[]> => {
-    try {
-      const targetConnection = connections.find(
-        (conn) => conn.id === connectionId,
-      );
-      if (!targetConnection) {
-        return [];
-      }
-      const datasourceAdapter = getDatasourceTreeAdapter(targetConnection);
-      if (!datasourceAdapter.isDatabaseExpandable) {
-        await datasourceAdapter.loadDatabaseChildren(databaseName);
-        return [];
-      }
-      const [nextTables, nextRoutines] = await Promise.all([
-        datasourceAdapter.loadDatabaseChildren(databaseName),
-        fetchSqlRoutinesAsRoutineInfo(
-          connectionId,
-          databaseName,
-          targetConnection.type,
-        ),
-      ]);
-
-      // Load events if the group exists
-      const groups = datasourceAdapter.databaseGroups || [];
-      const eventsGroup = groups.find((g) => g.source === "events");
-      if (eventsGroup) {
-        const events = await fetchEvents(connectionId, databaseName);
-        setDatabaseEvents((prev) => new Map(prev).set(`${connectionId}-${databaseName}`, events));
-      }
-
-      // Load sequences if the group exists
-      const sequencesGroup = groups.find((g) => g.source === "sequences");
-      if (sequencesGroup) {
-        const sequences = await fetchSequences(connectionId, databaseName);
-        setDatabaseSequences((prev) => new Map(prev).set(`${connectionId}-${databaseName}`, sequences));
-      }
-
-      // Load types if the group exists
-      const typesGroup = groups.find((g) => g.source === "types");
-      if (typesGroup) {
-        const types = await fetchTypes(connectionId, databaseName);
-        setDatabaseTypes((prev) => new Map(prev).set(`${connectionId}-${databaseName}`, types));
-      }
-
-      // Load synonyms if the group exists
-      const synonymsGroup = groups.find((g) => g.source === "synonyms");
-      if (synonymsGroup) {
-        const synonyms = await fetchSynonyms(connectionId, databaseName);
-        setDatabaseSynonyms((prev) => new Map(prev).set(`${connectionId}-${databaseName}`, synonyms));
-      }
-
-      // Load packages if the group exists
-      const packagesGroup = groups.find((g) => g.source === "packages");
-      if (packagesGroup) {
-        const packages = await fetchPackages(connectionId, databaseName);
-        setDatabasePackages((prev) => new Map(prev).set(`${connectionId}-${databaseName}`, packages));
-      }
-      setConnections((prev) =>
-        prev.map((conn) => {
-          if (conn.id !== connectionId) return conn;
-          const supportsSchemaNode = datasourceAdapter.supportsSchemaNode;
-          return {
-            ...conn,
-            databases: conn.databases.map((db) => {
-              if (db.name !== databaseName) return db;
-              if (
-                !options?.force &&
-                (supportsSchemaNode
-                  ? db.schemas.length > 0
-                  : db.tables.length > 0)
-              ) {
-                return db;
-              }
-              if (!supportsSchemaNode) {
-                return {
-                  ...db,
-                  schemas: [],
-                  tables: nextTables,
-                  routines: nextRoutines,
-                };
-              }
-              return {
-                ...db,
-                schemas: groupSqlObjectsBySchema(nextTables, nextRoutines),
-                tables: [],
-              };
-            }),
-          };
-        }),
-      );
-      return nextTables;
-    } catch (e) {
-      console.error(
-        "listTables failed",
-        e instanceof Error ? e.message : String(e),
-      );
-      return [];
-    }
-  };
-
   // Sync UI state (expansion, selection) and load data if needed.
   useEffect(() => {
     if (!activeTableTarget) {
@@ -1983,29 +1169,6 @@ export function ConnectionList({
     };
   }, [autoScrollRequest]);
 
-  const handleRefreshDatabaseTables = async (
-    connectionId: string,
-    databaseName: string,
-  ) => {
-    const databaseKey = `${connectionId}-${databaseName}`;
-    const tableKeyPrefix = `${databaseKey}-`;
-    const schemaKeyPrefix = `${databaseKey}::`;
-    setExpandedSchemas((prev) => {
-      const next = new Set(
-        [...prev].filter((key) => !key.startsWith(schemaKeyPrefix)),
-      );
-      return next;
-    });
-    setExpandedTables((prev) => {
-      const next = new Set(
-        [...prev].filter((key) => !key.startsWith(tableKeyPrefix)),
-      );
-      return next;
-    });
-
-    await fetchAndSetTables(connectionId, databaseName, { force: true });
-  };
-
   useEffect(() => {
     connections
       .filter(
@@ -2037,88 +1200,6 @@ export function ConnectionList({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showMongoSystemCollections]);
-
-  const toggleDatabase = (key: string) => {
-    const newExpanded = new Set(expandedDatabases);
-    if (newExpanded.has(key)) {
-      newExpanded.delete(key);
-    } else {
-      newExpanded.add(key);
-      // When expanding, try to load tables (if not loaded)
-      // Key format is "connectionId-dbName"
-      const [connId, ...dbNameParts] = key.split("-");
-      const dbName = dbNameParts.join("-");
-      // Find the corresponding connection and database
-      const conn = connections.find((c) => c.id === connId);
-      if (conn) {
-        const db = conn.databases.find((d) => d.name === dbName);
-        if (
-          db &&
-          (supportsSchemaNodeForDriver(conn.type)
-            ? db.schemas.length === 0
-            : db.tables.length === 0)
-        ) {
-          setLoadingDatabaseKeys((prev) => new Set(prev).add(key));
-          fetchAndSetTables(connId, dbName).finally(() => {
-            setLoadingDatabaseKeys((prev) => {
-              const next = new Set(prev);
-              next.delete(key);
-              return next;
-            });
-          });
-        }
-      }
-    }
-    setExpandedDatabases(newExpanded);
-  };
-
-  const toggleQueryGroup = (key: string) => {
-    setExpandedQueryGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
-  const toggleDatabaseGroup = (key: string) => {
-    setExpandedDatabaseGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
-  const toggleSchema = (schemaKey: string) => {
-    setExpandedSchemas((prev) => {
-      const next = new Set(prev);
-      if (next.has(schemaKey)) {
-        next.delete(schemaKey);
-      } else {
-        next.add(schemaKey);
-      }
-      return next;
-    });
-  };
-
-  const toggleGroupNode = (groupKey: string) => {
-    setExpandedGroupNodes((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
-  };
 
   const getGroupItems = (
     database: DatabaseInfo,
@@ -2162,106 +1243,6 @@ export function ConnectionList({
     }
   };
 
-  const fetchAndSetTableColumns = async (
-    connectionId: string,
-    databaseName: string,
-    schema: string,
-    tableName: string,
-  ) => {
-    try {
-      const metadata = await api.metadata.getTableMetadata(
-        Number(connectionId),
-        databaseName,
-        schema,
-        tableName,
-      );
-      setConnections((prev) =>
-        prev.map((conn) => {
-          if (conn.id !== connectionId) return conn;
-          return {
-            ...conn,
-            databases: conn.databases.map((db) => {
-              if (db.name !== databaseName) return db;
-              return {
-                ...db,
-                schemas: db.schemas.map((schemaNode) => ({
-                  ...schemaNode,
-                  tables: schemaNode.tables.map((t) => {
-                    if (t.name !== tableName || t.schema !== schema) return t;
-                    if (t.columns.length > 0) return t;
-                    return {
-                      ...t,
-                      columns: metadata.columns.map((c) => ({
-                        name: c.name,
-                        type: c.type,
-                        isPrimaryKey: c.primaryKey,
-                        nullable: c.nullable,
-                      })),
-                    };
-                  }),
-                })),
-                tables: db.tables.map((t) => {
-                  if (t.name !== tableName || t.schema !== schema) return t;
-                  if (t.columns.length > 0) return t;
-                  return {
-                    ...t,
-                    columns: metadata.columns.map((c) => ({
-                      name: c.name,
-                      type: c.type,
-                      isPrimaryKey: c.primaryKey,
-                      nullable: c.nullable,
-                    })),
-                  };
-                }),
-              };
-            }),
-          };
-        }),
-      );
-    } catch (e) {
-      console.error(
-        "getTableMetadata failed",
-        e instanceof Error ? e.message : String(e),
-      );
-    }
-  };
-
-  const toggleTable = (
-    tableKey: string,
-    connectionId: string,
-    databaseName: string,
-    table: TableInfo,
-  ) => {
-    const newExpanded = new Set(expandedTables);
-    if (newExpanded.has(tableKey)) {
-      newExpanded.delete(tableKey);
-    } else {
-      newExpanded.add(tableKey);
-      const conn = connections.find((c) => c.id === connectionId);
-      if (conn && getDatasourceTreeAdapter(conn).shouldSkipTableColumns) {
-        setExpandedTables(newExpanded);
-        return;
-      }
-      // Load column info on first expand
-      if (table.columns.length === 0) {
-        setLoadingTableKeys((prev) => new Set(prev).add(tableKey));
-        fetchAndSetTableColumns(
-          connectionId,
-          databaseName,
-          table.schema,
-          table.name,
-        ).finally(() => {
-          setLoadingTableKeys((prev) => {
-            const next = new Set(prev);
-            next.delete(tableKey);
-            return next;
-          });
-        });
-      }
-    }
-    setExpandedTables(newExpanded);
-  };
-
   const handleTableClick = (
     connection: Connection,
     database: DatabaseInfo,
@@ -2293,514 +1274,6 @@ export function ConnectionList({
     }
 
     onCreateQuery(Number(connectionId), resolvedDatabaseName, connection.type);
-  };
-
-  const openCreateDatabaseDialog = (connectionId: string) => {
-    const connection = connections.find((conn) => conn.id === connectionId);
-    if (!connection || !supportsCreateDatabaseForDriver(connection.type)) {
-      return;
-    }
-    setCreateDbConnectionId(connectionId);
-    setCreateDbValidationMsg(null);
-    setShowCreateDbAdvanced(false);
-    setCreateDbForm(defaultCreateDatabaseForm);
-    setIsCreateDbDialogOpen(true);
-  };
-
-  const clearConnectionTreeCache = (connectionId: string) => {
-    setConnections((prev) =>
-      prev.map((conn) =>
-        conn.id === connectionId ? { ...conn, databases: [] } : conn,
-      ),
-    );
-    setExpandedDatabases(
-      (prev) =>
-        new Set([...prev].filter((key) => !key.startsWith(`${connectionId}-`))),
-    );
-    setExpandedSchemas(
-      (prev) =>
-        new Set([...prev].filter((key) => !key.startsWith(`${connectionId}-`))),
-    );
-    setExpandedTables(
-      (prev) =>
-        new Set([...prev].filter((key) => !key.startsWith(`${connectionId}-`))),
-    );
-  };
-
-  const handleCreateDatabase = async () => {
-    const connection = createDbTargetConnection;
-    if (!connection || !supportsCreateDatabaseForDriver(connection.type))
-      return;
-
-    const name = createDbForm.name.trim();
-    if (!name) {
-      setCreateDbValidationMsg(
-        t("connection.createDbDialog.validation.requiredName"),
-      );
-      return;
-    }
-
-    const payload: CreateDatabasePayload = {
-      name,
-      ifNotExists: createDbForm.ifNotExists,
-    };
-    if (isMySqlFamilyCreateDb) {
-      if (createDbForm.charset.trim())
-        payload.charset = createDbForm.charset.trim();
-      if (createDbForm.collation.trim()) {
-        payload.collation = createDbForm.collation.trim();
-      }
-    } else if (isPostgresCreateDb) {
-      if (createDbForm.encoding.trim())
-        payload.encoding = createDbForm.encoding.trim();
-      if (createDbForm.lcCollate.trim()) {
-        payload.lcCollate = createDbForm.lcCollate.trim();
-      }
-      if (createDbForm.lcCtype.trim())
-        payload.lcCtype = createDbForm.lcCtype.trim();
-    } else if (isMssqlCreateDb) {
-      if (createDbForm.collation.trim()) {
-        payload.collation = createDbForm.collation.trim();
-      }
-    }
-
-    setCreateDbValidationMsg(null);
-    setIsCreatingDatabase(true);
-    try {
-      await api.connections.createDatabase(Number(connection.id), payload);
-      toast.success(t("connection.toast.createDatabaseSuccess"), {
-        description: name,
-      });
-      setIsCreateDbDialogOpen(false);
-      clearConnectionTreeCache(connection.id);
-      const loaded = await fetchAndSetDatabases(connection.id);
-      if (loaded) {
-        setExpandedConnections((prev) => {
-          const next = new Set(prev);
-          next.add(connection.id);
-          return next;
-        });
-      }
-    } catch (e) {
-      toast.error(t("connection.toast.createDatabaseFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsCreatingDatabase(false);
-    }
-  };
-
-  const handleTestConnection = async () => {
-    try {
-      setValidationMsg(null);
-      const fieldValidationError = getFirstValidationMessage();
-      if (fieldValidationError) {
-        setValidationMsg(fieldValidationError);
-        return;
-      }
-      const sslError = validateSslSettings();
-      if (sslError) {
-        setValidationMsg(sslError);
-        return;
-      }
-      setIsTesting(true);
-      setTestMsg(null);
-      const res = await api.connections.testEphemeral(normalizedForm);
-      setTestMsg({
-        ok: res.success,
-        text: res.message,
-        latency: res.latencyMs,
-      });
-    } catch (e: any) {
-      setTestMsg({ ok: false, text: String(e?.message || e) });
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  const handleConnect = async () => {
-    if (!requiredOk) {
-      setValidationMsg(getFirstValidationMessage());
-      return;
-    }
-    setValidationMsg(null);
-    const sslError = validateSslSettings();
-    if (sslError) {
-      setValidationMsg(sslError);
-      return;
-    }
-    setIsConnecting(true);
-    try {
-      const res = await api.connections.create(normalizedForm);
-      setConnections((prev) => [
-        mapSavedConnection(res, t("common.unknown")),
-        ...prev,
-      ]);
-      setIsDialogOpen(false);
-      setCreateStep("type");
-      setForm(buildConnectionFormDefaults(defaultConnectionDriver));
-      if (onConnect) onConnect(normalizedForm);
-    } catch (e: any) {
-      setValidationMsg(String(e?.message || e));
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingConnectionId) return;
-    if (!requiredOk) {
-      setValidationMsg(getFirstValidationMessage());
-      return;
-    }
-
-    setValidationMsg(null);
-    const sslError = validateSslSettings();
-    if (sslError) {
-      setValidationMsg(sslError);
-      return;
-    }
-    setIsSavingEdit(true);
-    try {
-      await api.connections.update(Number(editingConnectionId), normalizedForm);
-      await fetchConnections();
-      setIsDialogOpen(false);
-      setDialogMode("create");
-      setCreateStep("type");
-      setEditingConnectionId(null);
-      setForm(buildConnectionFormDefaults(defaultConnectionDriver));
-    } catch (e: any) {
-      setValidationMsg(String(e?.message || e));
-    } finally {
-      setIsSavingEdit(false);
-    }
-  };
-
-  const handleDialogSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (dialogMode === "edit") {
-      void handleSaveEdit();
-      return;
-    }
-    void handleConnect();
-  };
-
-  const resetConnectionDialogFeedback = () => {
-    setValidationMsg(null);
-    setTestMsg(null);
-  };
-
-  const closeConnectionDialog = () => {
-    setIsDialogOpen(false);
-    setDialogMode("create");
-    setCreateStep("type");
-    setEditingConnectionId(null);
-    resetConnectionDialogFeedback();
-    setForm(buildConnectionFormDefaults(defaultConnectionDriver));
-  };
-
-  const openCreateDialog = () => {
-    setDialogMode("create");
-    setCreateStep("type");
-    setEditingConnectionId(null);
-    resetConnectionDialogFeedback();
-    setForm(buildConnectionFormDefaults(defaultConnectionDriver));
-    setIsDialogOpen(true);
-  };
-
-  const openEditDialog = (connectionId: string) => {
-    const conn = connections.find((c) => c.id === connectionId);
-    if (!conn) return;
-
-    setDialogMode("edit");
-    setCreateStep("details");
-    setEditingConnectionId(connectionId);
-    resetConnectionDialogFeedback();
-    setForm(buildFormFromConnection(conn));
-    setIsDialogOpen(true);
-  };
-
-  const handleCreateDriverSelect = (driver: Driver) => {
-    setForm((current) =>
-      buildConnectionFormDefaults(driver, {
-        name: current.name,
-      }),
-    );
-    resetConnectionDialogFeedback();
-    setCreateStep("details");
-  };
-
-  const handleReconnect = async (connectionId: string) => {
-    await connectConnection(connectionId, { resetTree: true });
-  };
-
-  const buildDuplicateConnectionName = (sourceName: string) => {
-    const baseName = `${sourceName}-${t("connection.menu.copy")}`;
-    let candidate = baseName;
-    let counter = 2;
-    while (connections.some((conn) => conn.name === candidate)) {
-      candidate = `${baseName}-${counter}`;
-      counter += 1;
-    }
-    return candidate;
-  };
-
-  const handleDuplicateConnection = async (connectionId: string) => {
-    const source = connections.find((conn) => conn.id === connectionId);
-    if (!source) return;
-
-    const duplicateName = buildDuplicateConnectionName(
-      source.name || t("common.unknown"),
-    );
-    const duplicateForm = buildFormFromConnection(source, {
-      name: duplicateName,
-    });
-
-    try {
-      const res = await api.connections.create(duplicateForm);
-      setConnections((prev) => [
-        mapSavedConnection(res, t("common.unknown")),
-        ...prev,
-      ]);
-      toast.success(t("connection.toast.duplicateSuccess"));
-    } catch (e) {
-      toast.error(t("connection.toast.duplicateFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
-  const handleDeleteConnection = async (connectionId: string) => {
-    setIsDeleting(true);
-    try {
-      await api.connections.delete(Number(connectionId));
-      setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
-      setExpandedConnections((prev) => {
-        const next = new Set(prev);
-        next.delete(connectionId);
-        return next;
-      });
-      setExpandedDatabases((prev) => {
-        const next = new Set(
-          [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
-        );
-        return next;
-      });
-      setExpandedSchemas((prev) => {
-        const next = new Set(
-          [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
-        );
-        return next;
-      });
-      setExpandedTables((prev) => {
-        const next = new Set(
-          [...prev].filter((key) => !key.startsWith(`${connectionId}-`)),
-        );
-        return next;
-      });
-      setDeleteTargetConnectionId(null);
-    } catch (e) {
-      console.error(
-        "deleteConnection failed",
-        e instanceof Error ? e.message : String(e),
-      );
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const handleTableExportDialog = (
-    connection: Connection,
-    database: DatabaseInfo,
-    table: TableInfo,
-  ) => {
-    if (!onExportTable) return;
-    if (!isTauri()) {
-      toast.error(t("connection.toast.exportDesktopOnly"));
-      return;
-    }
-    setPendingTableExport({ connection, database, table });
-    setTableExportFormat("csv");
-    setIsTableExportDialogOpen(true);
-  };
-
-  const handleTableExportConfirm = async () => {
-    if (!pendingTableExport || !onExportTable) return;
-    const { connection, database, table } = pendingTableExport;
-    try {
-      setIsExportingTable(true);
-      const selected = await save({
-        title: t("connection.toast.saveExportFile"),
-        defaultPath: getExportDefaultName(table.name, tableExportFormat),
-        filters: getExportFilter(tableExportFormat),
-      });
-      if (!selected) return;
-      const filePath = Array.isArray(selected) ? selected[0] : selected;
-      if (!filePath) return;
-      setIsTableExportDialogOpen(false);
-      onExportTable(
-        {
-          connectionId: Number(connection.id),
-          database: database.name,
-          schema: table.schema,
-          table: table.name,
-          driver: connection.type,
-        },
-        tableExportFormat,
-        filePath,
-      );
-      setPendingTableExport(null);
-    } catch (e) {
-      toast.error(t("connection.toast.openSaveDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsExportingTable(false);
-    }
-  };
-
-  const handleDatabaseImport = async (
-    connectionId: string,
-    databaseName: string,
-  ) => {
-    const connection = connections.find((conn) => conn.id === connectionId);
-    if (!connection) return;
-
-    const capability = getImportDriverCapability(connection.type);
-    if (capability === "read_only_not_supported") {
-      toast.error(t("connection.toast.importReadOnlyDriver"));
-      return;
-    }
-
-    if (capability !== "supported") {
-      toast.error(t("connection.toast.importUnsupportedDriver"));
-      return;
-    }
-
-    if (!isTauri()) {
-      toast.error(t("connection.toast.importDesktopOnly"));
-      return;
-    }
-
-    const selectedPath = await pickSingleFile({
-      title: t("connection.toast.selectImportSqlFile"),
-      filters: [{ name: "SQL", extensions: ["sql"] }],
-    });
-    if (!selectedPath) return;
-
-    setPendingImport({
-      connectionId,
-      databaseName,
-      driver: connection.type,
-      filePath: selectedPath,
-    });
-    setIsImportConfirmOpen(true);
-  };
-
-  const handleDatabaseExport = async (
-    connection: Connection,
-    database: DatabaseInfo,
-  ) => {
-    if (!onExportDatabase) return;
-    if (!isTauri()) {
-      toast.error(t("connection.toast.exportDesktopOnly"));
-      return;
-    }
-
-    setPendingDatabaseExport({
-      connectionId: connection.id,
-      databaseName: database.name,
-      driver: connection.type,
-      format: "sql_full",
-    });
-    setIsDatabaseExportDialogOpen(true);
-  };
-
-  const handleConfirmDatabaseExport = async () => {
-    if (!pendingDatabaseExport || !onExportDatabase) return;
-    if (!isTauri()) {
-      toast.error(t("connection.toast.exportDesktopOnly"));
-      return;
-    }
-
-    setIsExportingDatabaseSql(true);
-    try {
-      const suffix =
-        pendingDatabaseExport.format === "sql_ddl"
-          ? "ddl"
-          : pendingDatabaseExport.format === "sql_dml"
-            ? "dml"
-            : "full";
-      const selected = await save({
-        title: t("connection.toast.saveExportFile"),
-        defaultPath: getExportDefaultName(
-          `${pendingDatabaseExport.databaseName}_${suffix}`,
-          pendingDatabaseExport.format,
-        ),
-        filters: getExportFilter(pendingDatabaseExport.format),
-      });
-      if (!selected) return;
-      const filePath = Array.isArray(selected) ? selected[0] : selected;
-      if (!filePath) return;
-
-      onExportDatabase({
-        connectionId: Number(pendingDatabaseExport.connectionId),
-        database: pendingDatabaseExport.databaseName,
-        driver: pendingDatabaseExport.driver,
-        format: pendingDatabaseExport.format,
-        filePath,
-      });
-      setIsDatabaseExportDialogOpen(false);
-      setPendingDatabaseExport(null);
-    } catch (e) {
-      toast.error(t("connection.toast.openSaveDialogFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsExportingDatabaseSql(false);
-    }
-  };
-
-  const handleConfirmImport = async () => {
-    if (!pendingImport) return;
-
-    setIsImportingSql(true);
-    try {
-      const result = await api.transfer.importSqlFile({
-        id: Number(pendingImport.connectionId),
-        database: pendingImport.databaseName,
-        filePath: pendingImport.filePath,
-        driver: pendingImport.driver,
-      });
-
-      if (result.error || result.failedAt) {
-        toast.error(t("connection.toast.importFailed"), {
-          description: result.error || t("common.unknown"),
-        });
-      } else {
-        toast.success(
-          t("connection.toast.importSuccess", {
-            count: result.successStatements,
-          }),
-          {
-            description: pendingImport.filePath,
-          },
-        );
-      }
-
-      await handleRefreshDatabaseTables(
-        pendingImport.connectionId,
-        pendingImport.databaseName,
-      );
-    } catch (e) {
-      toast.error(t("connection.toast.importFailed"), {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setIsImportingSql(false);
-      setIsImportConfirmOpen(false);
-      setPendingImport(null);
-    }
   };
 
   const contextMenuConnection = contextMenu.connectionId
@@ -2944,12 +1417,27 @@ export function ConnectionList({
                         isExpanded={expandedTables.has(tableKey)}
                         toggleOnRowClick={false}
                         onToggle={() => {
-                          toggleTable(
-                            tableKey,
-                            connection.id,
-                            database.name,
-                            table,
-                          );
+                          toggleTable(tableKey, () => {
+                            const conn = connections.find((c) => c.id === connection.id);
+                            if (conn && getDatasourceTreeAdapter(conn).shouldSkipTableColumns) {
+                              return;
+                            }
+                            if (table.columns.length === 0) {
+                              setLoadingTableKeys((prev) => new Set(prev).add(tableKey));
+                              fetchAndSetTableColumns(
+                                connection.id,
+                                database.name,
+                                table.schema,
+                                table.name,
+                              ).finally(() => {
+                                setLoadingTableKeys((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(tableKey);
+                                  return next;
+                                });
+                              });
+                            }
+                          });
                         }}
                         onDoubleClick={() => {
                           handleTableClick(connection, database, table);
@@ -3100,7 +1588,25 @@ export function ConnectionList({
                   icon={group.leafIcon}
                   label={item.name}
                   isExpanded={expandedTables.has(nodeKey)}
-                  onToggle={() => toggleTable(nodeKey, conn.id, database.name, { name: item.name, schema: item.schema, columns: [] })}
+                  onToggle={() => toggleTable(nodeKey, () => {
+                    const c = connections.find((x) => x.id === conn.id);
+                    if (c && getDatasourceTreeAdapter(c).shouldSkipTableColumns) {
+                      return;
+                    }
+                    setLoadingTableKeys((prev) => new Set(prev).add(nodeKey));
+                    fetchAndSetTableColumns(
+                      conn.id,
+                      database.name,
+                      item.schema,
+                      item.name,
+                    ).finally(() => {
+                      setLoadingTableKeys((prev) => {
+                        const next = new Set(prev);
+                        next.delete(nodeKey);
+                        return next;
+                      });
+                    });
+                  })}
                 >
                   {null}
                 </TreeNode>
@@ -3122,7 +1628,25 @@ export function ConnectionList({
                   icon={group.leafIcon}
                   label={item.name}
                   isExpanded={expandedTables.has(nodeKey)}
-                  onToggle={() => toggleTable(nodeKey, conn.id, database.name, { name: item.name, schema: item.schema, columns: [] })}
+                  onToggle={() => toggleTable(nodeKey, () => {
+                    const c = connections.find((x) => x.id === conn.id);
+                    if (c && getDatasourceTreeAdapter(c).shouldSkipTableColumns) {
+                      return;
+                    }
+                    setLoadingTableKeys((prev) => new Set(prev).add(nodeKey));
+                    fetchAndSetTableColumns(
+                      conn.id,
+                      database.name,
+                      item.schema,
+                      item.name,
+                    ).finally(() => {
+                      setLoadingTableKeys((prev) => {
+                        const next = new Set(prev);
+                        next.delete(nodeKey);
+                        return next;
+                      });
+                    });
+                  })}
                 >
                   {null}
                 </TreeNode>
@@ -3208,7 +1732,27 @@ export function ConnectionList({
                     ? expandedDatabases.has(dbKey)
                     : false
                 }
-                onToggle={() => toggleDatabase(dbKey)}
+                onToggle={() => toggleDatabase(dbKey, (connId, dbName, key) => {
+                  const conn = connections.find((c) => c.id === connId);
+                  if (conn) {
+                    const db = conn.databases.find((d) => d.name === dbName);
+                    if (
+                      db &&
+                      (supportsSchemaNodeForDriver(conn.type)
+                        ? db.schemas.length === 0
+                        : db.tables.length === 0)
+                    ) {
+                      setLoadingDatabaseKeys((prev) => new Set(prev).add(key));
+                      fetchAndSetTables(connId, dbName).finally(() => {
+                        setLoadingDatabaseKeys((prev) => {
+                          const next = new Set(prev);
+                          next.delete(key);
+                          return next;
+                        });
+                      });
+                    }
+                  }
+                })}
                 toggleOnRowClick={datasourceAdapter.isDatabaseExpandable}
                 hideToggle={!datasourceAdapter.isDatabaseExpandable}
                 statusIndicator={
@@ -3292,7 +1836,7 @@ export function ConnectionList({
               label={connection.name}
               isExpanded={expandedConnections.has(connection.id)}
               toggleOnRowClick={connection.connectState === "success"}
-              onToggle={() => toggleConnection(connection.id)}
+              onToggle={() => toggleConnection(connection.id, connections)}
               onDoubleClick={() => {
                 void connectConnection(connection.id);
               }}
@@ -3650,313 +2194,23 @@ export function ConnectionList({
           }
         }}
       />
-      <Dialog
-        open={isCreateDbDialogOpen}
-        onOpenChange={(open) => {
-          setIsCreateDbDialogOpen(open);
-          if (!open) {
-            setCreateDbValidationMsg(null);
-            setCreateDbConnectionId(null);
-            setShowCreateDbAdvanced(false);
-            setCreateDbForm(defaultCreateDatabaseForm);
-            setMysqlCharsets([]);
-            setMysqlCollations([]);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("connection.createDbDialog.title")}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="create-db-name">
-                {t("connection.createDbDialog.fields.name")}{" "}
-                <span className="text-red-600">*</span>
-              </Label>
-              <Input
-                id="create-db-name"
-                value={createDbForm.name}
-                onChange={(e) =>
-                  setCreateDbForm((prev) => ({ ...prev, name: e.target.value }))
-                }
-                placeholder={t("connection.createDbDialog.placeholders.name")}
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="create-db-if-not-exists"
-                checked={createDbForm.ifNotExists}
-                onCheckedChange={(checked) =>
-                  setCreateDbForm((prev) => ({
-                    ...prev,
-                    ifNotExists: checked === true,
-                  }))
-                }
-              />
-              <Label htmlFor="create-db-if-not-exists">
-                {t("connection.createDbDialog.fields.ifNotExists")}
-              </Label>
-            </div>
-            <div>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-8 px-0"
-                onClick={() => setShowCreateDbAdvanced((prev) => !prev)}
-              >
-                {showCreateDbAdvanced
-                  ? t("connection.createDbDialog.hideAdvanced")
-                  : t("connection.createDbDialog.showAdvanced")}
-              </Button>
-            </div>
-            {showCreateDbAdvanced && (
-              <div className="border p-3 rounded-md space-y-3 bg-muted/20">
-                {isMySqlFamilyCreateDb && (
-                  <>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-charset">
-                        {t("connection.createDbDialog.fields.charset")}
-                      </Label>
-                      <Select
-                        value={createDbForm.charset || createDbNoneOption}
-                        disabled={loadingMysqlOptions}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            charset: v === createDbNoneOption ? "" : v,
-                            collation: "",
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-charset">
-                          <SelectValue
-                            placeholder={
-                              loadingMysqlOptions
-                                ? t("common.loading")
-                                : t(
-                                    "connection.createDbDialog.placeholders.charset",
-                                  )
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {mysqlCharsets.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-collation">
-                        {t("connection.createDbDialog.fields.collation")}
-                      </Label>
-                      <Select
-                        value={createDbForm.collation || createDbNoneOption}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            collation: v === createDbNoneOption ? "" : v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-collation">
-                          <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.collation",
-                            )}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {mysqlCollations.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
-                {isPostgresCreateDb && (
-                  <>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-encoding">
-                        {t("connection.createDbDialog.fields.encoding")}
-                      </Label>
-                      <Select
-                        value={createDbForm.encoding || createDbNoneOption}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            encoding: v === createDbNoneOption ? "" : v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-encoding">
-                          <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.encoding",
-                            )}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {postgresEncodingOptions.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-lc-collate">
-                        {t("connection.createDbDialog.fields.lcCollate")}
-                      </Label>
-                      <Select
-                        value={createDbForm.lcCollate || createDbNoneOption}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            lcCollate: v === createDbNoneOption ? "" : v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-lc-collate">
-                          <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.lcCollate",
-                            )}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {postgresLocaleOptions.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="create-db-lc-ctype">
-                        {t("connection.createDbDialog.fields.lcCtype")}
-                      </Label>
-                      <Select
-                        value={createDbForm.lcCtype || createDbNoneOption}
-                        onValueChange={(v) =>
-                          setCreateDbForm((prev) => ({
-                            ...prev,
-                            lcCtype: v === createDbNoneOption ? "" : v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="create-db-lc-ctype">
-                          <SelectValue
-                            placeholder={t(
-                              "connection.createDbDialog.placeholders.lcCtype",
-                            )}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={createDbNoneOption}>
-                            {t("connection.createDbDialog.defaultOption")}
-                          </SelectItem>
-                          {postgresLocaleOptions.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
-                {isMssqlCreateDb && (
-                  <div className="grid gap-2">
-                    <Label htmlFor="create-db-collation">
-                      {t("connection.createDbDialog.fields.collation")}
-                    </Label>
-                    <Select
-                      value={createDbForm.collation || createDbNoneOption}
-                      onValueChange={(v) =>
-                        setCreateDbForm((prev) => ({
-                          ...prev,
-                          collation: v === createDbNoneOption ? "" : v,
-                        }))
-                      }
-                    >
-                      <SelectTrigger id="create-db-collation">
-                        <SelectValue
-                          placeholder={t(
-                            "connection.createDbDialog.placeholders.collation",
-                          )}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={createDbNoneOption}>
-                          {t("connection.createDbDialog.defaultOption")}
-                        </SelectItem>
-                        {mssqlCollationOptions.map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {opt}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-            )}
-            {createDbValidationMsg && (
-              <Alert variant="destructive">
-                <AlertTitle>
-                  {t("connection.dialog.validationFailed")}
-                </AlertTitle>
-                <AlertDescription>{createDbValidationMsg}</AlertDescription>
-              </Alert>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isCreatingDatabase}
-                onClick={() => setIsCreateDbDialogOpen(false)}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="button"
-                disabled={isCreatingDatabase}
-                onClick={() => void handleCreateDatabase()}
-              >
-                {isCreatingDatabase ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("connection.createDbDialog.creating")}
-                  </>
-                ) : (
-                  t("connection.createDbDialog.confirm")
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CreateDatabaseDialog
+        isOpen={isCreateDbDialogOpen}
+        onClose={closeCreateDbDialog}
+        form={createDbForm}
+        setForm={setCreateDbForm}
+        showAdvanced={showCreateDbAdvanced}
+        setShowAdvanced={setShowCreateDbAdvanced}
+        validationMsg={createDbValidationMsg}
+        isCreating={isCreatingDatabase}
+        mysqlCharsets={mysqlCharsets}
+        mysqlCollations={mysqlCollations}
+        loadingMysqlOptions={loadingMysqlOptions}
+        isMySqlFamily={isMySqlFamilyCreateDb}
+        isPostgres={isPostgresCreateDb}
+        isMssql={isMssqlCreateDb}
+        onCreate={handleCreateDatabase}
+      />
       <AlertDialog
         open={!!deleteTargetConnectionId}
         onOpenChange={(open) => {
@@ -3993,269 +2247,51 @@ export function ConnectionList({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog
-        open={isImportConfirmOpen}
-        onOpenChange={(open) => {
-          setIsImportConfirmOpen(open);
-          if (!open && !isImportingSql) {
+      <ImportConfirmDialog
+        isOpen={isImportConfirmOpen}
+        isImporting={isImportingSql}
+        databaseName={pendingImport?.databaseName}
+        filePath={pendingImport?.filePath}
+        onConfirm={handleConfirmImport}
+        onCancel={() => {
+          setIsImportConfirmOpen(false);
+          if (!isImportingSql) {
             setPendingImport(null);
           }
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("connection.importDialog.title")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("connection.importDialog.description", {
-                database: pendingImport?.databaseName || "",
-              })}
-            </AlertDialogDescription>
-            <div className="text-xs text-muted-foreground font-mono break-all mt-2">
-              {pendingImport?.filePath || ""}
-            </div>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isImportingSql}>
-              {t("common.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isImportingSql || !pendingImport}
-              onClick={async (e) => {
-                e.preventDefault();
-                await handleConfirmImport();
-              }}
-            >
-              {isImportingSql ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("connection.importDialog.importing")}
-                </>
-              ) : (
-                t("connection.importDialog.confirm")
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <Dialog
-        open={isTableExportDialogOpen}
-        onOpenChange={(open) => {
-          setIsTableExportDialogOpen(open);
-          if (!open && !isExportingTable) {
+      />
+      <TableExportDialog
+        isOpen={isTableExportDialogOpen}
+        onClose={() => {
+          setIsTableExportDialogOpen(false);
+          if (!isExportingTable) {
             setPendingTableExport(null);
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("connection.tableExportDialog.title")}</DialogTitle>
-            <DialogDescription>
-              {t("connection.tableExportDialog.description", {
-                table: pendingTableExport?.table.name || "",
-              })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <RadioGroup
-              value={tableExportFormat}
-              onValueChange={(value: TableExportFormat) =>
-                setTableExportFormat(value)
-              }
-            >
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="csv" id="table-export-csv" />
-                <div className="grid gap-1">
-                  <Label htmlFor="table-export-csv" className="cursor-pointer">
-                    {t("connection.tableExportDialog.formatCsv")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatCsvDesc")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="json" id="table-export-json" />
-                <div className="grid gap-1">
-                  <Label htmlFor="table-export-json" className="cursor-pointer">
-                    {t("connection.tableExportDialog.formatJson")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatJsonDesc")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_ddl" id="table-export-sql-ddl" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="table-export-sql-ddl"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.tableExportDialog.formatSqlDdl")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatSqlDdlDesc")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_dml" id="table-export-sql-dml" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="table-export-sql-dml"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.tableExportDialog.formatSqlDml")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatSqlDmlDesc")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_full" id="table-export-sql-full" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="table-export-sql-full"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.tableExportDialog.formatSqlFull")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.tableExportDialog.formatSqlFullDesc")}
-                  </p>
-                </div>
-              </label>
-            </RadioGroup>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isExportingTable}
-                onClick={() => setIsTableExportDialogOpen(false)}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="button"
-                disabled={isExportingTable || !pendingTableExport}
-                onClick={() => void handleTableExportConfirm()}
-              >
-                {isExportingTable ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("connection.exportDialog.exporting")}
-                  </>
-                ) : (
-                  t("connection.tableExportDialog.exportButton")
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={isDatabaseExportDialogOpen}
-        onOpenChange={(open) => {
-          setIsDatabaseExportDialogOpen(open);
-          if (!open && !isExportingDatabaseSql) {
+        format={tableExportFormat}
+        setFormat={setTableExportFormat}
+        isExporting={isExportingTable}
+        onConfirm={handleTableExportConfirm}
+        tableName={pendingTableExport?.table.name}
+      />
+      <DatabaseExportDialog
+        isOpen={isDatabaseExportDialogOpen}
+        onClose={() => {
+          setIsDatabaseExportDialogOpen(false);
+          if (!isExportingDatabaseSql) {
             setPendingDatabaseExport(null);
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("connection.exportDialog.title")}</DialogTitle>
-            <DialogDescription>
-              {t("connection.exportDialog.description", {
-                database: pendingDatabaseExport?.databaseName || "",
-              })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <RadioGroup
-              value={pendingDatabaseExport?.format || "sql_full"}
-              onValueChange={(value: DatabaseExportFormat) =>
-                setPendingDatabaseExport((prev) =>
-                  prev ? { ...prev, format: value } : prev,
-                )
-              }
-            >
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_ddl" id="database-export-sql-ddl" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="database-export-sql-ddl"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.exportDialog.options.sqlDdl.label")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.exportDialog.options.sqlDdl.description")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem value="sql_dml" id="database-export-sql-dml" />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="database-export-sql-dml"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.exportDialog.options.sqlDml.label")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.exportDialog.options.sqlDml.description")}
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
-                <RadioGroupItem
-                  value="sql_full"
-                  id="database-export-sql-full"
-                />
-                <div className="grid gap-1">
-                  <Label
-                    htmlFor="database-export-sql-full"
-                    className="cursor-pointer"
-                  >
-                    {t("connection.exportDialog.options.sqlFull.label")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {t("connection.exportDialog.options.sqlFull.description")}
-                  </p>
-                </div>
-              </label>
-            </RadioGroup>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isExportingDatabaseSql}
-                onClick={() => setIsDatabaseExportDialogOpen(false)}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="button"
-                disabled={isExportingDatabaseSql || !pendingDatabaseExport}
-                onClick={() => void handleConfirmDatabaseExport()}
-              >
-                {isExportingDatabaseSql ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("connection.exportDialog.exporting")}
-                  </>
-                ) : (
-                  t("connection.exportDialog.confirm")
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        isExporting={isExportingDatabaseSql}
+        onConfirm={handleConfirmDatabaseExport}
+        databaseName={pendingDatabaseExport?.databaseName}
+        format={pendingDatabaseExport?.format || "sql_full"}
+        onFormatChange={(value: DatabaseExportFormat) =>
+          setPendingDatabaseExport((prev) =>
+            prev ? { ...prev, format: value } : prev,
+          )
+        }
+      />
     </div>
   );
 }

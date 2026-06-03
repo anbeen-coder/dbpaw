@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
-import type { Driver } from "@/lib/driver-registry";
-import type { RoutineType, RedisConnectionMode } from "@/services/api";
+import type {
+  Driver,
+  RedisConnectionMode,
+  RoutineType,
+} from "@/services/api";
 import type { DatabaseGroupConfig } from "@/lib/tree-adapters/types";
 
 export interface Column {
@@ -43,6 +46,9 @@ export interface DatabaseInfo {
   redisKeyCount?: number;
 }
 
+export type DatabaseExportFormat = "sql_dml" | "sql_ddl" | "sql_full";
+export type TableExportFormat = "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full";
+
 export interface Connection {
   id: string;
   name: string;
@@ -79,6 +85,24 @@ export interface Connection {
   connectError?: string;
 }
 
+export interface CreateDatabaseForm {
+  name: string;
+  ifNotExists: boolean;
+  charset: string;
+  collation: string;
+  encoding: string;
+  lcCollate: string;
+  lcCtype: string;
+}
+
+export type SelectedTableNode = {
+  key: string;
+  connectionId: number;
+  database: string;
+  table: string;
+  schema: string;
+};
+
 export interface DatasourceTreeAdapter {
   supportsSchemaNode: boolean;
   isDatabaseExpandable: boolean;
@@ -90,7 +114,10 @@ export interface DatasourceTreeAdapter {
   getDatabaseRowActions: (database: DatabaseInfo) => ReactNode | undefined;
   onDatabaseDoubleClick?: (database: DatabaseInfo) => void;
   renderDatabaseFooter: (database: DatabaseInfo, level: number) => ReactNode;
-  renderTableContextMenu: (database: DatabaseInfo, table: TableInfo) => ReactNode;
+  renderTableContextMenu: (
+    database: DatabaseInfo,
+    table: TableInfo,
+  ) => ReactNode;
   renderDatabaseContextMenu?: (databaseName: string) => ReactNode;
   databaseGroups?: DatabaseGroupConfig[];
 }

@@ -1,19 +1,14 @@
 import { useCallback } from "react";
 import { api } from "@/services/api";
+import type { Connection, TableInfo } from "../connection-list/types";
 import { isRedisClusterDatabaseList } from "@/components/business/Redis/redis-utils";
-import type {
-  Connection,
-  DatasourceTreeAdapter,
-  TableInfo,
-} from "../connection-list/types";
 
 export function useRedisKeys(params: {
   connectionsRef: React.MutableRefObject<Connection[]>;
   setConnections: (fn: (prev: Connection[]) => Connection[]) => void;
   searchTerm: string;
-  getDatasourceTreeAdapter: (connection: Connection) => DatasourceTreeAdapter;
 }) {
-  const { connectionsRef, setConnections, searchTerm, getDatasourceTreeAdapter } = params;
+  const { connectionsRef, setConnections, searchTerm } = params;
 
   const redisKeyToTableInfo = (key: {
     key: string;
@@ -47,7 +42,6 @@ export function useRedisKeys(params: {
       );
       const isRedisCluster =
         targetConnection &&
-        !getDatasourceTreeAdapter(targetConnection).isDatabaseExpandable &&
         isRedisClusterDatabaseList(targetConnection.databases);
       if (isRedisCluster && !searchTerm.trim()) {
         setConnections((prev) =>
@@ -99,7 +93,7 @@ export function useRedisKeys(params: {
       );
       return newKeys;
     },
-    [searchTerm, connectionsRef, setConnections, getDatasourceTreeAdapter],
+    [searchTerm],
   );
 
   return { loadRedisKeysPage, redisKeyToTableInfo };

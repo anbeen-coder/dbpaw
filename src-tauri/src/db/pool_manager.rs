@@ -1,27 +1,61 @@
 use crate::db::drivers::{self, DatabaseDriver};
 use crate::models::ConnectionForm;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
+
+/// Configuration for the connection pool
+#[derive(Clone)]
+pub struct PoolConfig {
+    /// Maximum number of connections in the pool
+    pub max_connections: usize,
+    /// Timeout in seconds for idle connections
+    pub idle_timeout_secs: u64,
+    /// Timeout in seconds for establishing new connections
+    pub connection_timeout_secs: u64,
+    /// Interval in seconds between health checks
+    pub health_check_interval_secs: u64,
+    /// Maximum number of retry attempts for failed connections
+    pub max_retries: u32,
+}
+
+impl Default for PoolConfig {
+    fn default() -> Self {
+        Self {
+            max_connections: 100,
+            idle_timeout_secs: 300,
+            connection_timeout_secs: 30,
+            health_check_interval_secs: 60,
+            max_retries: 3,
+        }
+    }
+}
 
 pub struct PoolEntry {
     pub driver: Arc<dyn DatabaseDriver>,
     // Use std::sync::Mutex for interior mutability to update timestamp on read access
     pub last_used: Mutex<std::time::Instant>,
+    pub created_at: std::time::Instant,
+    pub is_healthy: AtomicBool,
+    pub use_count: AtomicU64,
 }
 
 pub struct PoolManager {
     // Store active connections, Key is connection UUID
-    pools: RwLock<HashMap<String, PoolEntry>>,
+    pools: Arc<RwLock<HashMap<String, PoolEntry>>>,
     // Connection lock to prevent concurrent connection attempts for the same UUID
     connect_locks: RwLock<HashMap<String, Arc<AsyncMutex<()>>>>,
+    // Pool configuration
+    config: PoolConfig,
 }
 
 impl PoolManager {
-    pub fn new() -> Self {
+    pub fn new(config: PoolConfig) -> Self {
         Self {
-            pools: RwLock::new(HashMap::new()),
+            pools: Arc::new(RwLock::new(HashMap::new())),
             connect_locks: RwLock::new(HashMap::new()),
+            config,
         }
     }
 
@@ -33,6 +67,7 @@ impl PoolManager {
                 Ok(mut last) => *last = std::time::Instant::now(),
                 Err(e) => eprintln!("[POOL_ERROR] Failed to lock last_used timestamp: {}", e),
             }
+            entry.use_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Some(entry.driver.clone());
         }
         None
@@ -49,7 +84,18 @@ impl PoolManager {
             return Ok(driver);
         }
 
-        // 2. Get lock for this specific ID
+        // 2. Check connection limit
+        {
+            let pools = self.pools.read().await;
+            if pools.len() >= self.config.max_connections {
+                return Err(format!(
+                    "[POOL_ERROR] Maximum connection limit reached ({})",
+                    self.config.max_connections
+                ));
+            }
+        }
+
+        // 3. Get lock for this specific ID
         let lock = {
             let mut locks = self.connect_locks.write().await;
             locks
@@ -60,19 +106,26 @@ impl PoolManager {
         // Lock to ensure only one thread establishes connection for this ID at a time
         let _guard = lock.lock().await;
 
-        // 3. Double check
+        // 4. Double check
         if let Some(driver) = self.get_connection(id).await {
             return Ok(driver);
         }
 
-        // 4. Create new connection
-        // Note: connect returns Box<dyn DatabaseDriver>, we need to convert to Arc
-        let driver_box = drivers::connect(form)
-            .await
-            .map_err(|e| format!("[POOL_CONNECT_ERROR] {}", e))?;
+        // 5. Create new connection with timeout
+        let driver_box = tokio::time::timeout(
+            std::time::Duration::from_secs(self.config.connection_timeout_secs),
+            drivers::connect(form),
+        )
+        .await
+        .map_err(|_| format!(
+            "[POOL_ERROR] Connection timeout after {} seconds",
+            self.config.connection_timeout_secs
+        ))?
+        .map_err(|e| format!("[POOL_CONNECT_ERROR] {}", e))?;
+        
         let driver: Arc<dyn DatabaseDriver> = Arc::from(driver_box);
 
-        // 5. Store in pool
+        // 6. Store in pool
         {
             let mut pools = self.pools.write().await;
             pools.insert(
@@ -80,6 +133,9 @@ impl PoolManager {
                 PoolEntry {
                     driver: driver.clone(),
                     last_used: Mutex::new(std::time::Instant::now()),
+                    created_at: std::time::Instant::now(),
+                    is_healthy: AtomicBool::new(true),
+                    use_count: AtomicU64::new(0),
                 },
             );
         }
@@ -136,6 +192,110 @@ impl PoolManager {
         }
     }
 
+    /// Start background cleanup task that periodically removes idle and unhealthy connections
+    pub async fn start_cleanup_task(self: &Arc<Self>) {
+        let manager = Arc::clone(self);
+        let config = manager.config.clone();
+        let pools = Arc::clone(&manager.pools);
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(
+                std::time::Duration::from_secs(config.health_check_interval_secs),
+            );
+
+            loop {
+                interval.tick().await;
+                manager.check_all_connections_health().await;
+                Self::cleanup_idle_connections(&pools, &config).await;
+                Self::cleanup_unhealthy_connections(&pools).await;
+            }
+        });
+    }
+
+    async fn cleanup_idle_connections(
+        pools: &Arc<RwLock<HashMap<String, PoolEntry>>>,
+        config: &PoolConfig,
+    ) {
+        let now = std::time::Instant::now();
+        let idle_timeout = std::time::Duration::from_secs(config.idle_timeout_secs);
+
+        let mut to_remove = Vec::new();
+        {
+            let pools_read = pools.read().await;
+            for (key, entry) in pools_read.iter() {
+                if let Ok(last) = entry.last_used.lock() {
+                    if now.duration_since(*last) > idle_timeout {
+                        to_remove.push(key.clone());
+                    }
+                }
+            }
+        }
+
+        if !to_remove.is_empty() {
+            let mut pools_write = pools.write().await;
+            for key in to_remove {
+                if let Some(entry) = pools_write.remove(&key) {
+                    println!("[POOL_CLEANUP] Removing idle connection: {}", key);
+                    entry.driver.close().await;
+                }
+            }
+        }
+    }
+
+    async fn cleanup_unhealthy_connections(pools: &Arc<RwLock<HashMap<String, PoolEntry>>>) {
+        let mut to_remove = Vec::new();
+        {
+            let pools_read = pools.read().await;
+            for (key, entry) in pools_read.iter() {
+                if !entry.is_healthy.load(std::sync::atomic::Ordering::Relaxed) {
+                    to_remove.push(key.clone());
+                }
+            }
+        }
+
+        if !to_remove.is_empty() {
+            let mut pools_write = pools.write().await;
+            for key in to_remove {
+                if let Some(entry) = pools_write.remove(&key) {
+                    println!("[POOL_CLEANUP] Removing unhealthy connection: {}", key);
+                    entry.driver.close().await;
+                }
+            }
+        }
+    }
+
+    /// Check health of a single connection by executing test_connection
+    async fn check_health(&self, key: &str) -> bool {
+        let driver = {
+            let pools = self.pools.read().await;
+            match pools.get(key) {
+                Some(entry) => entry.driver.clone(),
+                None => return false,
+            }
+        };
+
+        match driver.test_connection().await {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
+    /// Check health of all connections and update their health status
+    async fn check_all_connections_health(&self) {
+        let keys: Vec<String> = {
+            let pools = self.pools.read().await;
+            pools.keys().cloned().collect()
+        };
+
+        for key in keys {
+            let is_healthy = self.check_health(&key).await;
+            let pools = self.pools.read().await;
+            if let Some(entry) = pools.get(&key) {
+                entry.is_healthy.store(is_healthy, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
     #[cfg(test)]
     pub async fn insert_mock_connection(&self, id: &str, driver: Arc<dyn DatabaseDriver>) {
         let mut pools = self.pools.write().await;
@@ -144,6 +304,9 @@ impl PoolManager {
             PoolEntry {
                 driver,
                 last_used: Mutex::new(std::time::Instant::now()),
+                created_at: std::time::Instant::now(),
+                is_healthy: AtomicBool::new(true),
+                use_count: AtomicU64::new(0),
             },
         );
     }
@@ -238,7 +401,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_remove_by_prefix() {
-        let manager = PoolManager::new();
+        let manager = PoolManager::new(PoolConfig::default());
         let driver = Arc::new(MockDriver);
 
         manager.insert_mock_connection("1", driver.clone()).await;
@@ -261,5 +424,284 @@ mod tests {
         assert!(!manager.contains_key("1:db2").await);
         assert!(manager.contains_key("2").await);
         assert!(manager.contains_key("21").await);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_idle_connections() {
+        let config = PoolConfig {
+            idle_timeout_secs: 1,
+            ..Default::default()
+        };
+        let manager = PoolManager::new(config);
+        let driver = Arc::new(MockDriver);
+
+        manager.insert_mock_connection("idle1", driver.clone()).await;
+        manager.insert_mock_connection("idle2", driver.clone()).await;
+        assert_eq!(manager.count().await, 2);
+
+        // Wait for connections to become idle
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        PoolManager::cleanup_idle_connections(&manager.pools, &manager.config).await;
+
+        assert_eq!(manager.count().await, 0);
+        assert!(!manager.contains_key("idle1").await);
+        assert!(!manager.contains_key("idle2").await);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_idle_connections_keeps_recent() {
+        let config = PoolConfig {
+            idle_timeout_secs: 300,
+            ..Default::default()
+        };
+        let manager = PoolManager::new(config);
+        let driver = Arc::new(MockDriver);
+
+        manager.insert_mock_connection("recent1", driver.clone()).await;
+        assert_eq!(manager.count().await, 1);
+
+        PoolManager::cleanup_idle_connections(&manager.pools, &manager.config).await;
+
+        // Should not be removed since it was just created
+        assert_eq!(manager.count().await, 1);
+        assert!(manager.contains_key("recent1").await);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_unhealthy_connections() {
+        let config = PoolConfig::default();
+        let manager = PoolManager::new(config);
+        let driver = Arc::new(MockDriver);
+
+        manager.insert_mock_connection("healthy", driver.clone()).await;
+        manager.insert_mock_connection("unhealthy", driver.clone()).await;
+        assert_eq!(manager.count().await, 2);
+
+        // Mark one as unhealthy
+        {
+            let pools = manager.pools.read().await;
+            if let Some(entry) = pools.get("unhealthy") {
+                entry.is_healthy.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+
+        PoolManager::cleanup_unhealthy_connections(&manager.pools).await;
+
+        assert_eq!(manager.count().await, 1);
+        assert!(manager.contains_key("healthy").await);
+        assert!(!manager.contains_key("unhealthy").await);
+    }
+
+    #[tokio::test]
+    async fn test_start_cleanup_task() {
+        let config = PoolConfig {
+            health_check_interval_secs: 1,
+            idle_timeout_secs: 1,
+            ..Default::default()
+        };
+        let manager = Arc::new(PoolManager::new(config));
+        let driver = Arc::new(MockDriver);
+
+        manager.insert_mock_connection("task_idle", driver.clone()).await;
+        assert_eq!(manager.count().await, 1);
+
+        manager.start_cleanup_task().await;
+
+        // Wait for the cleanup task to run
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+        assert_eq!(manager.count().await, 0);
+    }
+
+    struct UnhealthyMockDriver;
+
+    #[async_trait]
+    impl DatabaseDriver for UnhealthyMockDriver {
+        async fn close(&self) {}
+        async fn test_connection(&self) -> Result<(), String> {
+            Err("Connection failed".into())
+        }
+        async fn list_databases(&self) -> Result<Vec<String>, String> {
+            Err("Unimplemented".into())
+        }
+        async fn list_tables(
+            &self,
+            _schema: Option<String>,
+        ) -> Result<Vec<crate::models::TableInfo>, String> {
+            Err("Unimplemented".into())
+        }
+        async fn get_table_structure(
+            &self,
+            _schema: String,
+            _table: String,
+        ) -> Result<crate::models::TableStructure, String> {
+            Err("Unimplemented".into())
+        }
+        async fn get_table_metadata(
+            &self,
+            _schema: String,
+            _table: String,
+        ) -> Result<crate::models::TableMetadata, String> {
+            Err("Unimplemented".into())
+        }
+        async fn get_table_ddl(&self, _schema: String, _table: String) -> Result<String, String> {
+            Err("Unimplemented".into())
+        }
+        async fn get_table_data(
+            &self,
+            _schema: String,
+            _table: String,
+            _page: i64,
+            _limit: i64,
+            _sort_column: Option<String>,
+            _sort_direction: Option<String>,
+            _filter: Option<String>,
+            _order_by: Option<String>,
+        ) -> Result<crate::models::TableDataResponse, String> {
+            Err("Unimplemented".into())
+        }
+        async fn get_table_data_chunk(
+            &self,
+            _schema: String,
+            _table: String,
+            _page: i64,
+            _limit: i64,
+            _sort_column: Option<String>,
+            _sort_direction: Option<String>,
+            _filter: Option<String>,
+            _order_by: Option<String>,
+        ) -> Result<crate::models::TableDataResponse, String> {
+            Err("Unimplemented".into())
+        }
+        async fn execute_query(&self, _sql: String) -> Result<crate::models::QueryResult, String> {
+            Err("Unimplemented".into())
+        }
+        async fn get_schema_overview(
+            &self,
+            _schema: Option<String>,
+        ) -> Result<crate::models::SchemaOverview, String> {
+            Err("Unimplemented".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_health_healthy() {
+        let config = PoolConfig::default();
+        let manager = PoolManager::new(config);
+        let driver = Arc::new(MockDriver);
+
+        manager.insert_mock_connection("healthy", driver.clone()).await;
+
+        assert!(manager.check_health("healthy").await);
+    }
+
+    #[tokio::test]
+    async fn test_check_health_unhealthy() {
+        let config = PoolConfig::default();
+        let manager = PoolManager::new(config);
+        let driver = Arc::new(UnhealthyMockDriver);
+
+        manager.insert_mock_connection("unhealthy", driver.clone()).await;
+
+        assert!(!manager.check_health("unhealthy").await);
+    }
+
+    #[tokio::test]
+    async fn test_check_health_nonexistent() {
+        let config = PoolConfig::default();
+        let manager = PoolManager::new(config);
+
+        assert!(!manager.check_health("nonexistent").await);
+    }
+
+    #[tokio::test]
+    async fn test_check_all_connections_health() {
+        let config = PoolConfig::default();
+        let manager = PoolManager::new(config);
+        let healthy_driver = Arc::new(MockDriver);
+        let unhealthy_driver = Arc::new(UnhealthyMockDriver);
+
+        manager.insert_mock_connection("healthy", healthy_driver.clone()).await;
+        manager.insert_mock_connection("unhealthy", unhealthy_driver.clone()).await;
+
+        manager.check_all_connections_health().await;
+
+        let pools = manager.pools.read().await;
+        assert!(pools.get("healthy").unwrap().is_healthy.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(!pools.get("unhealthy").unwrap().is_healthy.load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn test_connection_limit_enforced() {
+        let config = PoolConfig {
+            max_connections: 2,
+            ..Default::default()
+        };
+        let manager = PoolManager::new(config);
+        let driver = Arc::new(MockDriver);
+
+        // Insert two connections (at limit)
+        manager.insert_mock_connection("conn1", driver.clone()).await;
+        manager.insert_mock_connection("conn2", driver.clone()).await;
+        assert_eq!(manager.count().await, 2);
+
+        // Try to add a third connection via connect (should fail)
+        let form = ConnectionForm {
+            driver: "sqlite".to_string(),
+            name: Some("test".to_string()),
+            host: None,
+            port: None,
+            database: None,
+            schema: None,
+            username: None,
+            password: None,
+            ssl: None,
+            ssl_mode: None,
+            ssl_ca_cert: None,
+            file_path: None,
+            ssh_enabled: None,
+            ssh_host: None,
+            ssh_port: None,
+            ssh_username: None,
+            ssh_password: None,
+            ssh_key_path: None,
+            mode: None,
+            seed_nodes: None,
+            sentinels: None,
+            connect_timeout_ms: None,
+            service_name: None,
+            sentinel_password: None,
+            auth_mode: None,
+            api_key_id: None,
+            api_key_secret: None,
+            api_key_encoded: None,
+            cloud_id: None,
+            auth_source: None,
+        };
+
+        let result = manager.connect("conn3", &form).await;
+        match result {
+            Ok(_) => panic!("Expected error but got Ok"),
+            Err(e) => assert!(e.contains("Maximum connection limit reached")),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_connection_limit_not_enforced_when_below_limit() {
+        let config = PoolConfig {
+            max_connections: 5,
+            ..Default::default()
+        };
+        let manager = PoolManager::new(config);
+        let driver = Arc::new(MockDriver);
+
+        // Insert one connection (below limit)
+        manager.insert_mock_connection("conn1", driver.clone()).await;
+        assert_eq!(manager.count().await, 1);
+
+        // Get existing connection should work
+        let result = manager.get_connection("conn1").await;
+        assert!(result.is_some());
     }
 }

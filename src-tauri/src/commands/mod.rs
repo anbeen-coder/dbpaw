@@ -12,6 +12,7 @@ pub mod system;
 pub mod transfer;
 
 use crate::db::drivers::DatabaseDriver;
+use crate::models::ConnectionForm;
 use crate::state::AppState;
 use std::sync::Arc;
 use tauri::State;
@@ -25,11 +26,31 @@ fn connection_pool_key(id: i64, database: &Option<String>) -> String {
     id.to_string()
 }
 
-pub async fn ensure_connection(
+pub async fn get_connection_form_by_id(
     state: &State<'_, AppState>,
     id: i64,
-) -> Result<Arc<dyn DatabaseDriver>, String> {
-    ensure_connection_with_db(state, id, None).await
+) -> Result<ConnectionForm, String> {
+    let local_db = {
+        let lock = state.local_db.lock().await;
+        lock.clone()
+    };
+    let db = local_db.ok_or("Local DB not initialized")?;
+    db.get_connection_form_by_id(id).await
+}
+
+pub async fn get_connection_form_by_id_with_driver_check(
+    state: &State<'_, AppState>,
+    id: i64,
+    expected_driver: &str,
+) -> Result<ConnectionForm, String> {
+    let form = get_connection_form_by_id(state, id).await?;
+    if form.driver != expected_driver {
+        return Err(format!(
+            "[UNSUPPORTED] Connection {} is not a {} connection",
+            id, expected_driver
+        ));
+    }
+    Ok(form)
 }
 
 pub async fn ensure_connection_with_db(
@@ -37,42 +58,18 @@ pub async fn ensure_connection_with_db(
     id: i64,
     database: Option<String>,
 ) -> Result<Arc<dyn DatabaseDriver>, String> {
-    let key = connection_pool_key(id, &database);
-
-    if let Some(driver) = state.pool_manager.get_connection(&key).await {
-        // Harden: Check if connection still exists in LocalDb
-        let local_db = {
-            let lock = state.local_db.lock().await;
-            lock.clone()
-        };
-
-        if let Some(db) = local_db {
-            if db.get_connection_by_id(id).await.is_err() {
-                state.pool_manager.remove_by_prefix(&id.to_string()).await;
-                return Err(format!("Connection with ID {} no longer exists", id));
-            }
-        }
-        return Ok(driver);
-    }
-
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-
-    let db = local_db.ok_or("Local DB not initialized")?;
-    let mut form = db.get_connection_form_by_id(id).await?;
-
-    if let Some(db_name) = database {
-        if !db_name.is_empty() {
-            form.database = Some(db_name);
-        }
-    }
-
-    state.pool_manager.connect(&key, &form).await
+    ensure_connection_with_db_inner(state.inner(), id, database).await
 }
 
 pub async fn ensure_connection_with_db_from_app_state(
+    state: &AppState,
+    id: i64,
+    database: Option<String>,
+) -> Result<Arc<dyn DatabaseDriver>, String> {
+    ensure_connection_with_db_inner(state, id, database).await
+}
+
+async fn ensure_connection_with_db_inner(
     state: &AppState,
     id: i64,
     database: Option<String>,
@@ -154,16 +151,23 @@ where
     F: Fn(Arc<dyn DatabaseDriver>) -> Fut,
     Fut: std::future::Future<Output = Result<T, String>>,
 {
-    let key = connection_pool_key(id, &database);
-    execute_with_retry_core(
-        || ensure_connection_with_db(state, id, database.clone()),
-        || state.pool_manager.remove(&key),
-        task,
-    )
-    .await
+    execute_with_retry_inner(state.inner(), id, database, task).await
 }
 
 pub async fn execute_with_retry_from_app_state<F, Fut, T>(
+    state: &AppState,
+    id: i64,
+    database: Option<String>,
+    task: F,
+) -> Result<T, String>
+where
+    F: Fn(Arc<dyn DatabaseDriver>) -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    execute_with_retry_inner(state, id, database, task).await
+}
+
+async fn execute_with_retry_inner<F, Fut, T>(
     state: &AppState,
     id: i64,
     database: Option<String>,

@@ -1,6 +1,6 @@
 use crate::datasources::redis::RedisConnectionCache;
 use crate::db::local::LocalDb;
-use crate::db::pool_manager::PoolManager;
+use crate::db::pool_manager::{PoolConfig, PoolManager};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -15,7 +15,7 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             local_db: Mutex::new(None),
-            pool_manager: Arc::new(PoolManager::new()),
+            pool_manager: Arc::new(PoolManager::new(PoolConfig::default())),
             redis_cache: Mutex::new(RedisConnectionCache::new()),
             mcp_process: Mutex::new(None),
         }

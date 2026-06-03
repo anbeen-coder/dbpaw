@@ -12,22 +12,6 @@ use crate::state::AppState;
 use std::collections::HashMap;
 use tauri::State;
 
-async fn connection_form(state: &State<'_, AppState>, id: i64) -> Result<ConnectionForm, String> {
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    let db = local_db.ok_or("Local DB not initialized")?;
-    let form = db.get_connection_form_by_id(id).await?;
-    if form.driver != "redis" {
-        return Err(format!(
-            "[UNSUPPORTED] Connection {} is not a Redis connection",
-            id
-        ));
-    }
-    Ok(form)
-}
-
 /// Cache key: standalone uses "{id}:{db}" so different databases on the same
 /// server each get their own persistent connection (SELECT is connection-level).
 /// Cluster uses "{id}:cluster" since it only supports db0.
@@ -109,7 +93,7 @@ pub async fn redis_list_databases(
     state: State<'_, AppState>,
     id: i64,
 ) -> Result<Vec<RedisDatabaseInfo>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let mut conn = acquire(&state, id, &form, None).await?;
     if let Err(e) = redis::ping(&mut conn).await {
         if is_io_error(&e) {
@@ -164,7 +148,7 @@ pub async fn redis_scan_keys(
     pattern: Option<String>,
     limit: Option<u32>,
 ) -> Result<RedisScanResponse, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::scan_keys(&mut conn, cursor.clone(), pattern.clone(), limit).await {
@@ -184,7 +168,7 @@ pub async fn redis_get_key(
     database: Option<String>,
     key: String,
 ) -> Result<RedisKeyValue, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::get_key(&mut conn, key.clone()).await {
@@ -204,7 +188,7 @@ pub async fn redis_set_key(
     database: Option<String>,
     payload: RedisSetKeyPayload,
 ) -> Result<RedisMutationResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::set_key(&mut conn, payload.clone()).await {
@@ -224,7 +208,7 @@ pub async fn redis_update_key(
     database: Option<String>,
     payload: RedisSetKeyPayload,
 ) -> Result<RedisMutationResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::set_key(&mut conn, payload.clone()).await {
@@ -244,7 +228,7 @@ pub async fn redis_delete_key(
     database: Option<String>,
     key: String,
 ) -> Result<RedisMutationResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::delete_key(&mut conn, key.clone()).await {
@@ -264,7 +248,7 @@ pub async fn redis_patch_key(
     database: Option<String>,
     payload: RedisKeyPatchPayload,
 ) -> Result<RedisMutationResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::patch_key(&mut conn, payload.clone()).await {
@@ -286,7 +270,7 @@ pub async fn redis_rename_key(
     new_key: String,
     force: Option<bool>,
 ) -> Result<RedisMutationResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let force = force.unwrap_or(false);
     let mut conn = acquire(&state, id, &form, db).await?;
@@ -309,7 +293,7 @@ pub async fn redis_get_key_page(
     offset: u64,
     limit: u32,
 ) -> Result<RedisKeyValue, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::get_key_page(&mut conn, key.clone(), offset, limit).await {
@@ -330,7 +314,7 @@ pub async fn redis_set_ttl(
     key: String,
     ttl_seconds: Option<i64>,
 ) -> Result<RedisMutationResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::set_ttl(&mut conn, key.clone(), ttl_seconds).await {
@@ -352,7 +336,7 @@ pub async fn redis_get_stream_range(
     start_id: String,
     count: u32,
 ) -> Result<Vec<RedisStreamEntry>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::get_stream_range(&mut conn, key.clone(), start_id.clone(), count).await {
@@ -375,7 +359,7 @@ pub async fn redis_get_stream_view(
     end_id: String,
     count: u32,
 ) -> Result<RedisStreamView, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::get_stream_view(
@@ -426,7 +410,7 @@ pub async fn redis_execute_raw(
     database: Option<String>,
     command: String,
 ) -> Result<RedisRawResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     let result = match redis::execute_raw(&mut conn, command.clone()).await {
@@ -458,7 +442,7 @@ pub async fn redis_bitmap_get_bit(
     key: String,
     offset: u64,
 ) -> Result<bool, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::bitmap_get_bit(&mut conn, key.clone(), offset).await {
@@ -480,7 +464,7 @@ pub async fn redis_bitmap_count(
     start: Option<i64>,
     end: Option<i64>,
 ) -> Result<u64, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::bitmap_count(&mut conn, key.clone(), start, end).await {
@@ -504,7 +488,7 @@ pub async fn redis_bitmap_pos(
     end: Option<u64>,
     count: Option<u64>,
 ) -> Result<Vec<u64>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::bitmap_pos(&mut conn, key.clone(), bit, start, end, count).await {
@@ -525,7 +509,7 @@ pub async fn redis_hll_pfadd(
     key: String,
     elements: Vec<String>,
 ) -> Result<bool, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::hll_pfadd(&mut conn, key.clone(), elements.clone()).await {
@@ -546,7 +530,7 @@ pub async fn redis_geo_add(
     key: String,
     members: Vec<RedisGeoMember>,
 ) -> Result<i64, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::geo_add(&mut conn, key.clone(), members.clone()).await {
@@ -567,7 +551,7 @@ pub async fn redis_geo_pos(
     key: String,
     members: Vec<String>,
 ) -> Result<Vec<Option<RedisGeoPosition>>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::geo_pos(&mut conn, key.clone(), members.clone()).await {
@@ -590,7 +574,7 @@ pub async fn redis_geo_dist(
     member2: String,
     unit: Option<String>,
 ) -> Result<f64, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::geo_dist(
@@ -627,7 +611,7 @@ pub async fn redis_geo_search(
     with_hash: bool,
     count: Option<u64>,
 ) -> Result<Vec<RedisGeoSearchResult>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::geo_search(
@@ -664,7 +648,7 @@ pub async fn redis_server_info(
     id: i64,
     database: Option<String>,
 ) -> Result<RedisServerInfo, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::server_info(&mut conn).await {
@@ -683,7 +667,7 @@ pub async fn redis_server_config(
     id: i64,
     database: Option<String>,
 ) -> Result<HashMap<String, String>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::server_config(&mut conn).await {
@@ -703,7 +687,7 @@ pub async fn redis_slowlog_get(
     database: Option<String>,
     count: Option<i64>,
 ) -> Result<Vec<RedisSlowlogEntry>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     let n = count.unwrap_or(50);
@@ -728,7 +712,7 @@ pub async fn redis_zrangebyscore(
     offset: Option<u64>,
     limit: Option<u64>,
 ) -> Result<RedisZRangeByScoreResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::zrangebyscore(
@@ -759,7 +743,7 @@ pub async fn redis_zrank(
     member: String,
     reverse: Option<bool>,
 ) -> Result<Option<i64>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     let rev = reverse.unwrap_or(false);
@@ -781,7 +765,7 @@ pub async fn redis_set_operation(
     keys: Vec<String>,
     op: RedisSetOperation,
 ) -> Result<Vec<String>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::set_operation(&mut conn, keys.clone(), op.clone()).await {
@@ -802,7 +786,7 @@ pub async fn redis_sismember(
     key: String,
     member: String,
 ) -> Result<bool, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::sismember(&mut conn, key.clone(), member.clone()).await {
@@ -824,7 +808,7 @@ pub async fn redis_smove(
     destination: String,
     member: String,
 ) -> Result<bool, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::smove(
@@ -856,7 +840,7 @@ pub async fn redis_xgroup_create(
     start_id: String,
     mkstream: Option<bool>,
 ) -> Result<bool, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     let ms = mkstream.unwrap_or(false);
@@ -878,7 +862,7 @@ pub async fn redis_xgroup_del(
     key: String,
     group: String,
 ) -> Result<bool, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::xgroup_del(&mut conn, key.clone(), group.clone()).await {
@@ -900,7 +884,7 @@ pub async fn redis_xgroup_setid(
     group: String,
     start_id: String,
 ) -> Result<bool, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::xgroup_setid(&mut conn, key.clone(), group.clone(), start_id.clone()).await {
@@ -922,7 +906,7 @@ pub async fn redis_xack(
     group: String,
     ids: Vec<String>,
 ) -> Result<i64, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::xack(&mut conn, key.clone(), group.clone(), ids.clone()).await {
@@ -947,7 +931,7 @@ pub async fn redis_xpending(
     count: Option<i64>,
     consumer: Option<String>,
 ) -> Result<RedisXPendingResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::xpending(
@@ -981,7 +965,7 @@ pub async fn redis_xclaim(
     min_idle_ms: i64,
     ids: Vec<String>,
 ) -> Result<Vec<RedisXClaimEntry>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::xclaim(
@@ -1013,7 +997,7 @@ pub async fn redis_xtrim(
     threshold: String,
     approximate: Option<bool>,
 ) -> Result<i64, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::xtrim(
@@ -1045,7 +1029,7 @@ pub async fn redis_xreadgroup(
     start_id: String,
     count: Option<i64>,
 ) -> Result<Vec<RedisStreamEntry>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::xreadgroup(
@@ -1076,7 +1060,7 @@ pub async fn redis_batch_key_ops(
     database: Option<String>,
     operations: Vec<RedisBatchKeyOp>,
 ) -> Result<Vec<RedisBatchKeyOpResult>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::batch_key_ops(&mut conn, operations.clone()).await {
@@ -1096,7 +1080,7 @@ pub async fn redis_mget(
     database: Option<String>,
     keys: Vec<String>,
 ) -> Result<Vec<RedisMgetEntry>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::mget_keys(&mut conn, keys.clone()).await {
@@ -1116,7 +1100,7 @@ pub async fn redis_mset(
     database: Option<String>,
     entries: HashMap<String, String>,
 ) -> Result<RedisMutationResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let pairs: Vec<(String, String)> = entries.into_iter().collect();
     let mut conn = acquire(&state, id, &form, db).await?;
@@ -1136,7 +1120,7 @@ pub async fn redis_cluster_info(
     id: i64,
     database: Option<String>,
 ) -> Result<RedisClusterInfo, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::cluster_info(&mut conn).await {
@@ -1157,7 +1141,7 @@ pub async fn redis_zscore(
     key: String,
     member: String,
 ) -> Result<Option<f64>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::zscore(&mut conn, key.clone(), member.clone()).await {
@@ -1178,7 +1162,7 @@ pub async fn redis_zmscore(
     key: String,
     members: Vec<String>,
 ) -> Result<Vec<Option<f64>>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::zmscore(&mut conn, key.clone(), members.clone()).await {
@@ -1202,7 +1186,7 @@ pub async fn redis_zrangebylex(
     offset: Option<u64>,
     limit: Option<u64>,
 ) -> Result<RedisZRangeByLexResult, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::zrangebylex(
@@ -1233,7 +1217,7 @@ pub async fn redis_zlexcount(
     min: String,
     max: String,
 ) -> Result<u64, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::zlexcount(&mut conn, key.clone(), min.clone(), max.clone()).await {
@@ -1254,7 +1238,7 @@ pub async fn redis_zpopmin(
     key: String,
     count: Option<u64>,
 ) -> Result<Vec<RedisZSetMember>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::zpopmin(&mut conn, key.clone(), count).await {
@@ -1275,7 +1259,7 @@ pub async fn redis_zpopmax(
     key: String,
     count: Option<u64>,
 ) -> Result<Vec<RedisZSetMember>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::zpopmax(&mut conn, key.clone(), count).await {
@@ -1296,7 +1280,7 @@ pub async fn redis_lindex(
     key: String,
     index: i64,
 ) -> Result<Option<String>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::lindex(&mut conn, key.clone(), index).await {
@@ -1320,7 +1304,7 @@ pub async fn redis_lpos(
     count: Option<u64>,
     maxlen: Option<u64>,
 ) -> Result<Vec<i64>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::lpos(&mut conn, key.clone(), element.clone(), rank, count, maxlen).await {
@@ -1342,7 +1326,7 @@ pub async fn redis_ltrim(
     start: i64,
     stop: i64,
 ) -> Result<bool, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::ltrim(&mut conn, key.clone(), start, stop).await {
@@ -1365,7 +1349,7 @@ pub async fn redis_linsert(
     pivot: String,
     element: String,
 ) -> Result<i64, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::linsert(
@@ -1396,7 +1380,7 @@ pub async fn redis_lmove(
     src_direction: RedisLMoveDirection,
     dst_direction: RedisLMoveDirection,
 ) -> Result<Option<String>, String> {
-    let form = connection_form(&state, id).await?;
+    let form = super::get_connection_form_by_id_with_driver_check(&state, id, "redis").await?;
     let db = database.as_deref();
     let mut conn = acquire(&state, id, &form, db).await?;
     match redis::lmove(

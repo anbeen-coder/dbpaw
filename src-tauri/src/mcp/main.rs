@@ -51,6 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let state = Arc::new(AppState::new());
+    state.pool_manager.start_cleanup_task().await;
 
     match transport_mode {
         "stdio" => {

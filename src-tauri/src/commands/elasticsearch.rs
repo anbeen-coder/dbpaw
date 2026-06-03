@@ -10,30 +10,11 @@ use serde_json::Value;
 use std::time::Instant;
 use tauri::State;
 
-async fn connection_form(
-    state: &State<'_, AppState>,
-    id: i64,
-) -> Result<crate::models::ConnectionForm, String> {
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    let db = local_db.ok_or("Local DB not initialized")?;
-    let form = db.get_connection_form_by_id(id).await?;
-    if form.driver != "elasticsearch" {
-        return Err(format!(
-            "[UNSUPPORTED] Connection {} is not an Elasticsearch connection",
-            id
-        ));
-    }
-    Ok(form)
-}
-
 async fn client_from_id(
     state: &State<'_, AppState>,
     id: i64,
 ) -> Result<ElasticsearchClient, String> {
-    ElasticsearchClient::connect(&connection_form(state, id).await?)
+    ElasticsearchClient::connect(&super::get_connection_form_by_id_with_driver_check(state, id, "elasticsearch").await?)
 }
 
 #[tauri::command]

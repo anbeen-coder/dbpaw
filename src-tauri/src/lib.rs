@@ -128,6 +128,7 @@ pub fn run() {
             }
 
             // Initialize local database (blocking to avoid race conditions)
+            let handle_for_cleanup = handle.clone();
             tauri::async_runtime::block_on(async move {
                 let state = handle.state::<AppState>();
                 match LocalDb::init(&handle).await {
@@ -142,6 +143,13 @@ pub fn run() {
                     }
                 }
             });
+
+            // Start connection pool cleanup task
+            tauri::async_runtime::spawn(async move {
+                let state = handle_for_cleanup.state::<AppState>();
+                state.pool_manager.start_cleanup_task().await;
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

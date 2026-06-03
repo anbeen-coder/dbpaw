@@ -28,7 +28,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SortableTab } from "@/components/ui/sortable-tab";
-import type { TabItem } from "@/App";
+import type { TabItem } from "@/types/tab";
 
 const TAB_TRIGGER_CLASS =
   "gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-accent rounded-none h-9 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0 shrink-0";

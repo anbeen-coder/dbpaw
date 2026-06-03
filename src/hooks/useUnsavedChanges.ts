@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import type { TabItem } from "@/App";
+import type { TabItem } from "@/types/tab";
 
 interface UseUnsavedChangesParams {
   tabs: TabItem[];

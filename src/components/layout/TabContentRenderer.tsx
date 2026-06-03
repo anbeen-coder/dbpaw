@@ -8,7 +8,7 @@ import { FileCode } from "lucide-react";
 import { isMysqlFamilyDriver } from "@/lib/driver-registry";
 import { api } from "@/services/api";
 import { useTranslation } from "react-i18next";
-import type { TabItem } from "@/App";
+import type { TabItem } from "@/types/tab";
 
 const SqlEditor = lazy(async () => {
   const mod = await import("@/components/business/Editor/SqlEditor");

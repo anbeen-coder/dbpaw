@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { api } from "@/services/api";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/errors";
-import type { TabItem } from "@/App";
+import type { TabItem } from "@/types/tab";
 
 export type TableRefreshOverrides = {
   page?: number;

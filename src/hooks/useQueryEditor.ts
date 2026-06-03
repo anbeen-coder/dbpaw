@@ -8,7 +8,7 @@ import {
   normalizeDatabaseOptions,
   resolvePreferredDatabase,
 } from "@/lib/sqlEditorDatabase";
-import type { TabItem } from "@/App";
+import type { TabItem } from "@/types/tab";
 
 const DEFAULT_SQL = "";
 

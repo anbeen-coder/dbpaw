@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 import { isModKey, shouldIgnoreGlobalShortcut } from "@/lib/keyboard";
 import { useShortcutMatcher } from "@/contexts/ShortcutsContext";
-import type { TabItem } from "@/App";
+import type { TabItem } from "@/types/tab";
 
 interface UseKeyboardShortcutsParams {
   tabs: TabItem[];

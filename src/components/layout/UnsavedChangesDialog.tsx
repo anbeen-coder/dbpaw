@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { SaveQueryDialog } from "@/components/business/Editor/SaveQueryDialog";
 import { useTranslation } from "react-i18next";
-import type { TabItem } from "@/App";
+import type { TabItem } from "@/types/tab";
 
 interface UnsavedChangesDialogProps {
   isUnsavedConfirmOpen: boolean;

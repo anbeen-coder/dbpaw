@@ -1,6 +1,5 @@
 import {
   lazy,
-  MouseEvent,
   Suspense,
   useCallback,
   useEffect,
@@ -8,152 +7,37 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sidebar } from "@/components/business/Sidebar/Sidebar";
+import { Tabs } from "@/components/ui/tabs";
 import type { RedisRefreshRequest } from "@/components/business/Sidebar/ConnectionList";
-import { SaveQueryDialog } from "@/components/business/Editor/SaveQueryDialog";
-import { TableView } from "@/components/business/DataGrid/TableView";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { TableMetadataView } from "@/components/business/Metadata/TableMetadataView";
-import { RoutineMetadataView } from "@/components/business/Metadata/RoutineMetadataView";
-import { SqlExecutionLogsDropdown } from "@/components/business/SqlLogs/SqlExecutionLogsDialog";
-import {
-  FileCode,
-  FileSearch,
-  KeyRound,
-  LayoutDashboard,
-  Loader2,
-  Server,
-  Table,
-  X,
-  Settings,
-  Sparkles,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { isMysqlFamilyDriver, isKeyValueDriver } from "@/lib/driver-registry";
+import { Loader2 } from "lucide-react";
+import { isMysqlFamilyDriver } from "@/lib/driver-registry";
 import type { TreeCallbacks } from "@/lib/tree-adapters/types.tsx";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   api,
   isTauri,
   type RoutineType,
-  SchemaOverview,
-  SavedQuery,
 } from "@/services/api";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/errors";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { UpdaterChecker } from "@/components/updater-checker";
-import { isModKey, shouldIgnoreGlobalShortcut } from "@/lib/keyboard";
-import { useShortcutMatcher } from "@/contexts/ShortcutsContext";
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  horizontalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { SortableTab } from "@/components/ui/sortable-tab";
 import { useTranslation } from "react-i18next";
-import {
-  applyQueryCompletionToTab,
-  SingleResultState,
-} from "@/lib/queryExecutionState";
-import {
-  normalizeDatabaseOptions,
-  resolvePreferredDatabase,
-} from "@/lib/sqlEditorDatabase";
 import { getSetting } from "@/services/store";
 
-export interface TabItem {
-  id: string;
-  type:
-    | "editor"
-    | "table"
-    | "ddl"
-    | "routine"
-    | "create-table"
-    | "alter-table"
-    | "redis-key"
-    | "redis-console"
-    | "redis-browser"
-    | "redis-server-info"
-    | "elasticsearch-index"
-    | "er-diagram";
-  title: string;
-  connection?: string;
-  database?: string;
-  schema?: string;
-  tableName?: string;
-  routineName?: string;
-  routineType?: RoutineType;
-  redisKey?: string;
-  elasticsearchIndex?: string;
-  data?: any[];
-  columns?: string[];
-  total?: number;
-  page?: number;
-  pageSize?: number;
-  executionTimeMs?: number;
-  connectionId?: number;
-  driver?: string;
-  sqlContent?: string;
-  lastSavedSql?: string;
-  isDirty?: boolean;
-  sortColumn?: string;
-  sortDirection?: "asc" | "desc";
-  filter?: string;
-  orderBy?: string;
-  queryResults?: {
-    data: any[];
-    columns: string[];
-    executionTime: string;
-    error?: string;
-    resultSets?: SingleResultState[];
-    activeResultSetIndex?: number;
-  } | null;
-  activeQueryId?: string;
-  lastQueryId?: string;
-  schemaOverview?: SchemaOverview;
-  savedQueryId?: number;
-  savedQueryDescription?: string;
-  availableDatabases?: string[];
-  isLoading?: boolean;
-}
+import { useTabManager } from "@/hooks/useTabManager";
+import { useQueryEditor } from "@/hooks/useQueryEditor";
+import { useTableViewer } from "@/hooks/useTableViewer";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
-type TableRefreshOverrides = {
-  page?: number;
-  limit?: number;
-  filter?: string;
-  orderBy?: string;
-};
+import { AppLayout } from "@/components/layout/AppLayout";
+import { TabBar } from "@/components/layout/TabBar";
+import { TabContentRenderer } from "@/components/layout/TabContentRenderer";
+import { UnsavedChangesDialog } from "@/components/layout/UnsavedChangesDialog";
+import { WindowActions } from "@/components/layout/WindowActions";
+
+import type { TabItem } from "@/types/tab";
 
 type ActiveTableTarget = {
   connectionId: number;
@@ -168,82 +52,10 @@ type SidebarRevealRequest = ActiveTableTarget & {
 
 type SidebarLayoutMode = "tabs" | "tree";
 
-const DEFAULT_SQL = "";
-
-const TAB_TRIGGER_CLASS =
-  "gap-2 group relative pr-8 bg-transparent data-[state=active]:bg-background border-b-2 border-b-transparent data-[state=active]:border-b-accent rounded-none h-9 hover:bg-muted/50 border-r border-r-border/40 last:border-r-0 shrink-0";
-
-const SqlEditor = lazy(async () => {
-  const mod = await import("@/components/business/Editor/SqlEditor");
-  return { default: mod.SqlEditor };
-});
-
-const AISidebar = lazy(async () => {
-  const mod = await import("@/components/business/Sidebar/AISidebar");
-  return { default: mod.AISidebar };
-});
-
 const SettingsDialog = lazy(async () => {
   const mod = await import("@/components/settings/SettingsDialog");
   return { default: mod.SettingsDialog };
 });
-
-const CreateTableView = lazy(async () => {
-  const mod = await import("@/components/business/CreateTable/CreateTableView");
-  return { default: mod.CreateTableView };
-});
-
-const AlterTableView = lazy(async () => {
-  const mod = await import("@/components/business/CreateTable/AlterTableView");
-  return { default: mod.AlterTableView };
-});
-
-const RedisKeyView = lazy(async () => {
-  const mod = await import("@/components/business/Redis/RedisKeyView");
-  return { default: mod.RedisKeyView };
-});
-
-const RedisConsole = lazy(async () => {
-  const mod = await import("@/components/business/Redis/RedisConsole");
-  return { default: mod.RedisConsole };
-});
-
-const RedisBrowserView = lazy(async () => {
-  const mod = await import("@/components/business/Redis/RedisBrowserView");
-  return { default: mod.RedisBrowserView };
-});
-
-const RedisServerInfoView = lazy(async () => {
-  const mod = await import("@/components/business/Redis/RedisServerInfoView");
-  return { default: mod.RedisServerInfoView };
-});
-
-const ElasticsearchIndexView = lazy(async () => {
-  const mod =
-    await import("@/components/business/Elasticsearch/ElasticsearchIndexView");
-  return { default: mod.ElasticsearchIndexView };
-});
-
-const ERDiagramView = lazy(async () => {
-  const mod = await import("@/components/business/ERDiagram/ERDiagramView");
-  return { default: mod.default };
-});
-
-function LazyPanelFallback({
-  label,
-  className = "h-full",
-}: {
-  label: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={`${className} flex items-center justify-center text-sm text-muted-foreground`}
-    >
-      {label}
-    </div>
-  );
-}
 
 function getTableTargetFromTab(tab?: TabItem): ActiveTableTarget | undefined {
   if (
@@ -266,6 +78,7 @@ function getTableTargetFromTab(tab?: TabItem): ActiveTableTarget | undefined {
 
 export default function App() {
   const { t } = useTranslation();
+
   const resolveTableScope = (
     driver: string,
     database?: string,
@@ -287,48 +100,48 @@ export default function App() {
     };
   };
 
-  const fetchEditorDatabases = useCallback(
-    async (connectionId: number, fallbackDatabase?: string) => {
-      const databases = await api.metadata.listDatabasesById(connectionId);
-      return normalizeDatabaseOptions(databases, fallbackDatabase);
-    },
-    [],
-  );
-
-  const fetchEditorSchemaOverview = useCallback(
-    async (connectionId: number, database?: string) =>
-      api.metadata.getSchemaOverview(connectionId, database),
-    [],
-  );
-
-  const [tabs, setTabs] = useState<TabItem[]>([]);
-  const [activeTab, setActiveTab] = useState<string>("");
   const [aiVisible, setAiVisible] = useState(false);
   const [sidebarRevealRequest, setSidebarRevealRequest] =
     useState<SidebarRevealRequest>();
   const [openSettings, setOpenSettings] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const isDefaultQueryTitle = (title?: string) =>
-    !!title && /^(Query \(|查询（|クエリ（)/.test(title);
   const [queriesLastUpdated, setQueriesLastUpdated] = useState(0);
-  const [pendingCloseTabIds, setPendingCloseTabIds] = useState<string[]>([]);
-  const [currentCloseTabId, setCurrentCloseTabId] = useState<string | null>(
-    null,
-  );
-  const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
-  const [isCloseSaveDialogOpen, setIsCloseSaveDialogOpen] = useState(false);
   const [sidebarLayout, setSidebarLayout] = useState<SidebarLayoutMode>("tabs");
   const [showColumnComments, setShowColumnComments] = useState(false);
   const [showRowNumbers, setShowRowNumbers] = useState(true);
   const [showZebraStripes, setShowZebraStripes] = useState(false);
-  const closeSaveCompletedRef = useRef(false);
-  const unsavedConfirmActionRef = useRef<"save" | "discard" | null>(null);
-  const schemaOverviewRequestKeysRef = useRef<Map<string, string>>(new Map());
   const sidebarRevealRequestIdRef = useRef(0);
   const redisRefreshIdRef = useRef(0);
   const [redisRefreshRequest, setRedisRefreshRequest] = useState<
     RedisRefreshRequest | undefined
   >(undefined);
+
+  const isDefaultQueryTitle = (title?: string) =>
+    !!title && /^(Query \(|查询（|クエリ（)/.test(title);
+
+  const { tabs, setTabs, activeTab, setActiveTab, handleDragEnd, handleCycleTabs: baseHandleCycleTabs, closeTabNow: baseCloseTabNow } = useTabManager();
+
+  const { handleCreateQuery, handleOpenSavedQuery, handleSqlChange, handleExecuteQuery, handleEditorDatabaseChange, saveEditorTab } = useQueryEditor({
+    tabs,
+    setTabs,
+    setActiveTab,
+    setQueriesLastUpdated,
+    t,
+  });
+
+  const { handleTableSelect, handleTableRefresh, handlePageChange, handlePageSizeChange, handleSortChange, handleFilterChange } = useTableViewer({
+    tabs,
+    setTabs,
+    setActiveTab,
+    resolveTableScope,
+    t,
+  });
+
+  const { handleCloseTab, handleCloseOtherTabs, isUnsavedConfirmOpen, isCloseSaveDialogOpen, currentCloseTab, handleUnsavedCloseCancel, handleUnsavedCloseWithoutSave, handleUnsavedCloseSave, handleCloseSaveDialogOpenChange, handleCloseFlowSave } = useUnsavedChanges({
+    tabs,
+    closeTabNow: baseCloseTabNow,
+    saveEditorTab,
+  });
 
   const revealSidebarForTab = useCallback(
     (tabId: string, sourceTabs = tabs) => {
@@ -350,613 +163,47 @@ export default function App() {
       setActiveTab(tabId);
       revealSidebarForTab(tabId);
     },
-    [revealSidebarForTab],
+    [setActiveTab, revealSidebarForTab],
   );
 
-  useEffect(() => {
-    void getSetting<SidebarLayoutMode>("sidebarLayout", "tabs").then(
-      (layout) => {
-        setSidebarLayout(layout === "tree" ? "tree" : "tabs");
-      },
-    );
-    void getSetting("showColumnComments", false).then(setShowColumnComments);
-    void getSetting("showRowNumbers", true).then(setShowRowNumbers);
-    void getSetting("showZebraStripes", false).then(setShowZebraStripes);
-  }, []);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
+  const closeTabNow = useCallback(
+    (tabId: string) => {
+      baseCloseTabNow(tabId, revealSidebarForTab);
+    },
+    [baseCloseTabNow, revealSidebarForTab],
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      setTabs((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  };
-
-  const handleWindowDragStart = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    const target = event.target as HTMLElement;
-    // React portal events bubble through the React tree, not the DOM — target lands outside this element.
-    if (!event.currentTarget.contains(target)) return;
-    if (target.closest('[data-no-drag="true"]')) return;
-    getCurrentWindow()
-      .startDragging()
-      .catch(() => {
-        // Keep attribute drag region as fallback.
-      });
-  };
-
-  const renderWindowActions = () => (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 w-7 p-0"
-        onClick={() => setOpenSettings(true)}
-        title={t("app.window.settingsTooltip")}
-        aria-label={t("app.window.openSettings")}
-      >
-        <Settings className="w-4 h-4" />
-      </Button>
-      <SqlExecutionLogsDropdown />
-      <Button
-        variant={aiVisible ? "default" : "ghost"}
-        size="sm"
-        className="h-7 w-7 p-0"
-        onClick={() => setAiVisible((v) => !v)}
-        title={
-          aiVisible ? t("app.window.hideAiPanel") : t("app.window.showAiPanel")
-        }
-        aria-label={
-          aiVisible
-            ? t("app.window.hideAiPanelAria")
-            : t("app.window.showAiPanelAria")
-        }
-      >
-        <Sparkles className="w-4 h-4" />
-      </Button>
-    </>
-  );
-
-  useEffect(() => {
-    if (!isTauri()) return;
-
-    // Remove global connections fetching as it's handled by Sidebar
-    // api.connections.list().then(setConnections).catch(console.error);
-
-    const unlistenChunk = listen("query.chunk", (_evt: any) => {
-      // TODO: Handle streaming chunks for specific tabs if backend supports session/request ID
-      // For now, simple execute returns full result, so this might not be needed for basic execution
-      // If needed, we'd need to map evt to a specific tab
-    });
-
-    const unlistenProgress = listen("query.progress", () => {});
-    const unlistenDone = listen("query.done", () => {});
-    const unlistenSettings = listen("open-settings", () =>
-      setOpenSettings(true),
-    );
-
-    return () => {
-      unlistenChunk.then((f) => f());
-      unlistenProgress.then((f) => f());
-      unlistenDone.then((f) => f());
-      unlistenSettings.then((f) => f());
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isTauri()) return;
-
-    const appWindow = getCurrentWindow();
-    let mounted = true;
-    let unlistenResized: null | (() => void) = null;
-
-    const syncFullscreenState = async () => {
-      try {
-        const fullscreen = await appWindow.isFullscreen();
-        if (mounted) setIsFullscreen(fullscreen);
-      } catch {
-        // Ignore window state lookup failures in non-native contexts.
-      }
-    };
-
-    void syncFullscreenState();
-    appWindow
-      .onResized(() => {
-        void syncFullscreenState();
-      })
-      .then((unlisten) => {
-        unlistenResized = unlisten;
-      })
-      .catch(() => {
-        // Ignore event binding failures.
-      });
-
-    return () => {
-      mounted = false;
-      if (unlistenResized) unlistenResized();
-    };
-  }, []);
-
-  const handleCreateQuery = (
-    connectionId: number,
-    databaseName: string,
-    driver: string,
-  ) => {
-    if (isKeyValueDriver(driver as any)) {
-      toast.info(
-        "Redis connections don't support SQL queries. Use the Redis key view to browse and edit keys.",
-      );
-      return;
-    }
-    if (driver === "elasticsearch") {
-      toast.info(
-        "Elasticsearch connections don't support SQL queries. Open an index to search documents.",
-      );
-      return;
-    }
-    const normalizedDatabaseName = databaseName.trim();
-    const fallbackDatabaseLabel = t("app.tab.defaultDatabase");
-    const initialDatabase = normalizedDatabaseName || undefined;
-    const titleDatabase = normalizedDatabaseName || fallbackDatabaseLabel;
-    const newTabId = `query-${connectionId}-${titleDatabase}-${Date.now()}`;
-    const newTab: TabItem = {
-      id: newTabId,
-      type: "editor",
-      title: t("app.tab.queryTitle", { database: titleDatabase }),
-      connectionId,
-      database: initialDatabase,
-      driver,
-      availableDatabases: normalizeDatabaseOptions(
-        initialDatabase ? [initialDatabase] : [],
-        initialDatabase,
-      ),
-      sqlContent: DEFAULT_SQL,
-      lastSavedSql: DEFAULT_SQL,
-      isDirty: false,
-      queryResults: null,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTab(newTabId);
-
-    Promise.allSettled([
-      fetchEditorDatabases(connectionId, initialDatabase),
-      fetchEditorSchemaOverview(connectionId, initialDatabase),
-    ]).then(([availableDatabasesResult, schemaOverviewResult]) => {
-          if (availableDatabasesResult.status === "rejected") {
-        console.error(
-          "Failed to load editor databases:",
-          errorMessage(availableDatabasesResult.reason),
-        );
-      }
-      if (schemaOverviewResult.status === "rejected") {
-        console.error(
-          "Failed to load schema overview:",
-          errorMessage(schemaOverviewResult.reason),
-        );
-      }
-
-      const availableDatabases =
-        availableDatabasesResult.status === "fulfilled"
-          ? availableDatabasesResult.value
-          : normalizeDatabaseOptions(
-              initialDatabase ? [initialDatabase] : [],
-              initialDatabase,
-            );
-      const schemaOverview =
-        schemaOverviewResult.status === "fulfilled"
-          ? schemaOverviewResult.value
-          : undefined;
-
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === newTabId
-            ? {
-                ...t,
-                database: resolvePreferredDatabase({
-                  preferredDatabase: initialDatabase,
-                  connectionDatabase: initialDatabase,
-                  availableDatabases,
-                }),
-                availableDatabases,
-                schemaOverview,
-              }
-            : t,
-        ),
-      );
-    });
-  };
-
-  const handleOpenSavedQuery = async (query: SavedQuery) => {
-    const newTabId = `saved-query-${query.id}`;
-
-    // Check if tab already exists
-    const existingTab = tabs.find(
-      (t) => t.id === newTabId || t.savedQueryId === query.id,
-    );
-    if (existingTab) {
-      setActiveTab(existingTab.id);
-      return;
-    }
-
-    let connectionId = query.connectionId || undefined;
-    let driver: string | undefined = undefined;
-    let database: string | undefined = query.database || undefined;
-
-    // If query is linked to a connection, try to fetch connection details
-    if (connectionId) {
-      try {
-        // We need to get connection details to know driver and default database
-        // But api.connections.list returns all connections.
-        // We can iterate or assume if we have a way to get single connection.
-        // For now, let's just list and find.
-        // Optimized approach: add get_connection_by_id to api if needed,
-        // but for now list is cached/fast enough locally?
-        // Actually, we can just let the user select connection if it's missing details,
-        // but we want to be helpful.
-
-        // NOTE: Ideally we should have api.connections.get(id).
-        // But for now, let's just leave driver/database empty if we can't easily get them,
-        // or fetch list.
-        const conns = await api.connections.list();
-        const conn = conns.find((c: any) => c.id === connectionId);
-        if (conn) {
-          driver = conn.dbType;
-          // Only fallback to connection default if no specific database was saved
-          if (!database) {
-            database = conn.database;
-          }
-
-          let availableDatabases = normalizeDatabaseOptions(
-            database ? [database] : [],
-            conn.database || database,
-          );
-          try {
-            availableDatabases = await fetchEditorDatabases(
-              connectionId,
-              conn.database || database,
-            );
-          } catch (e) {
-            console.error(
-              "Failed to load editor databases for saved query",
-              errorMessage(e),
-            );
-          }
-          database = resolvePreferredDatabase({
-            preferredDatabase: query.database || undefined,
-            connectionDatabase: conn.database || undefined,
-            availableDatabases,
-          });
-
-          let schemaOverview: SchemaOverview | undefined;
-          if (database) {
-            try {
-              schemaOverview = await fetchEditorSchemaOverview(
-                connectionId,
-                database,
-              );
-            } catch (e) {
-              console.error(
-                "Failed to load schema overview for saved query",
-                errorMessage(e),
-              );
-            }
-          }
-
-          const newTab: TabItem = {
-            id: newTabId,
-            type: "editor",
-            title: query.name,
-            connectionId,
-            database,
-            driver,
-            availableDatabases,
-            schemaOverview,
-            sqlContent: query.query,
-            lastSavedSql: query.query,
-            isDirty: false,
-            savedQueryId: query.id,
-            savedQueryDescription: query.description || undefined,
-            queryResults: null,
-          };
-          setTabs((prev) => [...prev, newTab]);
-          setActiveTab(newTabId);
-          return;
-        }
-      } catch (e) {
-        console.error("Failed to fetch connection details for saved query", e);
-      }
-    }
-
-    const newTab: TabItem = {
-      id: newTabId,
-      type: "editor",
-      title: query.name,
-      connectionId,
-      database,
-      driver,
-      availableDatabases: normalizeDatabaseOptions(
-        database ? [database] : [],
-        database,
-      ),
-      sqlContent: query.query,
-      lastSavedSql: query.query,
-      isDirty: false,
-      savedQueryId: query.id,
-      savedQueryDescription: query.description || undefined,
-      queryResults: null,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTab(newTabId);
-  };
-
-  const handleEditorDatabaseChange = useCallback(
-    async (tabId: string, database: string) => {
-      const tab = tabs.find((item) => item.id === tabId);
-      if (!tab || tab.type !== "editor" || !tab.connectionId) return;
-
-      const requestKey = `${tab.connectionId}:${database}:${Date.now()}:${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
-      schemaOverviewRequestKeysRef.current.set(tabId, requestKey);
-
-      setTabs((prev) =>
-        prev.map((item) =>
-          item.id === tabId
-            ? {
-                ...item,
-                title: isDefaultQueryTitle(item.title)
-                  ? t("app.tab.queryTitle", { database })
-                  : item.title,
-                database,
-                queryResults: null,
-                activeQueryId: undefined,
-                schemaOverview: undefined,
-              }
-            : item,
-        ),
-      );
-
-      try {
-        const schemaOverview = await fetchEditorSchemaOverview(
-          tab.connectionId,
-          database,
-        );
-        if (schemaOverviewRequestKeysRef.current.get(tabId) !== requestKey)
-          return;
-        setTabs((prev) =>
-          prev.map((item) =>
-            item.id === tabId ? { ...item, schemaOverview } : item,
-          ),
-        );
-      } catch (e) {
-        if (schemaOverviewRequestKeysRef.current.get(tabId) !== requestKey)
-          return;
-        const message = errorMessage(e);
-        console.error("Failed to switch editor database", message);
-        toast.error(t("app.error.loadSchemaOverview"), {
-          description: message,
-        });
+  const handleCycleTabs = useCallback(
+    (direction: 1 | -1) => {
+      baseHandleCycleTabs(direction);
+      const nextIndex =
+        (tabs.findIndex((t) => t.id === activeTab) + direction + tabs.length) %
+        tabs.length;
+      if (tabs[nextIndex]) {
+        revealSidebarForTab(tabs[nextIndex].id);
       }
     },
-    [fetchEditorSchemaOverview, t, tabs],
+    [baseHandleCycleTabs, tabs, activeTab, revealSidebarForTab],
   );
 
-  const handleSqlChange = (tabId: string, sql: string) => {
-    setTabs((prev) =>
-      prev.map((t) => {
-        if (t.id !== tabId) return t;
-        return {
-          ...t,
-          sqlContent: sql,
-          isDirty: sql !== (t.lastSavedSql ?? ""),
-        };
-      }),
-    );
-  };
-
-  const handleExecuteQuery = async (tabId: string, sql: string) => {
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.connectionId) {
-      // TODO: Prompt user to select connection if missing
-      alert(t("app.error.selectConnectionFirst"));
-      return;
-    }
-
-    const start = performance.now();
-    const queryId = `q-${tab.connectionId}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.id === tabId
-          ? { ...t, activeQueryId: queryId, lastQueryId: queryId }
-          : t,
-      ),
-    );
-    try {
-      const result = await api.query.execute(
-        tab.connectionId,
-        sql,
-        tab.database,
-        "sql_editor",
-        queryId,
-      );
-      const columns = (result.columns || []).map((c) => c.name);
-      const execMs = Math.round(
-        result.timeTakenMs ?? performance.now() - start,
-      );
-
-      const resultSets = result.resultSets?.map((rs) => ({
-        data: rs.data,
-        columns: rs.columns.map((c) => c.name),
-        rowCount: rs.rowCount,
-        statement: rs.statement,
-        index: rs.index,
-      }));
-
-      setTabs((prev) =>
-        prev.map((t) =>
-          applyQueryCompletionToTab(t, tabId, queryId, {
-            data: result.data || [],
-            columns,
-            executionTime: `${execMs}ms`,
-            resultSets,
-            activeResultSetIndex: resultSets?.length ? 0 : undefined,
-          }),
-        ),
-      );
-    } catch (e) {
-      const message = errorMessage(e);
-      console.error("execute_query failed:", message);
-      setTabs((prev) =>
-        prev.map((t) =>
-          applyQueryCompletionToTab(t, tabId, queryId, {
-            data: [],
-            columns: [],
-            executionTime: "0ms",
-            error: message,
-          }),
-        ),
-      );
-    }
-  };
-
-  const handleTableSelect = async (
-    connection: string,
-    database: string,
-    table: string,
-    connectionId: number,
-    driver: string,
-    schemaName?: string,
-  ) => {
-    const tabId = `${connection}-${database}-${schemaName || ""}-${table}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
+  const handleCloseOtherTabsWithReveal = useCallback(
+    (tabId: string) => {
+      handleCloseOtherTabs(tabId);
       setActiveTab(tabId);
-      return;
-    }
+      revealSidebarForTab(tabId);
+    },
+    [handleCloseOtherTabs, setActiveTab, revealSidebarForTab],
+  );
 
-    // Immediately create a placeholder tab and switch to it for instant feedback
-    setTabs((prev) => [
-      ...prev,
-      {
-        id: tabId,
-        type: "table",
-        title: table,
-        connection,
-        database,
-        connectionId,
-        driver,
-        isLoading: true,
-      },
-    ]);
-    setActiveTab(tabId);
-
-    try {
-      const { schema, dbParam } = resolveTableScope(
-        driver,
-        database,
-        schemaName,
-      );
-
-      const resp = await api.tableData.get({
-        id: connectionId,
-        database: dbParam,
-        schema,
-        table,
-        page: 1,
-        limit: 100,
-      });
-      let columns: string[] = [];
-      try {
-        const meta = await api.metadata.getTableMetadata(
-          connectionId,
-          database,
-          schema,
-          table,
-        );
-        if (meta && meta.columns) {
-          columns = meta.columns.map((c) => c.name);
-        }
-      } catch (e) {
-        console.warn("Failed to fetch metadata for table columns:", e);
-      }
-
-      if (columns.length === 0) {
-        columns = resp.data.length > 0 ? Object.keys(resp.data[0]) : [];
-      }
-
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                isLoading: false,
-                schema,
-                tableName: table,
-                data: resp.data,
-                columns,
-                total: resp.total,
-                page: resp.page,
-                pageSize: resp.limit,
-                executionTimeMs: resp.executionTimeMs,
-              }
-            : t,
-        ),
-      );
-    } catch (e) {
-      const message = errorMessage(e);
-      console.error("get_table_data failed", message);
-      setTabs((prev) =>
-        prev.map((t) => (t.id === tabId ? { ...t, isLoading: false } : t)),
-      );
-      toast.error(t("app.error.loadTableData"), {
-        description: message,
-      });
-    }
-  };
-
-  const handleRedisKeySelect = (
-    connection: string,
-    database: string,
-    redisKey: string,
-    connectionId: number,
-    driver: string,
-  ) => {
-    const tabId = `redis-${connectionId}-${database}-${redisKey}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-    setTabs((prev) => [
-      ...prev,
-      {
-        id: tabId,
-        type: "redis-key",
-        title: redisKey || "New Redis key",
-        connection,
-        database,
-        redisKey,
-        connectionId,
-        driver,
-      },
-    ]);
-    setActiveTab(tabId);
-  };
+  useKeyboardShortcuts({
+    tabs,
+    activeTab,
+    handleCycleTabs,
+    handleCloseTab,
+    handleCreateQuery,
+    setAiVisible,
+    setOpenSettings,
+  });
 
   const handleOpenRedisConsole = (
     connection: string,
@@ -1066,133 +313,6 @@ export default function App() {
     setActiveTab(tabId);
   };
 
-  const treeCallbacks: TreeCallbacks = useMemo(
-    () => ({
-      onKeySelect: (ctx) => {
-        handleRedisKeySelect(
-          ctx.connectionName,
-          ctx.databaseName,
-          ctx.leafName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onCreateKey: (ctx) => {
-        handleRedisKeySelect(
-          ctx.connectionName,
-          ctx.databaseName,
-          "",
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onOpenBrowser: (ctx) => {
-        handleOpenRedisBrowser(
-          ctx.connectionName,
-          ctx.databaseName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onOpenConsole: (ctx) => {
-        handleOpenRedisConsole(
-          ctx.connectionName,
-          ctx.databaseName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onOpenServerInfo: (ctx) => {
-        handleOpenRedisServerInfo(
-          ctx.connectionName,
-          ctx.databaseName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onOpenIndex: (ctx) => {
-        handleOpenElasticsearchIndex(
-          ctx.connectionName,
-          ctx.leafName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-    }),
-    [],
-  );
-
-  const notifyRedisRefresh = (connectionId: number, database: string) => {
-    setRedisRefreshRequest({
-      id: ++redisRefreshIdRef.current,
-      connectionId,
-      database,
-    });
-  };
-
-  const handleExportTableFromTree = async (
-    ctx: {
-      connectionId: number;
-      database: string;
-      schema: string;
-      table: string;
-      driver: string;
-    },
-    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
-    filePath: string,
-  ) => {
-    try {
-      const result = await api.transfer.exportTable({
-        id: ctx.connectionId,
-        database: ctx.database,
-        schema: ctx.schema,
-        table: ctx.table,
-        driver: ctx.driver,
-        format,
-        scope: "full_table",
-        filePath,
-      });
-      toast.success(
-        t("app.success.exportCompleted", { count: result.rowCount }),
-        {
-          description: result.filePath,
-        },
-      );
-    } catch (e) {
-      toast.error(t("app.error.exportFailed"), {
-        description: errorMessage(e),
-      });
-    }
-  };
-
-  const handleExportDatabaseFromTree = async (ctx: {
-    connectionId: number;
-    database: string;
-    driver: string;
-    format: "sql_dml" | "sql_ddl" | "sql_full";
-    filePath: string;
-  }) => {
-    try {
-      const result = await api.transfer.exportDatabase({
-        id: ctx.connectionId,
-        database: ctx.database,
-        driver: ctx.driver,
-        format: ctx.format,
-        filePath: ctx.filePath,
-      });
-      toast.success(
-        t("app.success.exportCompleted", { count: result.rowCount }),
-        {
-          description: result.filePath,
-        },
-      );
-    } catch (e) {
-      toast.error(t("app.error.exportFailed"), {
-        description: errorMessage(e),
-      });
-    }
-  };
-
   const handleOpenTableDDL = (ctx: {
     connectionId: number;
     database: string;
@@ -1279,9 +399,7 @@ export default function App() {
     tableName: string,
     driver: string,
   ) => {
-    // Close the create-table tab
     closeTabNow(tabId);
-    // Open the newly created table (use connectionId as connection name for tab ID uniqueness)
     void handleTableSelect(
       String(connectionId),
       database,
@@ -1290,7 +408,6 @@ export default function App() {
       driver,
       schema,
     );
-    // Trigger sidebar reveal so the new table is visible in the tree
     setSidebarRevealRequest({
       id: Date.now(),
       connectionId,
@@ -1331,553 +448,222 @@ export default function App() {
     closeTabNow(tabId);
   };
 
-  const handleTableRefresh = async (
-    tabId: string,
-    overrides?: TableRefreshOverrides,
-  ) => {
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.connectionId || !tab.driver || !tab.tableName) return;
-
-    const hasOwn = <K extends keyof TableRefreshOverrides>(key: K) =>
-      !!overrides && Object.prototype.hasOwnProperty.call(overrides, key);
-
-    const nextPage = overrides?.page ?? tab.page ?? 1;
-    const nextLimit = overrides?.limit ?? tab.pageSize ?? 100;
-    const nextFilter = hasOwn("filter") ? overrides?.filter : tab.filter;
-    const nextOrderBy = hasOwn("orderBy") ? overrides?.orderBy : tab.orderBy;
-
-    try {
-      const { schema, dbParam } = resolveTableScope(
-        tab.driver,
-        tab.database,
-        tab.schema,
-      );
-      const resp = await api.tableData.get({
-        id: tab.connectionId,
-        database: dbParam,
-        schema,
-        table: tab.tableName,
-        page: nextPage,
-        limit: nextLimit,
-        filter: nextFilter || undefined,
-        sortColumn: tab.sortColumn,
-        sortDirection: tab.sortDirection,
-        orderBy: nextOrderBy || undefined,
-      });
-
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.id !== tabId) return t;
-          return {
-            ...t,
-            data: resp.data,
-            total: resp.total,
-            page: resp.page,
-            pageSize: resp.limit,
-            executionTimeMs: resp.executionTimeMs,
-            filter: nextFilter,
-            orderBy: nextOrderBy,
-          };
-        }),
-      );
-    } catch (e) {
-      const message = errorMessage(e);
-      console.error("handleTableRefresh failed", message);
-      toast.error(t("app.error.refreshTable"), {
-        description: message,
-      });
-    }
-  };
-
-  const handlePageChange = async (tabId: string, page: number) => {
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.connectionId || !tab.driver || !tab.tableName) return;
-
-    try {
-      const { schema, dbParam } = resolveTableScope(
-        tab.driver,
-        tab.database,
-        tab.schema,
-      );
-      const resp = await api.tableData.get({
-        id: tab.connectionId,
-        database: dbParam,
-        schema,
-        table: tab.tableName,
-        page,
-        limit: tab.pageSize || 100,
-        filter: tab.filter,
-        sortColumn: tab.sortColumn,
-        sortDirection: tab.sortDirection,
-        orderBy: tab.orderBy,
-      });
-
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.id !== tabId) return t;
-          return {
-            ...t,
-            data: resp.data,
-            total: resp.total,
-            page: resp.page,
-            executionTimeMs: resp.executionTimeMs,
-          };
-        }),
-      );
-    } catch (e) {
-      const message = errorMessage(e);
-      console.error("handlePageChange failed", message);
-      toast.error(t("app.error.changePage"), {
-        description: message,
-      });
-    }
-  };
-
-  const handlePageSizeChange = async (tabId: string, pageSize: number) => {
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.connectionId || !tab.driver || !tab.tableName) return;
-
-    try {
-      const { schema, dbParam } = resolveTableScope(
-        tab.driver,
-        tab.database,
-        tab.schema,
-      );
-      const resp = await api.tableData.get({
-        id: tab.connectionId,
-        database: dbParam,
-        schema,
-        table: tab.tableName,
-        page: 1,
-        limit: pageSize,
-        filter: tab.filter,
-        sortColumn: tab.sortColumn,
-        sortDirection: tab.sortDirection,
-        orderBy: tab.orderBy,
-      });
-
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.id !== tabId) return t;
-          return {
-            ...t,
-            data: resp.data,
-            total: resp.total,
-            page: resp.page,
-            pageSize: resp.limit,
-            executionTimeMs: resp.executionTimeMs,
-          };
-        }),
-      );
-    } catch (e) {
-      const message = errorMessage(e);
-      console.error("handlePageSizeChange failed", message);
-      toast.error(t("app.error.changePageSize"), {
-        description: message,
-      });
-    }
-  };
-
-  const handleSortChange = async (
-    tabId: string,
-    column: string,
-    direction: "asc" | "desc",
-  ) => {
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.connectionId || !tab.driver || !tab.tableName) return;
-
-    // Optimistically update sort state
-    setTabs((prev) =>
-      prev.map((t) => {
-        if (t.id !== tabId) return t;
-        return { ...t, sortColumn: column, sortDirection: direction };
-      }),
-    );
-
-    try {
-      const { schema, dbParam } = resolveTableScope(
-        tab.driver,
-        tab.database,
-        tab.schema,
-      );
-      const resp = await api.tableData.get({
-        id: tab.connectionId,
-        database: dbParam,
-        schema,
-        table: tab.tableName,
-        page: 1, // Reset to first page on sort change
-        limit: tab.pageSize || 100,
-        filter: tab.filter,
-        sortColumn: column,
-        sortDirection: direction,
-        orderBy: tab.orderBy,
-      });
-
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.id !== tabId) return t;
-          return {
-            ...t,
-            data: resp.data,
-            total: resp.total,
-            page: resp.page,
-            executionTimeMs: resp.executionTimeMs,
-            sortColumn: column,
-            sortDirection: direction,
-          };
-        }),
-      );
-    } catch (e) {
-      const message = errorMessage(e);
-      console.error("handleSortChange failed", message);
-      toast.error(t("app.error.sortTable"), {
-        description: message,
-      });
-    }
-  };
-
-  const handleFilterChange = async (
-    tabId: string,
-    filter: string,
-    orderBy: string,
-  ) => {
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.connectionId || !tab.driver || !tab.tableName) return;
-
-    // Optimistically update filter/orderBy state
-    setTabs((prev) =>
-      prev.map((t) => {
-        if (t.id !== tabId) return t;
-        return { ...t, filter, orderBy };
-      }),
-    );
-
-    try {
-      const { schema, dbParam } = resolveTableScope(
-        tab.driver,
-        tab.database,
-        tab.schema,
-      );
-      const resp = await api.tableData.get({
-        id: tab.connectionId,
-        database: dbParam,
-        schema,
-        table: tab.tableName,
-        page: 1, // Reset to first page on filter change
-        limit: tab.pageSize || 100,
-        filter: filter || undefined,
-        sortColumn: tab.sortColumn,
-        sortDirection: tab.sortDirection,
-        orderBy: orderBy || undefined,
-      });
-
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.id !== tabId) return t;
-          return {
-            ...t,
-            data: resp.data,
-            columns: t.columns,
-            total: resp.total,
-            page: resp.page,
-            executionTimeMs: resp.executionTimeMs,
-            filter,
-            orderBy,
-          };
-        }),
-      );
-    } catch (e) {
-      const message = errorMessage(e);
-      console.error("handleFilterChange failed", message);
-      toast.error(t("app.error.filterTable"), {
-        description: message,
-      });
-    }
-  };
-
-  const resetCloseFlow = useCallback(() => {
-    setPendingCloseTabIds([]);
-    setCurrentCloseTabId(null);
-    setIsUnsavedConfirmOpen(false);
-    setIsCloseSaveDialogOpen(false);
-    closeSaveCompletedRef.current = false;
-    unsavedConfirmActionRef.current = null;
-  }, []);
-
-  const closeTabNow = useCallback(
-    (tabId: string) => {
-      setTabs((prev) => {
-        const newTabs = prev.filter((t) => t.id !== tabId);
-        setActiveTab((currentActiveTab) => {
-          if (currentActiveTab !== tabId) return currentActiveTab;
-          const nextActiveTab = newTabs[newTabs.length - 1]?.id || "";
-          if (nextActiveTab) revealSidebarForTab(nextActiveTab, newTabs);
-          return nextActiveTab;
-        });
-        return newTabs;
-      });
+  const handleExportTableFromTree = async (
+    ctx: {
+      connectionId: number;
+      database: string;
+      schema: string;
+      table: string;
+      driver: string;
     },
-    [revealSidebarForTab],
-  );
+    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
+    filePath: string,
+  ) => {
+    try {
+      const result = await api.transfer.exportTable({
+        id: ctx.connectionId,
+        database: ctx.database,
+        schema: ctx.schema,
+        table: ctx.table,
+        driver: ctx.driver,
+        format,
+        scope: "full_table",
+        filePath,
+      });
+      toast.success(
+        t("app.success.exportCompleted", { count: result.rowCount }),
+        {
+          description: result.filePath,
+        },
+      );
+    } catch (e) {
+      toast.error(t("app.error.exportFailed"), {
+        description: errorMessage(e),
+      });
+    }
+  };
 
-  const saveEditorTab = useCallback(
-    async (tab: TabItem, name: string, description: string) => {
-      if (tab.type !== "editor") return;
+  const handleExportDatabaseFromTree = async (ctx: {
+    connectionId: number;
+    database: string;
+    driver: string;
+    format: "sql_dml" | "sql_ddl" | "sql_full";
+    filePath: string;
+  }) => {
+    try {
+      const result = await api.transfer.exportDatabase({
+        id: ctx.connectionId,
+        database: ctx.database,
+        driver: ctx.driver,
+        format: ctx.format,
+        filePath: ctx.filePath,
+      });
+      toast.success(
+        t("app.success.exportCompleted", { count: result.rowCount }),
+        {
+          description: result.filePath,
+        },
+      );
+    } catch (e) {
+      toast.error(t("app.error.exportFailed"), {
+        description: errorMessage(e),
+      });
+    }
+  };
 
-      try {
-        const query = tab.sqlContent || "";
-        const payload = {
-          name,
-          description,
-          query,
-          connectionId: tab.connectionId || undefined,
-          database: tab.database,
-        };
+  const handleRedisKeySelect = (
+    connection: string,
+    database: string,
+    redisKey: string,
+    connectionId: number,
+    driver: string,
+  ) => {
+    const tabId = `redis-${connectionId}-${database}-${redisKey}`;
+    const existingTab = tabs.find((t) => t.id === tabId);
+    if (existingTab) {
+      setActiveTab(tabId);
+      return;
+    }
+    setTabs((prev) => [
+      ...prev,
+      {
+        id: tabId,
+        type: "redis-key",
+        title: redisKey || "New Redis key",
+        connection,
+        database,
+        redisKey,
+        connectionId,
+        driver,
+      },
+    ]);
+    setActiveTab(tabId);
+  };
 
-        const savedQuery = tab.savedQueryId
-          ? await api.queries.update(tab.savedQueryId, payload)
-          : await api.queries.create(payload);
-
-        setQueriesLastUpdated(Date.now());
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === tab.id
-              ? {
-                  ...t,
-                  savedQueryId: savedQuery.id,
-                  title: savedQuery.name,
-                  savedQueryDescription: savedQuery.description || undefined,
-                  sqlContent: savedQuery.query,
-                  lastSavedSql: savedQuery.query,
-                  isDirty: false,
-                }
-              : t,
-          ),
+  const treeCallbacks: TreeCallbacks = useMemo(
+    () => ({
+      onKeySelect: (ctx) => {
+        handleRedisKeySelect(
+          ctx.connectionName,
+          ctx.databaseName,
+          ctx.leafName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
         );
-      } catch (e) {
-        toast.error(t("app.error.saveQuery"), {
-          description: errorMessage(e),
-        });
-        throw e;
-      }
-    },
+      },
+      onCreateKey: (ctx) => {
+        handleRedisKeySelect(
+          ctx.connectionName,
+          ctx.databaseName,
+          "",
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onOpenBrowser: (ctx) => {
+        handleOpenRedisBrowser(
+          ctx.connectionName,
+          ctx.databaseName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onOpenConsole: (ctx) => {
+        handleOpenRedisConsole(
+          ctx.connectionName,
+          ctx.databaseName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onOpenServerInfo: (ctx) => {
+        handleOpenRedisServerInfo(
+          ctx.connectionName,
+          ctx.databaseName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onOpenIndex: (ctx) => {
+        handleOpenElasticsearchIndex(
+          ctx.connectionName,
+          ctx.leafName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+    }),
     [],
   );
 
-  const continueCloseFlow = useCallback(
-    (queue: string[]) => {
-      if (queue.length === 0) {
-        resetCloseFlow();
-        return;
-      }
-
-      const [nextTabId, ...rest] = queue;
-      const nextTab = tabs.find((t) => t.id === nextTabId);
-      if (!nextTab) {
-        continueCloseFlow(rest);
-        return;
-      }
-
-      if (nextTab.type === "editor" && nextTab.isDirty) {
-        setPendingCloseTabIds(queue);
-        setCurrentCloseTabId(nextTabId);
-        setIsUnsavedConfirmOpen(true);
-        setIsCloseSaveDialogOpen(false);
-        return;
-      }
-
-      closeTabNow(nextTabId);
-      continueCloseFlow(rest);
-    },
-    [tabs, closeTabNow, resetCloseFlow],
-  );
-
-  const requestCloseTabs = useCallback(
-    (tabIds: string[]) => {
-      const existingTabIds = tabIds.filter((id) =>
-        tabs.some((t) => t.id === id),
-      );
-      if (existingTabIds.length === 0) return;
-      continueCloseFlow(existingTabIds);
-    },
-    [tabs, continueCloseFlow],
-  );
-
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      requestCloseTabs([tabId]);
-    },
-    [requestCloseTabs],
-  );
-
-  const handleCloseOtherTabs = useCallback(
-    (tabId: string) => {
-      requestCloseTabs(tabs.filter((t) => t.id !== tabId).map((t) => t.id));
-      setActiveTab(tabId);
-      revealSidebarForTab(tabId);
-    },
-    [requestCloseTabs, revealSidebarForTab, tabs],
-  );
-
-  const handleUnsavedCloseCancel = useCallback(() => {
-    resetCloseFlow();
-  }, [resetCloseFlow]);
-
-  const handleUnsavedCloseWithoutSave = useCallback(() => {
-    unsavedConfirmActionRef.current = "discard";
-    if (!currentCloseTabId) {
-      resetCloseFlow();
-      return;
-    }
-
-    closeTabNow(currentCloseTabId);
-    const currentIndex = pendingCloseTabIds.indexOf(currentCloseTabId);
-    const rest =
-      currentIndex >= 0
-        ? pendingCloseTabIds.slice(currentIndex + 1)
-        : pendingCloseTabIds.filter((id) => id !== currentCloseTabId);
-    continueCloseFlow(rest);
-  }, [
-    closeTabNow,
-    continueCloseFlow,
-    currentCloseTabId,
-    pendingCloseTabIds,
-    resetCloseFlow,
-  ]);
-
-  const handleUnsavedCloseSave = useCallback(() => {
-    unsavedConfirmActionRef.current = "save";
-    setIsUnsavedConfirmOpen(false);
-    setIsCloseSaveDialogOpen(true);
-  }, []);
-
-  const handleCloseSaveDialogOpenChange = useCallback(
-    (open: boolean) => {
-      setIsCloseSaveDialogOpen(open);
-      if (open) return;
-      if (closeSaveCompletedRef.current) {
-        closeSaveCompletedRef.current = false;
-        return;
-      }
-      resetCloseFlow();
-    },
-    [resetCloseFlow],
-  );
-
-  const handleCloseFlowSave = useCallback(
-    async (name: string, description: string) => {
-      if (!currentCloseTabId) {
-        resetCloseFlow();
-        return;
-      }
-
-      const currentTab = tabs.find((t) => t.id === currentCloseTabId);
-      if (!currentTab || currentTab.type !== "editor") {
-        closeSaveCompletedRef.current = true;
-        const currentIndex = pendingCloseTabIds.indexOf(currentCloseTabId);
-        const rest =
-          currentIndex >= 0
-            ? pendingCloseTabIds.slice(currentIndex + 1)
-            : pendingCloseTabIds.filter((id) => id !== currentCloseTabId);
-        continueCloseFlow(rest);
-        return;
-      }
-
-      await saveEditorTab(currentTab, name, description);
-
-      closeSaveCompletedRef.current = true;
-      closeTabNow(currentCloseTabId);
-      const currentIndex = pendingCloseTabIds.indexOf(currentCloseTabId);
-      const rest =
-        currentIndex >= 0
-          ? pendingCloseTabIds.slice(currentIndex + 1)
-          : pendingCloseTabIds.filter((id) => id !== currentCloseTabId);
-      continueCloseFlow(rest);
-    },
-    [
-      closeTabNow,
-      continueCloseFlow,
-      currentCloseTabId,
-      pendingCloseTabIds,
-      resetCloseFlow,
-      saveEditorTab,
-      tabs,
-    ],
-  );
-
-  const handleCycleTabs = (direction: 1 | -1) => {
-    if (tabs.length < 2) return;
-    const currentIndex = tabs.findIndex((t) => t.id === activeTab);
-    const startIndex = currentIndex >= 0 ? currentIndex : 0;
-    const nextIndex = (startIndex + direction + tabs.length) % tabs.length;
-    const nextTabId = tabs[nextIndex].id;
-    setActiveTab(nextTabId);
-    revealSidebarForTab(nextTabId, tabs);
+  const notifyRedisRefresh = (connectionId: number, database: string) => {
+    setRedisRefreshRequest({
+      id: ++redisRefreshIdRef.current,
+      connectionId,
+      database,
+    });
   };
 
-  const match = useShortcutMatcher();
-
-  // Global Keyboard Shortcuts
   useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (!isModKey(e) || shouldIgnoreGlobalShortcut(e)) return;
+    void getSetting<SidebarLayoutMode>("sidebarLayout", "tabs").then(
+      (layout) => {
+        setSidebarLayout(layout === "tree" ? "tree" : "tabs");
+      },
+    );
+    void getSetting("showColumnComments", false).then(setShowColumnComments);
+    void getSetting("showRowNumbers", true).then(setShowRowNumbers);
+    void getSetting("showZebraStripes", false).then(setShowZebraStripes);
+  }, []);
 
-      if (match(e, "global.nextTab")) {
-        e.preventDefault();
-        handleCycleTabs(1);
-        return;
-      }
+  useEffect(() => {
+    if (!isTauri()) return;
 
-      if (match(e, "global.prevTab")) {
-        e.preventDefault();
-        handleCycleTabs(-1);
-        return;
-      }
+    const unlistenChunk = listen("query.chunk", (_evt: any) => {});
+    const unlistenProgress = listen("query.progress", () => {});
+    const unlistenDone = listen("query.done", () => {});
+    const unlistenSettings = listen("open-settings", () =>
+      setOpenSettings(true),
+    );
 
-      if (match(e, "global.closeTab")) {
-        e.preventDefault();
-        if (activeTab) {
-          handleCloseTab(activeTab);
-        }
-        return;
-      }
-
-      if (match(e, "global.newQueryTab")) {
-        e.preventDefault();
-        const currentTab = tabs.find((t) => t.id === activeTab);
-        if (
-          currentTab &&
-          currentTab.connectionId &&
-          currentTab.database &&
-          currentTab.driver
-        ) {
-          handleCreateQuery(
-            currentTab.connectionId,
-            currentTab.database,
-            currentTab.driver,
-          );
-        }
-        return;
-      }
-
-      if (match(e, "global.toggleAiSidebar")) {
-        e.preventDefault();
-        setAiVisible((v) => !v);
-        return;
-      }
-
-      if (match(e, "global.openSettings")) {
-        e.preventDefault();
-        setOpenSettings(true);
-        return;
-      }
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown);
     return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
+      unlistenChunk.then((f) => f());
+      unlistenProgress.then((f) => f());
+      unlistenDone.then((f) => f());
+      unlistenSettings.then((f) => f());
     };
-  }, [activeTab, tabs, match]);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    const appWindow = getCurrentWindow();
+    let mounted = true;
+    let unlistenResized: null | (() => void) = null;
+
+    const syncFullscreenState = async () => {
+      try {
+        const fullscreen = await appWindow.isFullscreen();
+        if (mounted) setIsFullscreen(fullscreen);
+      } catch {
+        // Ignore window state lookup failures in non-native contexts.
+      }
+    };
+
+    void syncFullscreenState();
+    appWindow
+      .onResized(() => {
+        void syncFullscreenState();
+      })
+      .then((unlisten) => {
+        unlistenResized = unlisten;
+      })
+      .catch(() => {});
+
+    return () => {
+      mounted = false;
+      if (unlistenResized) unlistenResized();
+    };
+  }, []);
 
   const activeTabItem = tabs.find((t) => t.id === activeTab);
   const activeTableTarget = useMemo<ActiveTableTarget | undefined>(() => {
@@ -1891,604 +677,135 @@ export default function App() {
     });
     return counts;
   }, [tabs]);
-  const currentCloseTab = currentCloseTabId
-    ? tabs.find((t) => t.id === currentCloseTabId)
-    : undefined;
 
-  const handleOpenERDiagram = useCallback((ctx?: { connectionId?: number; database?: string }) => {
-    const connectionId = ctx?.connectionId ?? activeTabItem?.connectionId;
-    const database = ctx?.database ?? activeTabItem?.database;
-    
-    if (!connectionId || !database) return;
+  const handleOpenERDiagram = useCallback(
+    (ctx?: { connectionId?: number; database?: string }) => {
+      const connectionId = ctx?.connectionId ?? activeTabItem?.connectionId;
+      const database = ctx?.database ?? activeTabItem?.database;
 
-    const tabId = `er-diagram-${database}`;
-    const existing = tabs.find((t) => t.id === tabId);
-    if (existing) {
+      if (!connectionId || !database) return;
+
+      const tabId = `er-diagram-${database}`;
+      const existing = tabs.find((t) => t.id === tabId);
+      if (existing) {
+        setActiveTab(tabId);
+        return;
+      }
+
+      const newTab: TabItem = {
+        id: tabId,
+        type: "er-diagram",
+        title: `ER - ${database}`,
+        connectionId: connectionId,
+        database: database,
+        schema: activeTabItem?.schema,
+      };
+      setTabs((prev) => [...prev, newTab]);
       setActiveTab(tabId);
-      return;
-    }
-
-    const newTab: TabItem = {
-      id: tabId,
-      type: "er-diagram",
-      title: `ER - ${database}`,
-      connectionId: connectionId,
-      database: database,
-      schema: activeTabItem?.schema,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTab(tabId);
-  }, [activeTabItem, tabs]);
+    },
+    [activeTabItem, tabs, setActiveTab, setTabs],
+  );
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-muted/30">
-      {!isFullscreen && (
-        <div
-          data-tauri-drag-region
-          className="relative h-9 bg-background border-b border-border flex items-center pl-20 pr-2 select-none cursor-grab active:cursor-grabbing"
-          onMouseDown={handleWindowDragStart}
-        >
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="text-xs font-medium text-muted-foreground">
-              DbPaw
-            </span>
-          </div>
-          <div
-            data-no-drag="true"
-            className="ml-auto flex items-center gap-1 shrink-0"
-          >
-            {renderWindowActions()}
-          </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
-        <ResizablePanelGroup
-          direction="horizontal"
-          autoSaveId={aiVisible ? "main-layout-with-ai" : "main-layout"}
-        >
-          {/* Left Sidebar - Database Connections */}
-          <ResizablePanel
-            id="left-sidebar"
-            order={1}
-            defaultSize={20}
-            minSize={15}
-            maxSize={30}
-          >
-            <Sidebar
-              onTableSelect={handleTableSelect}
-              onConnect={() => {}}
-              onCreateQuery={handleCreateQuery}
-              onRoutineSelect={handleRoutineSelect}
-              onExportTable={handleExportTableFromTree}
-              onExportDatabase={handleExportDatabaseFromTree}
-              onCreateTable={handleCreateTable}
-              onAlterTable={handleAlterTable}
-              onSelectSavedQuery={handleOpenSavedQuery}
-              lastUpdated={queriesLastUpdated}
-              activeTableTarget={activeTableTarget}
-              sidebarRevealRequest={sidebarRevealRequest}
-              layoutMode={sidebarLayout}
-              redisRefreshRequest={redisRefreshRequest}
-              treeCallbacks={treeCallbacks}
-            />
-          </ResizablePanel>
-
-          <ResizableHandle />
-
-          {/* Main Panel - SQL Editor & Results */}
-          <ResizablePanel
-            id="main-panel"
-            order={2}
-            defaultSize={60}
-            minSize={40}
-          >
-            <Tabs
-              value={activeTab}
-              onValueChange={handleMainTabChange}
-              className="h-full flex flex-col"
-            >
-              <div className="bg-background border-b border-border flex items-center h-9">
-                <div className="min-w-0 flex-1">
-                  <TabsList className="h-9 min-w-0 w-full justify-start gap-0 bg-transparent border-none p-0 overflow-x-auto">
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext
-                        items={tabs.map((t) => t.id)}
-                        strategy={horizontalListSortingStrategy}
-                      >
-                        {tabs.map((tab) => {
-                          const title =
-                            tab.type === "table" &&
-                            (tableTabTitleCounts.get(tab.title) || 0) > 1 &&
-                            tab.database
-                              ? `${tab.database}.${tab.title}`
-                              : tab.title;
-                          return (
-                            <SortableTab key={tab.id} id={tab.id}>
-                              <ContextMenu>
-                                <ContextMenuTrigger asChild>
-                                  {/* Wrapper avoids data-state conflict: ContextMenu and Tabs both set it; only the trigger must get Tabs' data-state=active for the indicator bar */}
-                                  <span className="contents">
-                                    <TabsTrigger
-                                      value={tab.id}
-                                      className={TAB_TRIGGER_CLASS}
-                                      asChild
-                                      onMouseDown={(e) => {
-                                        if (e.button === 1) {
-                                          e.preventDefault();
-                                          handleCloseTab(tab.id);
-                                        }
-                                      }}
-                                    >
-                                      <div className="relative inline-flex items-center gap-2 min-w-0">
-                                        {tab.type === "table" ? (
-                                          <Table className="w-4 h-4 text-accent" />
-                                        ) : tab.type === "redis-key" ? (
-                                          <KeyRound className="w-4 h-4 text-accent" />
-                                        ) : tab.type === "redis-browser" ? (
-                                          <LayoutDashboard className="w-4 h-4 text-accent" />
-                                        ) : tab.type === "redis-server-info" ? (
-                                          <Server className="w-4 h-4 text-accent" />
-                                        ) : tab.type ===
-                                          "elasticsearch-index" ? (
-                                          <FileSearch className="w-4 h-4 text-accent" />
-                                        ) : (
-                                          <FileCode className="w-4 h-4 text-accent" />
-                                        )}
-                                        <span className="max-w-[120px] flex items-center">
-                                          <span className="truncate">
-                                            {title}
-                                          </span>
-                                          {tab.type === "editor" &&
-                                            tab.isDirty && (
-                                              <span
-                                                className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 ml-1 shrink-0"
-                                                aria-label={t(
-                                                  "app.tab.unsavedChanges",
-                                                )}
-                                              />
-                                            )}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          aria-label={t("app.tab.closeAria", {
-                                            title,
-                                          })}
-                                          className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded-sm cursor-pointer transition-opacity"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleCloseTab(tab.id);
-                                          }}
-                                        >
-                                          <X className="w-3 h-3 text-muted-foreground" />
-                                        </button>
-                                      </div>
-                                    </TabsTrigger>
-                                  </span>
-                                </ContextMenuTrigger>
-                                <ContextMenuContent>
-                                  <ContextMenuItem
-                                    onClick={() => handleCloseTab(tab.id)}
-                                  >
-                                    {t("app.tab.closeTab")}
-                                  </ContextMenuItem>
-                                  <ContextMenuItem
-                                    onClick={() => handleCloseOtherTabs(tab.id)}
-                                  >
-                                    {t("app.tab.closeOtherTabs")}
-                                  </ContextMenuItem>
-                                </ContextMenuContent>
-                              </ContextMenu>
-                            </SortableTab>
-                          );
-                        })}
-                      </SortableContext>
-                    </DndContext>
-                  </TabsList>
-                </div>
-                {isFullscreen && (
-                  <div
-                    data-no-drag="true"
-                    className="flex items-center gap-1 shrink-0 pr-2"
-                  >
-                    {renderWindowActions()}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-hidden">
-                {tabs.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-muted-foreground">
-                    <div className="text-center">
-                      <FileCode className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                      <p>{t("app.empty.hint")}</p>
-                    </div>
-                  </div>
-                ) : (
-                  tabs.map((tab) => (
-                    <TabsContent
-                      key={tab.id}
-                      value={tab.id}
-                      forceMount
-                      className="h-full m-0"
-                    >
-                      <ErrorBoundary>
-                        {tab.type === "editor" ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label={t("common.loading")} />
-                            }
-                          >
-                            <SqlEditor
-                              databaseName={tab.database}
-                              availableDatabases={tab.availableDatabases}
-                              onExecute={(sql) =>
-                                handleExecuteQuery(tab.id, sql)
-                              }
-                              onCancel={() =>
-                                tab.connectionId && tab.activeQueryId
-                                  ? api.query.cancel(
-                                      String(tab.connectionId),
-                                      tab.activeQueryId,
-                                    )
-                                  : Promise.resolve(false)
-                              }
-                              isExecuting={!!tab.activeQueryId}
-                              queryResults={tab.queryResults}
-                              value={tab.sqlContent}
-                              onChange={(sql) => handleSqlChange(tab.id, sql)}
-                              onDatabaseChange={(database) =>
-                                void handleEditorDatabaseChange(
-                                  tab.id,
-                                  database,
-                                )
-                              }
-                              connectionId={tab.connectionId}
-                              driver={tab.driver}
-                              schemaOverview={tab.schemaOverview}
-                              savedQueryId={tab.savedQueryId}
-                              initialName={
-                                isDefaultQueryTitle(tab.title) ? "" : tab.title
-                              }
-                              initialDescription={tab.savedQueryDescription}
-                              onSaveSuccess={(savedQuery) => {
-                                setQueriesLastUpdated(Date.now());
-                                setTabs((prev) =>
-                                  prev.map((t) => {
-                                    if (t.id === tab.id) {
-                                      return {
-                                        ...t,
-                                        savedQueryId: savedQuery.id,
-                                        title: savedQuery.name,
-                                        savedQueryDescription:
-                                          savedQuery.description || undefined,
-                                        sqlContent: savedQuery.query,
-                                        lastSavedSql: savedQuery.query,
-                                        isDirty: false,
-                                      };
-                                    }
-                                    return t;
-                                  }),
-                                );
-                              }}
-                            />
-                          </Suspense>
-                        ) : tab.type === "table" ? (
-                          <TableView
-                            isLoading={tab.isLoading}
-                            data={tab.data}
-                            columns={tab.columns}
-                            total={tab.total}
-                            page={tab.page}
-                            pageSize={tab.pageSize}
-                            executionTimeMs={tab.executionTimeMs}
-                            onPageChange={(p) => handlePageChange(tab.id, p)}
-                            onPageSizeChange={(size) =>
-                              handlePageSizeChange(tab.id, size)
-                            }
-                            sortColumn={tab.sortColumn}
-                            sortDirection={tab.sortDirection}
-                            onSortChange={(col, dir) =>
-                              handleSortChange(tab.id, col, dir)
-                            }
-                            filter={tab.filter}
-                            orderBy={tab.orderBy}
-                            onFilterChange={(f, ob) =>
-                              handleFilterChange(tab.id, f, ob)
-                            }
-                            onOpenDDL={handleOpenTableDDL}
-                            onOpenERDiagram={(ctx) => {
-                              handleOpenERDiagram({ connectionId: ctx.connectionId, database: ctx.database });
-                            }}
-                            onDataRefresh={(params) =>
-                              handleTableRefresh(tab.id, params)
-                            }
-                            onCreateQuery={handleCreateQuery}
-                            tableContext={
-                              tab.connectionId &&
-                              tab.database &&
-                              tab.tableName &&
-                              tab.driver
-                                ? {
-                                    connectionId: tab.connectionId,
-                                    database: tab.database,
-                                    schema:
-                                      isMysqlFamilyDriver(tab.driver as any) ||
-                                      tab.driver === "clickhouse"
-                                        ? tab.database
-                                        : tab.driver === "mssql"
-                                          ? tab.schema || "dbo"
-                                          : tab.driver === "duckdb"
-                                            ? "main"
-                                            : tab.schema || "public",
-                                    table: tab.tableName,
-                                    driver: tab.driver,
-                                  }
-                                : undefined
-                            }
-                            showColumnComments={showColumnComments}
-                            showRowNumbers={showRowNumbers}
-                            showZebraStripes={showZebraStripes}
-                          />
-                        ) : tab.type === "routine" &&
-                          tab.connectionId !== undefined &&
-                          tab.database &&
-                          tab.schema &&
-                          tab.routineName &&
-                          tab.routineType ? (
-                          <RoutineMetadataView
-                            connectionId={tab.connectionId}
-                            database={tab.database}
-                            schema={tab.schema}
-                            name={tab.routineName}
-                            routineType={tab.routineType}
-                          />
-                        ) : tab.type === "redis-key" &&
-                          tab.connectionId !== undefined &&
-                          tab.database &&
-                          tab.redisKey !== undefined ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label="Loading Redis key..." />
-                            }
-                          >
-                            <RedisKeyView
-                              connectionId={tab.connectionId}
-                              database={tab.database}
-                              redisKey={tab.redisKey}
-                              onSavedKeyChange={(key) => {
-                                setTabs((prev) =>
-                                  prev.map((item) =>
-                                    item.id === tab.id
-                                      ? { ...item, title: key, redisKey: key }
-                                      : item,
-                                  ),
-                                );
-                                notifyRedisRefresh(
-                                  tab.connectionId!,
-                                  tab.database!,
-                                );
-                              }}
-                              onDeleted={() => {
-                                handleCloseTab(tab.id);
-                                notifyRedisRefresh(
-                                  tab.connectionId!,
-                                  tab.database!,
-                                );
-                              }}
-                            />
-                          </Suspense>
-                        ) : tab.type === "redis-console" &&
-                          tab.connectionId !== undefined &&
-                          tab.database ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label="Loading Redis Console..." />
-                            }
-                          >
-                            <RedisConsole
-                              connectionId={tab.connectionId}
-                              database={tab.database}
-                            />
-                          </Suspense>
-                        ) : tab.type === "redis-browser" &&
-                          tab.connectionId !== undefined &&
-                          tab.database ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label="Loading Redis Browser..." />
-                            }
-                          >
-                            <RedisBrowserView
-                              connectionId={tab.connectionId}
-                              database={tab.database}
-                              onOpenConsole={() =>
-                                handleOpenRedisConsole(
-                                  tab.connection!,
-                                  tab.database!,
-                                  tab.connectionId!,
-                                  tab.driver!,
-                                )
-                              }
-                            />
-                          </Suspense>
-                        ) : tab.type === "redis-server-info" &&
-                          tab.connectionId !== undefined &&
-                          tab.database ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label="Loading Server Info..." />
-                            }
-                          >
-                            <RedisServerInfoView
-                              connectionId={tab.connectionId}
-                              database={tab.database}
-                            />
-                          </Suspense>
-                        ) : tab.type === "elasticsearch-index" &&
-                          tab.connectionId !== undefined &&
-                          tab.elasticsearchIndex ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label="Loading Elasticsearch index..." />
-                            }
-                          >
-                            <ElasticsearchIndexView
-                              connectionId={tab.connectionId}
-                              index={tab.elasticsearchIndex}
-                            />
-                          </Suspense>
-                        ) : tab.type === "er-diagram" &&
-                          tab.connectionId !== undefined ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label={t("erDiagram.loading")} />
-                            }
-                          >
-                            <ERDiagramView
-                              connectionId={tab.connectionId}
-                              database={tab.database}
-                              schema={tab.schema}
-                            />
-                          </Suspense>
-                        ) : tab.type === "create-table" &&
-                          tab.connectionId !== undefined &&
-                          tab.database &&
-                          tab.driver ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label={t("common.loading")} />
-                            }
-                          >
-                            <CreateTableView
-                              connectionId={tab.connectionId}
-                              database={tab.database}
-                              schema={tab.schema ?? ""}
-                              driver={tab.driver}
-                              onSuccess={(tableName) =>
-                                handleCreateTableSuccess(
-                                  tab.id,
-                                  tab.connectionId!,
-                                  tab.database!,
-                                  tab.schema,
-                                  tableName,
-                                  tab.driver!,
-                                )
-                              }
-                              onCancel={() => handleCloseTab(tab.id)}
-                            />
-                          </Suspense>
-                        ) : tab.type === "alter-table" &&
-                          tab.connectionId !== undefined &&
-                          tab.database &&
-                          tab.tableName &&
-                          tab.driver ? (
-                          <Suspense
-                            fallback={
-                              <LazyPanelFallback label={t("common.loading")} />
-                            }
-                          >
-                            <AlterTableView
-                              connectionId={tab.connectionId}
-                              database={tab.database}
-                              schema={tab.schema ?? ""}
-                              table={tab.tableName}
-                              driver={tab.driver}
-                              onSuccess={() => handleAlterTableSuccess(tab.id)}
-                              onCancel={() => handleCloseTab(tab.id)}
-                            />
-                          </Suspense>
-                        ) : tab.connectionId &&
-                          tab.database &&
-                          tab.schema &&
-                          tab.tableName ? (
-                          <TableMetadataView
-                            connectionId={tab.connectionId}
-                            database={tab.database}
-                            schema={tab.schema}
-                            table={tab.tableName}
-                          />
-                        ) : null}
-                      </ErrorBoundary>
-                    </TabsContent>
-                  ))
-                )}
-              </div>
-            </Tabs>
-          </ResizablePanel>
-
-          <ResizableHandle />
-
-          {/* Right Sidebar - AI Assistant */}
-          {aiVisible && (
-            <ResizablePanel
-              id="ai-sidebar"
-              order={3}
-              defaultSize={20}
-              minSize={20}
-              maxSize={40}
-            >
-              <Suspense
-                fallback={<LazyPanelFallback label={t("common.loading")} />}
-              >
-                <AISidebar
-                  connectionId={activeTabItem?.connectionId}
-                  database={activeTabItem?.database}
-                  schemaOverview={activeTabItem?.schemaOverview}
-                />
-              </Suspense>
-            </ResizablePanel>
-          )}
-        </ResizablePanelGroup>
-      </div>
-      <AlertDialog
-        open={isUnsavedConfirmOpen}
-        onOpenChange={(open) => {
-          if (!open && unsavedConfirmActionRef.current) {
-            unsavedConfirmActionRef.current = null;
-            setIsUnsavedConfirmOpen(false);
-            return;
-          }
-          if (!open && isUnsavedConfirmOpen) {
-            handleUnsavedCloseCancel();
-          }
-        }}
+    <AppLayout
+      aiVisible={aiVisible}
+      isFullscreen={isFullscreen}
+      sidebarLayout={sidebarLayout}
+      activeTabItem={activeTabItem}
+      windowActions={
+        <WindowActions
+          aiVisible={aiVisible}
+          onToggleAi={() => setAiVisible((v) => !v)}
+          onOpenSettings={() => setOpenSettings(true)}
+        />
+      }
+      sidebarProps={{
+        onTableSelect: handleTableSelect,
+        onConnect: () => {},
+        onCreateQuery: handleCreateQuery,
+        onRoutineSelect: handleRoutineSelect,
+        onExportTable: handleExportTableFromTree,
+        onExportDatabase: handleExportDatabaseFromTree,
+        onCreateTable: handleCreateTable,
+        onAlterTable: handleAlterTable,
+        onSelectSavedQuery: handleOpenSavedQuery,
+        lastUpdated: queriesLastUpdated,
+        activeTableTarget,
+        sidebarRevealRequest,
+        redisRefreshRequest,
+        treeCallbacks,
+      }}
+    >
+      <Tabs
+        value={activeTab}
+        onValueChange={handleMainTabChange}
+        className="h-full flex flex-col"
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.dialog.unsavedTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("app.dialog.unsavedDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleUnsavedCloseCancel}>
-              {t("common.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleUnsavedCloseWithoutSave}>
-              {t("app.dialog.dontSave")}
-            </AlertDialogAction>
-            <AlertDialogAction onClick={handleUnsavedCloseSave}>
-              {t("common.save")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <SaveQueryDialog
-        open={isCloseSaveDialogOpen}
-        onOpenChange={handleCloseSaveDialogOpenChange}
-        onSave={handleCloseFlowSave}
-        initialName={
-          currentCloseTab && !isDefaultQueryTitle(currentCloseTab.title)
-            ? currentCloseTab.title
-            : ""
-        }
-        initialDescription={currentCloseTab?.savedQueryDescription}
+        <div className="bg-background border-b border-border flex items-center h-9">
+          <div className="min-w-0 flex-1">
+            <TabBar
+              tabs={tabs}
+              activeTab={activeTab}
+              onTabChange={handleMainTabChange}
+              onDragEnd={handleDragEnd}
+              onCloseTab={handleCloseTab}
+              onCloseOtherTabs={handleCloseOtherTabsWithReveal}
+              tableTabTitleCounts={tableTabTitleCounts}
+            />
+          </div>
+          {isFullscreen && (
+            <div
+              data-no-drag="true"
+              className="flex items-center gap-1 shrink-0 pr-2"
+            >
+              <WindowActions
+                aiVisible={aiVisible}
+                onToggleAi={() => setAiVisible((v) => !v)}
+                onOpenSettings={() => setOpenSettings(true)}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-hidden">
+          <TabContentRenderer
+            tabs={tabs}
+            activeTab={activeTab}
+            handleExecuteQuery={handleExecuteQuery}
+            handleSqlChange={handleSqlChange}
+            handleEditorDatabaseChange={handleEditorDatabaseChange}
+            handlePageChange={handlePageChange}
+            handlePageSizeChange={handlePageSizeChange}
+            handleSortChange={handleSortChange}
+            handleFilterChange={handleFilterChange}
+            handleTableRefresh={handleTableRefresh}
+            handleOpenTableDDL={handleOpenTableDDL}
+            handleOpenERDiagram={handleOpenERDiagram}
+            handleCreateQuery={handleCreateQuery}
+            handleCloseTab={handleCloseTab}
+            handleCreateTableSuccess={handleCreateTableSuccess}
+            handleAlterTableSuccess={handleAlterTableSuccess}
+            handleOpenRedisConsole={handleOpenRedisConsole}
+            notifyRedisRefresh={notifyRedisRefresh}
+            setQueriesLastUpdated={setQueriesLastUpdated}
+            setTabs={setTabs}
+            isDefaultQueryTitle={isDefaultQueryTitle}
+            showColumnComments={showColumnComments}
+            showRowNumbers={showRowNumbers}
+            showZebraStripes={showZebraStripes}
+          />
+        </div>
+      </Tabs>
+      <UnsavedChangesDialog
+        isUnsavedConfirmOpen={isUnsavedConfirmOpen}
+        isCloseSaveDialogOpen={isCloseSaveDialogOpen}
+        currentCloseTab={currentCloseTab}
+        onCancel={handleUnsavedCloseCancel}
+        onDiscard={handleUnsavedCloseWithoutSave}
+        onSave={handleUnsavedCloseSave}
+        onSaveDialogOpenChange={handleCloseSaveDialogOpenChange}
+        onSaveComplete={handleCloseFlowSave}
+        isDefaultQueryTitle={isDefaultQueryTitle}
       />
       {openSettings && (
         <Suspense
@@ -2513,6 +830,8 @@ export default function App() {
         </Suspense>
       )}
       <UpdaterChecker />
-    </div>
+    </AppLayout>
   );
 }
+
+export type { TabItem } from "@/types/tab";

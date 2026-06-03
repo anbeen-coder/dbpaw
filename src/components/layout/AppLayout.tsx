@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/resizable";
 import { Sidebar } from "@/components/business/Sidebar/Sidebar";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { TabItem } from "@/App";
+import type { TabItem } from "@/types/tab";
 import { useTranslation } from "react-i18next";
 
 const AISidebar = lazy(async () => {

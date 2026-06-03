@@ -470,9 +470,8 @@ export function TableView({
   showZebraStripes = false,
 }: TableViewProps) {
   const { t } = useTranslation();
+  const [viewMode, setViewMode] = useState<"table" | "column">("table");
   const {
-    viewMode,
-    setViewMode,
     getColWidth,
     tableWidthPx,
     thRefs,

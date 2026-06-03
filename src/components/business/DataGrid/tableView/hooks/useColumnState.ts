@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { calculateAutoColumnWidths } from "../utils";
 
+const DEFAULT_COL_WIDTH = 150;
+const INDEX_COL_WIDTH = 48;
+
 export function useColumnState({
   data,
   columns,
@@ -8,7 +11,6 @@ export function useColumnState({
   data: any[];
   columns: string[];
 }) {
-  const [viewMode, setViewMode] = useState<"table" | "column">("table");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const columnWidthsRef = useRef<Record<string, number>>({});
   columnWidthsRef.current = columnWidths;
@@ -19,9 +21,6 @@ export function useColumnState({
     startWidth: number;
   } | null>(null);
   const prevColumnsRef = useRef<string>("");
-
-  const DEFAULT_COL_WIDTH = 150;
-  const INDEX_COL_WIDTH = 48;
 
   // Reset column widths when columns definition changes
   useEffect(() => {
@@ -69,20 +68,23 @@ export function useColumnState({
     document.body.style.cursor = "default";
   }, [handleMouseMove]);
 
-  const handleMouseDown = (e: React.MouseEvent, column: string) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent, column: string) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    const currentTh = thRefs.current[column];
-    const startWidth = currentTh
-      ? currentTh.getBoundingClientRect().width
-      : getColWidth(column);
+      const currentTh = thRefs.current[column];
+      const startWidth = currentTh
+        ? currentTh.getBoundingClientRect().width
+        : getColWidth(column);
 
-    resizingRef.current = { column, startX: e.clientX, startWidth };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    document.body.style.cursor = "col-resize";
-  };
+      resizingRef.current = { column, startX: e.clientX, startWidth };
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "col-resize";
+    },
+    [thRefs, getColWidth, handleMouseMove, handleMouseUp],
+  );
 
   // Cleanup effect for mouse listeners
   useEffect(() => {
@@ -93,8 +95,6 @@ export function useColumnState({
   }, [handleMouseMove, handleMouseUp]);
 
   return {
-    viewMode,
-    setViewMode,
     columnWidths,
     getColWidth,
     tableWidthPx,

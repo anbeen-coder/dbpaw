@@ -148,6 +148,12 @@ const DataRow = memo(function DataRow({
             .join(" ")}
           onMouseDown={(e) => handleIndexMouseDown(e, rowIndex)}
           onMouseEnter={() => handleIndexMouseEnter(rowIndex)}
+          onContextMenu={() => {
+            if (isMultiRowSelection) {
+              return;
+            }
+            setContextMenuRow(rowIndex);
+          }}
         >
           {startIndex + rowIndex + 1}
         </td>

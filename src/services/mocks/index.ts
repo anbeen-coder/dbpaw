@@ -1,4 +1,5 @@
 import { handleQuery } from "./query";
+import { handleRedis } from "./redis";
 import { handleMetadata } from "./metadata";
 import { handleTableData } from "./tableData";
 import { handleConnections } from "./connections";
@@ -12,6 +13,7 @@ import { handleMcp } from "./mcp";
 
 const handlers = [
   handleQuery,
+  handleRedis,
   handleMetadata,
   handleTableData,
   handleConnections,
@@ -52,6 +54,11 @@ export {
 export { mockTableData, mockGetTableData, mockGetTableDataByConn } from "./tableData";
 export { mockSavedQueries, mockGetSavedQueries, mockSaveQuery, mockUpdateSavedQuery, mockDeleteSavedQuery } from "./queries";
 export { mockExportTableData, mockExportDatabaseSql, mockExportQueryResult, mockImportSqlFile } from "./transfer";
+export {
+  mockRedisListDatabases, mockRedisScanKeys, mockRedisGetKey, mockRedisSetKey,
+  mockRedisDeleteKey, mockRedisRenameKey, mockRedisSetTtl, mockRedisServerInfo,
+  mockRedisServerConfig, mockRedisSlowlogGet, mockRedisExecuteRaw,
+} from "./redis";
 export {
   mockMcpStatus, mockMcpStart, mockMcpStop, mockMcpGetTools,
   mockMcpDetectClients, mockMcpConfigureClient,

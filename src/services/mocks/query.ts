@@ -4,7 +4,7 @@ import {
   RedisCommandLog,
   ConnectionForm,
 } from "../api";
-import { mockTableData } from "../mocks";
+import { mockTableData } from "./tableData";
 
 // Dedicated dataset for querying "SELECT * FROM json_test" in mock mode.
 // Covers every complex-type edge case in a single focused table.

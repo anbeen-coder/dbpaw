@@ -1,5 +1,5 @@
 import type { RedisConnectionMode } from "./redis";
-import type { Driver, ImportDriverCapability } from "@/lib/driver-registry";
+import type { Driver } from "@/lib/driver-registry";
 
 export type { Driver, ImportDriverCapability } from "@/lib/driver-registry";
 

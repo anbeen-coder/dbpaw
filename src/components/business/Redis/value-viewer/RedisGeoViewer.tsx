@@ -24,7 +24,8 @@ import type {
   RedisGeoSearchResult,
   RedisKeyExtra,
 } from "@/services/api";
-import { errorMessage } from "@/lib/errors";
+import { handleApiError } from "@/lib/errors";
+import { useTranslation } from "react-i18next";
 
 interface ZSetMember {
   member: string;
@@ -52,6 +53,7 @@ export function RedisGeoViewer({
   redisKey,
   onRefresh,
 }: Props) {
+  const { t } = useTranslation();
   const [sortAsc, setSortAsc] = useState(true);
   const [showAddRow, setShowAddRow] = useState(false);
   const [newMember, setNewMember] = useState("");
@@ -114,9 +116,7 @@ export function RedisGeoViewer({
           toast.warning("No coordinates found for this member");
         }
       } catch (e) {
-        toast.error("Failed to lookup coordinates", {
-          description: errorMessage(e),
-        });
+        handleApiError(t("redis.geo.lookupFailed"), e);
       } finally {
         setLoadingPos((prev) => {
           const next = new Set(prev);
@@ -158,9 +158,7 @@ export function RedisGeoViewer({
       setShowAddRow(false);
       onRefresh();
     } catch (e) {
-      toast.error("Failed to add location", {
-        description: errorMessage(e),
-      });
+      handleApiError(t("redis.geo.addFailed"), e);
     } finally {
       setAdding(false);
     }
@@ -183,9 +181,7 @@ export function RedisGeoViewer({
       toast.success("Distance calculated");
     } catch (e) {
       setDistResult(null);
-      toast.error("Failed to calculate distance", {
-        description: errorMessage(e),
-      });
+      handleApiError(t("redis.geo.distanceFailed"), e);
     } finally {
       setDistLoading(false);
     }
@@ -214,9 +210,7 @@ export function RedisGeoViewer({
       toast.success(`Found ${results.length} location(s) nearby`);
     } catch (e) {
       setSearchResults(null);
-      toast.error("Failed to search nearby locations", {
-        description: errorMessage(e),
-      });
+      handleApiError(t("redis.geo.nearbyFailed"), e);
     } finally {
       setSearchLoading(false);
     }

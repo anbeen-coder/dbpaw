@@ -11,26 +11,21 @@ import { Tabs } from "@/components/ui/tabs";
 import type { RedisRefreshRequest } from "@/components/business/Sidebar/ConnectionList";
 import { Loader2 } from "lucide-react";
 import { isMysqlFamilyDriver } from "@/lib/driver-registry";
-import type { TreeCallbacks } from "@/lib/tree-adapters/types.tsx";
-import {
-  api,
-  isTauri,
-  type RoutineType,
-} from "@/services/api";
-import { toast } from "sonner";
-import { errorMessage } from "@/lib/errors";
+import { isTauri } from "@/services/api";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { UpdaterChecker } from "@/components/updater-checker";
 import { useTranslation } from "react-i18next";
-import { getSetting } from "@/services/store";
 
 import { useTabManager } from "@/hooks/useTabManager";
 import { useQueryEditor } from "@/hooks/useQueryEditor";
 import { useTableViewer } from "@/hooks/useTableViewer";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useTabFactory } from "@/hooks/useTabFactory";
+import { useTreeCallbacks } from "@/hooks/useTreeCallbacks";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { useWindowFullscreen } from "@/hooks/useWindowFullscreen";
 
+import { UpdaterChecker } from "@/components/updater-checker";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { TabBar } from "@/components/layout/TabBar";
 import { TabContentRenderer } from "@/components/layout/TabContentRenderer";
@@ -49,8 +44,6 @@ type ActiveTableTarget = {
 type SidebarRevealRequest = ActiveTableTarget & {
   id: number;
 };
-
-type SidebarLayoutMode = "tabs" | "tree";
 
 const SettingsDialog = lazy(async () => {
   const mod = await import("@/components/settings/SettingsDialog");
@@ -72,8 +65,11 @@ function getTableTargetFromTab(tab?: TabItem): ActiveTableTarget | undefined {
       schema: tab.schema,
     };
   }
-
   return undefined;
+}
+
+function isDefaultQueryTitle(title?: string) {
+  return !!title && /^(Query \(|查询（|クエリ（)/.test(title);
 }
 
 export default function App() {
@@ -104,43 +100,45 @@ export default function App() {
   const [sidebarRevealRequest, setSidebarRevealRequest] =
     useState<SidebarRevealRequest>();
   const [openSettings, setOpenSettings] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [queriesLastUpdated, setQueriesLastUpdated] = useState(0);
-  const [sidebarLayout, setSidebarLayout] = useState<SidebarLayoutMode>("tabs");
-  const [showColumnComments, setShowColumnComments] = useState(false);
-  const [showRowNumbers, setShowRowNumbers] = useState(true);
-  const [showZebraStripes, setShowZebraStripes] = useState(false);
-  const sidebarRevealRequestIdRef = useRef(0);
   const redisRefreshIdRef = useRef(0);
   const [redisRefreshRequest, setRedisRefreshRequest] = useState<
     RedisRefreshRequest | undefined
   >(undefined);
+  const sidebarRevealRequestIdRef = useRef(0);
 
-  const isDefaultQueryTitle = (title?: string) =>
-    !!title && /^(Query \(|查询（|クエリ（)/.test(title);
+  const {
+    sidebarLayout, setSidebarLayout,
+    showColumnComments, setShowColumnComments,
+    showRowNumbers, setShowRowNumbers,
+    showZebraStripes, setShowZebraStripes,
+  } = useAppSettings();
+  const isFullscreen = useWindowFullscreen();
 
   const { tabs, setTabs, activeTab, setActiveTab, handleDragEnd, handleCycleTabs: baseHandleCycleTabs, closeTabNow: baseCloseTabNow } = useTabManager();
 
   const { handleCreateQuery, handleOpenSavedQuery, handleSqlChange, handleExecuteQuery, handleEditorDatabaseChange, saveEditorTab } = useQueryEditor({
-    tabs,
-    setTabs,
-    setActiveTab,
-    setQueriesLastUpdated,
-    t,
+    tabs, setTabs, setActiveTab, setQueriesLastUpdated, t,
   });
 
   const { handleTableSelect, handleTableRefresh, handlePageChange, handlePageSizeChange, handleSortChange, handleFilterChange } = useTableViewer({
-    tabs,
-    setTabs,
-    setActiveTab,
-    resolveTableScope,
-    t,
+    tabs, setTabs, setActiveTab, resolveTableScope, t,
   });
 
   const { handleCloseTab, handleCloseOtherTabs, isUnsavedConfirmOpen, isCloseSaveDialogOpen, currentCloseTab, handleUnsavedCloseCancel, handleUnsavedCloseWithoutSave, handleUnsavedCloseSave, handleCloseSaveDialogOpenChange, handleCloseFlowSave } = useUnsavedChanges({
-    tabs,
-    closeTabNow: baseCloseTabNow,
-    saveEditorTab,
+    tabs, closeTabNow: baseCloseTabNow, saveEditorTab,
+  });
+
+  const {
+    openRedisConsole, openRedisBrowser, openRedisServerInfo,
+    openRedisKey, openElasticsearchIndex, openTableDDL,
+    openRoutine, openCreateTable, openAlterTable,
+    openERDiagram, exportTable, exportDatabase,
+  } = useTabFactory({ tabs, setTabs, setActiveTab, t });
+
+  const treeCallbacks = useTreeCallbacks({
+    openRedisKey, openRedisBrowser, openRedisConsole,
+    openRedisServerInfo, openElasticsearchIndex,
   });
 
   const revealSidebarForTab = useCallback(
@@ -149,7 +147,6 @@ export default function App() {
         sourceTabs.find((tab) => tab.id === tabId),
       );
       if (!target) return;
-
       setSidebarRevealRequest({
         ...target,
         id: ++sidebarRevealRequestIdRef.current,
@@ -177,7 +174,7 @@ export default function App() {
     (direction: 1 | -1) => {
       baseHandleCycleTabs(direction);
       const nextIndex =
-        (tabs.findIndex((t) => t.id === activeTab) + direction + tabs.length) %
+        (tabs.findIndex((item) => item.id === activeTab) + direction + tabs.length) %
         tabs.length;
       if (tabs[nextIndex]) {
         revealSidebarForTab(tabs[nextIndex].id);
@@ -196,476 +193,41 @@ export default function App() {
   );
 
   useKeyboardShortcuts({
-    tabs,
-    activeTab,
-    handleCycleTabs,
-    handleCloseTab,
-    handleCreateQuery,
-    setAiVisible,
-    setOpenSettings,
+    tabs, activeTab, handleCycleTabs, handleCloseTab,
+    handleCreateQuery, setAiVisible, setOpenSettings,
   });
 
-  const handleOpenRedisConsole = (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => {
-    const tabId = `redis-console-${connectionId}-${database}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-    setTabs((prev) => [
-      ...prev,
-      {
-        id: tabId,
-        type: "redis-console",
-        title: `Console · ${database}`,
-        connection,
-        database,
-        connectionId,
-        driver,
-      },
-    ]);
-    setActiveTab(tabId);
-  };
-
-  const handleOpenRedisBrowser = (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => {
-    const tabId = `redis-browser-${connectionId}-${database}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-    setTabs((prev) => [
-      ...prev,
-      {
-        id: tabId,
-        type: "redis-browser",
-        title: `Browser · ${database}`,
-        connection,
-        database,
-        connectionId,
-        driver,
-      },
-    ]);
-    setActiveTab(tabId);
-  };
-
-  const handleOpenRedisServerInfo = (
-    connection: string,
-    database: string,
-    connectionId: number,
-    driver: string,
-  ) => {
-    const tabId = `redis-server-info-${connectionId}-${database}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-    setTabs((prev) => [
-      ...prev,
-      {
-        id: tabId,
-        type: "redis-server-info",
-        title: `Server Info · ${database}`,
-        connection,
-        database,
-        connectionId,
-        driver,
-      },
-    ]);
-    setActiveTab(tabId);
-  };
-
-  const handleOpenElasticsearchIndex = (
-    connection: string,
-    index: string,
-    connectionId: number,
-    driver: string,
-  ) => {
-    const tabId = `elasticsearch-${connectionId}-${index}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-    setTabs((prev) => [
-      ...prev,
-      {
-        id: tabId,
-        type: "elasticsearch-index",
-        title: index,
-        connection,
-        connectionId,
-        driver,
-        elasticsearchIndex: index,
-      },
-    ]);
-    setActiveTab(tabId);
-  };
-
-  const handleOpenTableDDL = (ctx: {
-    connectionId: number;
-    database: string;
-    schema: string;
-    table: string;
-  }) => {
-    const tabId = `ddl-${ctx.connectionId}-${ctx.database}-${ctx.schema}-${ctx.table}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-
-    const newTab: TabItem = {
-      id: tabId,
-      type: "ddl",
-      title: t("app.tab.ddlTitle", { table: ctx.table }),
-      connectionId: ctx.connectionId,
-      database: ctx.database,
-      schema: ctx.schema,
-      tableName: ctx.table,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTab(tabId);
-  };
-
-  const handleRoutineSelect = (
-    connection: string,
-    database: string,
-    schema: string,
-    name: string,
-    routineType: RoutineType,
-    connectionId: number,
-    driver: string,
-  ) => {
-    const tabId = `routine-${connectionId}-${database}-${schema}-${routineType}-${name}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-
-    const newTab: TabItem = {
-      id: tabId,
-      type: "routine",
-      title: name,
-      connection,
-      database,
-      schema,
-      routineName: name,
-      routineType,
-      connectionId,
-      driver,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTab(tabId);
-  };
-
-  const handleCreateTable = (
-    connectionId: number,
-    database: string,
-    schema: string,
-    driver: string,
-  ) => {
-    const tabId = `create-table-${connectionId}-${database}-${schema}-${Date.now()}`;
-    const newTab: TabItem = {
-      id: tabId,
-      type: "create-table",
-      title: t("createTable.tab.title", { database: database || "—" }),
-      connectionId,
-      database,
-      schema,
-      driver,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTab(tabId);
-  };
-
-  const handleCreateTableSuccess = (
-    tabId: string,
-    connectionId: number,
-    database: string,
-    schema: string | undefined,
-    tableName: string,
-    driver: string,
-  ) => {
-    closeTabNow(tabId);
-    void handleTableSelect(
-      String(connectionId),
-      database,
-      tableName,
-      connectionId,
-      driver,
-      schema,
-    );
-    setSidebarRevealRequest({
-      id: Date.now(),
-      connectionId,
-      database,
-      table: tableName,
-      schema,
-    });
-  };
-
-  const handleAlterTable = (
-    connectionId: number,
-    database: string,
-    schema: string,
-    table: string,
-    driver: string,
-  ) => {
-    const tabId = `alter-table-${connectionId}-${database}-${schema}-${table}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-    const newTab: TabItem = {
-      id: tabId,
-      type: "alter-table",
-      title: t("alterTable.tab.title", { table }),
-      connectionId,
-      database,
-      schema,
-      tableName: table,
-      driver,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTab(tabId);
-  };
-
-  const handleAlterTableSuccess = (tabId: string) => {
-    closeTabNow(tabId);
-  };
-
-  const handleExportTableFromTree = async (
-    ctx: {
-      connectionId: number;
-      database: string;
-      schema: string;
-      table: string;
-      driver: string;
+  const handleCreateTableSuccess = useCallback(
+    (tabId: string, connectionId: number, database: string, schema: string | undefined, tableName: string, driver: string) => {
+      closeTabNow(tabId);
+      void handleTableSelect(String(connectionId), database, tableName, connectionId, driver, schema);
+      setSidebarRevealRequest({
+        id: Date.now(), connectionId, database, table: tableName, schema,
+      });
     },
-    format: "csv" | "json" | "sql_dml" | "sql_ddl" | "sql_full",
-    filePath: string,
-  ) => {
-    try {
-      const result = await api.transfer.exportTable({
-        id: ctx.connectionId,
-        database: ctx.database,
-        schema: ctx.schema,
-        table: ctx.table,
-        driver: ctx.driver,
-        format,
-        scope: "full_table",
-        filePath,
-      });
-      toast.success(
-        t("app.success.exportCompleted", { count: result.rowCount }),
-        {
-          description: result.filePath,
-        },
-      );
-    } catch (e) {
-      toast.error(t("app.error.exportFailed"), {
-        description: errorMessage(e),
-      });
-    }
-  };
-
-  const handleExportDatabaseFromTree = async (ctx: {
-    connectionId: number;
-    database: string;
-    driver: string;
-    format: "sql_dml" | "sql_ddl" | "sql_full";
-    filePath: string;
-  }) => {
-    try {
-      const result = await api.transfer.exportDatabase({
-        id: ctx.connectionId,
-        database: ctx.database,
-        driver: ctx.driver,
-        format: ctx.format,
-        filePath: ctx.filePath,
-      });
-      toast.success(
-        t("app.success.exportCompleted", { count: result.rowCount }),
-        {
-          description: result.filePath,
-        },
-      );
-    } catch (e) {
-      toast.error(t("app.error.exportFailed"), {
-        description: errorMessage(e),
-      });
-    }
-  };
-
-  const handleRedisKeySelect = (
-    connection: string,
-    database: string,
-    redisKey: string,
-    connectionId: number,
-    driver: string,
-  ) => {
-    const tabId = `redis-${connectionId}-${database}-${redisKey}`;
-    const existingTab = tabs.find((t) => t.id === tabId);
-    if (existingTab) {
-      setActiveTab(tabId);
-      return;
-    }
-    setTabs((prev) => [
-      ...prev,
-      {
-        id: tabId,
-        type: "redis-key",
-        title: redisKey || "New Redis key",
-        connection,
-        database,
-        redisKey,
-        connectionId,
-        driver,
-      },
-    ]);
-    setActiveTab(tabId);
-  };
-
-  const treeCallbacks: TreeCallbacks = useMemo(
-    () => ({
-      onKeySelect: (ctx) => {
-        handleRedisKeySelect(
-          ctx.connectionName,
-          ctx.databaseName,
-          ctx.leafName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onCreateKey: (ctx) => {
-        handleRedisKeySelect(
-          ctx.connectionName,
-          ctx.databaseName,
-          "",
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onOpenBrowser: (ctx) => {
-        handleOpenRedisBrowser(
-          ctx.connectionName,
-          ctx.databaseName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onOpenConsole: (ctx) => {
-        handleOpenRedisConsole(
-          ctx.connectionName,
-          ctx.databaseName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onOpenServerInfo: (ctx) => {
-        handleOpenRedisServerInfo(
-          ctx.connectionName,
-          ctx.databaseName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-      onOpenIndex: (ctx) => {
-        handleOpenElasticsearchIndex(
-          ctx.connectionName,
-          ctx.leafName,
-          Number(ctx.connectionId),
-          ctx.connectionType,
-        );
-      },
-    }),
-    [],
+    [closeTabNow, handleTableSelect],
   );
 
-  const notifyRedisRefresh = (connectionId: number, database: string) => {
+  const handleAlterTableSuccess = useCallback(
+    (tabId: string) => { closeTabNow(tabId); },
+    [closeTabNow],
+  );
+
+  const notifyRedisRefresh = useCallback((connectionId: number, database: string) => {
     setRedisRefreshRequest({
       id: ++redisRefreshIdRef.current,
       connectionId,
       database,
     });
-  };
-
-  useEffect(() => {
-    void getSetting<SidebarLayoutMode>("sidebarLayout", "tabs").then(
-      (layout) => {
-        setSidebarLayout(layout === "tree" ? "tree" : "tabs");
-      },
-    );
-    void getSetting("showColumnComments", false).then(setShowColumnComments);
-    void getSetting("showRowNumbers", true).then(setShowRowNumbers);
-    void getSetting("showZebraStripes", false).then(setShowZebraStripes);
   }, []);
 
   useEffect(() => {
     if (!isTauri()) return;
-
-    const unlistenChunk = listen("query.chunk", (_evt: any) => {});
-    const unlistenProgress = listen("query.progress", () => {});
-    const unlistenDone = listen("query.done", () => {});
-    const unlistenSettings = listen("open-settings", () =>
-      setOpenSettings(true),
-    );
-
-    return () => {
-      unlistenChunk.then((f) => f());
-      unlistenProgress.then((f) => f());
-      unlistenDone.then((f) => f());
-      unlistenSettings.then((f) => f());
-    };
+    const unlistenSettings = listen("open-settings", () => setOpenSettings(true));
+    return () => { unlistenSettings.then((f) => f()); };
   }, []);
 
-  useEffect(() => {
-    if (!isTauri()) return;
-
-    const appWindow = getCurrentWindow();
-    let mounted = true;
-    let unlistenResized: null | (() => void) = null;
-
-    const syncFullscreenState = async () => {
-      try {
-        const fullscreen = await appWindow.isFullscreen();
-        if (mounted) setIsFullscreen(fullscreen);
-      } catch {
-        // Ignore window state lookup failures in non-native contexts.
-      }
-    };
-
-    void syncFullscreenState();
-    appWindow
-      .onResized(() => {
-        void syncFullscreenState();
-      })
-      .then((unlisten) => {
-        unlistenResized = unlisten;
-      })
-      .catch(() => {});
-
-    return () => {
-      mounted = false;
-      if (unlistenResized) unlistenResized();
-    };
-  }, []);
-
-  const activeTabItem = tabs.find((t) => t.id === activeTab);
+  const activeTabItem = tabs.find((item) => item.id === activeTab);
   const activeTableTarget = useMemo<ActiveTableTarget | undefined>(() => {
     return getTableTargetFromTab(activeTabItem);
   }, [activeTabItem]);
@@ -677,34 +239,6 @@ export default function App() {
     });
     return counts;
   }, [tabs]);
-
-  const handleOpenERDiagram = useCallback(
-    (ctx?: { connectionId?: number; database?: string }) => {
-      const connectionId = ctx?.connectionId ?? activeTabItem?.connectionId;
-      const database = ctx?.database ?? activeTabItem?.database;
-
-      if (!connectionId || !database) return;
-
-      const tabId = `er-diagram-${database}`;
-      const existing = tabs.find((t) => t.id === tabId);
-      if (existing) {
-        setActiveTab(tabId);
-        return;
-      }
-
-      const newTab: TabItem = {
-        id: tabId,
-        type: "er-diagram",
-        title: `ER - ${database}`,
-        connectionId: connectionId,
-        database: database,
-        schema: activeTabItem?.schema,
-      };
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTab(tabId);
-    },
-    [activeTabItem, tabs, setActiveTab, setTabs],
-  );
 
   return (
     <AppLayout
@@ -723,11 +257,11 @@ export default function App() {
         onTableSelect: handleTableSelect,
         onConnect: () => {},
         onCreateQuery: handleCreateQuery,
-        onRoutineSelect: handleRoutineSelect,
-        onExportTable: handleExportTableFromTree,
-        onExportDatabase: handleExportDatabaseFromTree,
-        onCreateTable: handleCreateTable,
-        onAlterTable: handleAlterTable,
+        onRoutineSelect: openRoutine,
+        onExportTable: exportTable,
+        onExportDatabase: exportDatabase,
+        onCreateTable: openCreateTable,
+        onAlterTable: openAlterTable,
         onSelectSavedQuery: handleOpenSavedQuery,
         lastUpdated: queriesLastUpdated,
         activeTableTarget,
@@ -779,13 +313,13 @@ export default function App() {
             handleSortChange={handleSortChange}
             handleFilterChange={handleFilterChange}
             handleTableRefresh={handleTableRefresh}
-            handleOpenTableDDL={handleOpenTableDDL}
-            handleOpenERDiagram={handleOpenERDiagram}
+            handleOpenTableDDL={openTableDDL}
+            handleOpenERDiagram={openERDiagram}
             handleCreateQuery={handleCreateQuery}
             handleCloseTab={handleCloseTab}
             handleCreateTableSuccess={handleCreateTableSuccess}
             handleAlterTableSuccess={handleAlterTableSuccess}
-            handleOpenRedisConsole={handleOpenRedisConsole}
+            handleOpenRedisConsole={openRedisConsole}
             notifyRedisRefresh={notifyRedisRefresh}
             setQueriesLastUpdated={setQueriesLastUpdated}
             setTabs={setTabs}

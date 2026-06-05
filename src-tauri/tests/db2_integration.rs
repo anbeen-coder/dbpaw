@@ -1,8 +1,14 @@
+#![cfg(any(
+    target_os = "linux",
+    target_os = "windows",
+    all(target_os = "macos", target_arch = "x86_64")
+))]
+
 #[path = "common/db2_context.rs"]
 mod db2_context;
 
-use dbpaw_lib::db::drivers::DatabaseDriver;
 use db2_context::get_driver;
+use dbpaw_lib::db::drivers::DatabaseDriver;
 
 #[tokio::test]
 #[ignore]
@@ -17,7 +23,10 @@ async fn test_connection() {
 async fn test_list_databases() {
     let driver = get_driver().await;
     let dbs = driver.list_databases().await.unwrap();
-    assert!(!dbs.is_empty(), "Should return at least the current database");
+    assert!(
+        !dbs.is_empty(),
+        "Should return at least the current database"
+    );
     println!("Databases: {:?}", dbs);
     driver.close().await;
 }
@@ -26,7 +35,10 @@ async fn test_list_databases() {
 #[ignore]
 async fn test_list_tables() {
     let driver = get_driver().await;
-    let tables = driver.list_tables(Some("DB2INST1".to_string())).await.unwrap();
+    let tables = driver
+        .list_tables(Some("DB2INST1".to_string()))
+        .await
+        .unwrap();
     println!("Tables: {:?}", tables);
     driver.close().await;
 }

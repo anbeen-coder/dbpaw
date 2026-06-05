@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub(super) const MAX_IMPORT_FILE_SIZE_BYTES: u64 = 20 * 1024 * 1024;
 pub(super) const MAX_IMPORT_STATEMENTS: usize = 50_000;

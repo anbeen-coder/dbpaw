@@ -74,16 +74,8 @@ export function RedisKeyView({
           onRefresh={() => void hk.load()}
           onDelete={() => hk.setPendingAction("delete")}
           isLoading={hk.isLoading}
-          setOptionsExpanded={hk.setOptionsExpanded}
-          onSetOptionsExpandedChange={hk.setSetOptionsExpanded}
-          setNx={hk.setNx}
-          onSetNxChange={hk.setSetNx}
-          setXx={hk.setXx}
-          onSetXxChange={hk.setSetXx}
-          setPx={hk.setPx}
-          onSetPxChange={hk.setSetPx}
-          setKeepttl={hk.setKeepttl}
-          onSetKeepttlChange={hk.setSetKeepttl}
+          setOptions={hk.setOptions}
+          onSetOptionsChange={hk.handleSetOptionsChange}
         />
 
         {/* Value viewer */}

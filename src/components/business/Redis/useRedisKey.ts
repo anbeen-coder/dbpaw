@@ -40,6 +40,14 @@ const KIND_DEFAULT: Record<RedisKind, RedisValue> = {
   none: { kind: "none" },
 };
 
+export interface SetOptions {
+  expanded: boolean;
+  nx: boolean;
+  xx: boolean;
+  px: string;
+  keepttl: boolean;
+}
+
 interface UseRedisKeyParams {
   connectionId: number;
   database: string;
@@ -75,14 +83,6 @@ export function useRedisKey({
   const [loadedOffset, setLoadedOffset] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  interface SetOptions {
-    expanded: boolean;
-    nx: boolean;
-    xx: boolean;
-    px: string;
-    keepttl: boolean;
-  }
-
   const [setOptions, setSetOptions] = useState<SetOptions>({
     expanded: false,
     nx: false,

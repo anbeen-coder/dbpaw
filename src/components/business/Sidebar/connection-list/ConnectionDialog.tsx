@@ -31,15 +31,17 @@ import {
   supportsSSLCA,
 } from "@/lib/driver-registry";
 import {
-  formatRedisNodeList,
   getConnectionFormCapabilities,
-  getRedisConnectionMode,
   isFileBasedDriver,
-  normalizeRedisNodeListInput,
   requiresPasswordOnCreate,
   requiresUsername,
 } from "@/lib/connection-form/rules";
+import { useFormField } from "@/lib/connection-form/use-form-field";
 import type { ConnectionForm, Driver } from "@/services/api";
+import { ElasticsearchFormSection } from "./ElasticsearchFormSection";
+import { MongoDbFormSection } from "./MongoDbFormSection";
+import { MssqlFormSection } from "./MssqlFormSection";
+import { RedisFormSection } from "./RedisFormSection";
 
 interface ConnectionDialogTestMessage {
   ok: boolean;
@@ -112,7 +114,21 @@ export function ConnectionDialog({
   const isElasticsearch = form.driver === "elasticsearch";
   const isMssql = form.driver === "mssql";
   const hasElasticCloudId = isElasticsearch && !!(form.cloudId || "").trim();
-  const redisMode = getRedisConnectionMode(form);
+
+  const [name, onNameChange] = useFormField(form, setForm, "name");
+  const [host, onHostChange] = useFormField(form, setForm, "host");
+  const [port, onPortChange] = useFormField(form, setForm, "port", (v) => Number(v) || undefined);
+  const [username, onUsernameChange] = useFormField(form, setForm, "username");
+  const [password, onPasswordChange] = useFormField(form, setForm, "password");
+  const [database, onDatabaseChange] = useFormField(form, setForm, "database");
+  const [schema, onSchemaChange] = useFormField(form, setForm, "schema");
+  const [sslCaCert, onSslCaCertChange] = useFormField(form, setForm, "sslCaCert");
+  const [sshHost, onSshHostChange] = useFormField(form, setForm, "sshHost");
+  const [sshPort, onSshPortChange] = useFormField(form, setForm, "sshPort", (v) => Number(v) || undefined);
+  const [sshUsername, onSshUsernameChange] = useFormField(form, setForm, "sshUsername");
+  const [sshPassword, onSshPasswordChange] = useFormField(form, setForm, "sshPassword");
+  const [sshKeyPath, onSshKeyPathChange] = useFormField(form, setForm, "sshKeyPath");
+  const [filePath, onFilePathChange] = useFormField(form, setForm, "filePath");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,257 +212,28 @@ export function ConnectionDialog({
                   </Label>
                   <Input
                     id="name"
-                    value={form.name || ""}
-                    onChange={(e) =>
-                      setForm((current) => ({
-                        ...current,
-                        name: e.target.value,
-                      }))
-                    }
+                    value={name || ""}
+                    onChange={onNameChange}
                   />
                 </div>
 
                 {!isFileBased && (
                   <>
-                    {isRedis ? (
-                      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <div className="grid gap-2">
-                            <Label htmlFor="redisMode">
-                              {t("connection.dialog.fields.redisMode")}
-                            </Label>
-                            <Select
-                              value={redisMode}
-                              onValueChange={(
-                                value: "standalone" | "cluster" | "sentinel",
-                              ) =>
-                                setForm((current) => ({
-                                  ...current,
-                                  mode: value,
-                                  host:
-                                    value === "standalone" ? current.host : "",
-                                  port:
-                                    value === "standalone"
-                                      ? current.port ||
-                                        getDefaultPort("redis") ||
-                                        undefined
-                                      : undefined,
-                                }))
-                              }
-                            >
-                              <SelectTrigger id="redisMode">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="standalone">
-                                  {t("connection.dialog.redisMode.standalone")}
-                                </SelectItem>
-                                <SelectItem value="cluster">
-                                  {t("connection.dialog.redisMode.cluster")}
-                                </SelectItem>
-                                <SelectItem value="sentinel">
-                                  {t("connection.dialog.redisMode.sentinel")}
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="grid gap-2">
-                            <Label htmlFor="connectTimeoutMs">
-                              {t("connection.dialog.fields.connectTimeoutMs")}
-                            </Label>
-                            <Input
-                              id="connectTimeoutMs"
-                              placeholder="5000"
-                              value={String(form.connectTimeoutMs || "")}
-                              onChange={(e) =>
-                                setForm((current) => ({
-                                  ...current,
-                                  connectTimeoutMs:
-                                    Number(e.target.value) || undefined,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                        {redisMode === "standalone" ? (
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div className="grid gap-2">
-                              <Label htmlFor="host">
-                                {t("connection.dialog.fields.host")}{" "}
-                                <span className="text-red-600">*</span>
-                              </Label>
-                              <Input
-                                id="host"
-                                placeholder="127.0.0.1"
-                                value={form.host || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    host: e.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label htmlFor="port">
-                                {t("connection.dialog.fields.port")}{" "}
-                                <span className="text-red-600">*</span>
-                              </Label>
-                              <Input
-                                id="port"
-                                placeholder={String(
-                                  getDefaultPort(form.driver) ?? "",
-                                )}
-                                value={String(form.port || "")}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    port: Number(e.target.value) || undefined,
-                                  }))
-                                }
-                              />
-                            </div>
-                          </div>
-                        ) : null}
-                        {redisMode === "cluster" ? (
-                          <div className="grid gap-2">
-                            <Label htmlFor="seedNodes">
-                              {t("connection.dialog.fields.seedNodes")}{" "}
-                              <span className="text-red-600">*</span>
-                            </Label>
-                            <Textarea
-                              id="seedNodes"
-                              rows={4}
-                              placeholder={t(
-                                "connection.dialog.placeholders.seedNodes",
-                              )}
-                              value={formatRedisNodeList(form.seedNodes)}
-                              onChange={(e) =>
-                                setForm((current) => ({
-                                  ...current,
-                                  seedNodes: normalizeRedisNodeListInput(
-                                    e.target.value,
-                                  ),
-                                }))
-                              }
-                            />
-                          </div>
-                        ) : null}
-                        {redisMode === "sentinel" ? (
-                          <div className="space-y-3">
-                            <div className="grid gap-2">
-                              <Label htmlFor="sentinels">
-                                {t("connection.dialog.fields.sentinels")}{" "}
-                                <span className="text-red-600">*</span>
-                              </Label>
-                              <Textarea
-                                id="sentinels"
-                                rows={4}
-                                placeholder={t(
-                                  "connection.dialog.placeholders.sentinels",
-                                )}
-                                value={formatRedisNodeList(form.sentinels)}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    sentinels: normalizeRedisNodeListInput(
-                                      e.target.value,
-                                    ),
-                                  }))
-                                }
-                              />
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div className="grid gap-2">
-                                <Label htmlFor="serviceName">
-                                  {t("connection.dialog.fields.serviceName")}
-                                </Label>
-                                <Input
-                                  id="serviceName"
-                                  placeholder={t(
-                                    "connection.dialog.placeholders.serviceName",
-                                  )}
-                                  value={form.serviceName || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      serviceName: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label htmlFor="sentinelPassword">
-                                  {t(
-                                    "connection.dialog.fields.sentinelPassword",
-                                  )}
-                                </Label>
-                                <Input
-                                  id="sentinelPassword"
-                                  type="password"
-                                  placeholder={t(
-                                    "connection.dialog.placeholders.sentinelPassword",
-                                  )}
-                                  value={form.sentinelPassword || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sentinelPassword: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
+                    {isRedis && (
+                      <RedisFormSection form={form} setForm={setForm} />
+                    )}
 
-                    {isElasticsearch ? (
-                      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-                        <div className="grid gap-2">
-                          <Label htmlFor="cloudId">
-                            {t("connection.dialog.fields.cloudId")}
-                          </Label>
-                          <Input
-                            id="cloudId"
-                            placeholder={t(
-                              "connection.dialog.placeholders.cloudId",
-                            )}
-                            value={form.cloudId || ""}
-                            onChange={(e) =>
-                              setForm((current) => ({
-                                ...current,
-                                cloudId: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                    ) : null}
+                    {isElasticsearch && (
+                      <ElasticsearchFormSection
+                        form={form}
+                        setForm={setForm}
+                        dialogMode={dialogMode}
+                      />
+                    )}
 
-                    {form.driver === "mongodb" ? (
-                      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-                        <div className="grid gap-2">
-                          <Label htmlFor="authSource">
-                            {t("connection.dialog.fields.authSource")}
-                          </Label>
-                          <Input
-                            id="authSource"
-                            placeholder={t(
-                              "connection.dialog.placeholders.authSource",
-                            )}
-                            value={form.authSource || ""}
-                            onChange={(e) =>
-                              setForm((current) => ({
-                                ...current,
-                                authSource: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                    ) : null}
+                    {form.driver === "mongodb" && (
+                      <MongoDbFormSection form={form} setForm={setForm} />
+                    )}
 
                     {(formCapabilities.showHost || formCapabilities.showPort) &&
                       !hasElasticCloudId && (
@@ -460,13 +247,8 @@ export function ConnectionDialog({
                               <Input
                                 id="host"
                                 placeholder={undefined}
-                                value={form.host || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    host: e.target.value,
-                                  }))
-                                }
+                                value={host || ""}
+                                onChange={onHostChange}
                               />
                               {isMssql && (
                                 <p className="text-xs text-muted-foreground">
@@ -488,291 +270,21 @@ export function ConnectionDialog({
                                 placeholder={String(
                                   getDefaultPort(form.driver) ?? "",
                                 )}
-                                value={String(form.port || "")}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    port: Number(e.target.value) || undefined,
-                                  }))
-                                }
+                                value={String(port || "")}
+                                onChange={onPortChange}
                               />
                             </div>
                           ) : null}
                         </div>
                       )}
 
-                    {isElasticsearch ? (
-                      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-                        <div className="grid gap-2">
-                          <Label htmlFor="authMode">
-                            {t("connection.dialog.fields.authMode")}
-                          </Label>
-                          <Select
-                            value={form.authMode || "none"}
-                            onValueChange={(
-                              value: "none" | "basic" | "api_key",
-                            ) =>
-                              setForm((current) => ({
-                                ...current,
-                                authMode: value,
-                              }))
-                            }
-                          >
-                            <SelectTrigger id="authMode">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">
-                                {t("connection.dialog.authMode.none")}
-                              </SelectItem>
-                              <SelectItem value="basic">
-                                {t("connection.dialog.authMode.basic")}
-                              </SelectItem>
-                              <SelectItem value="api_key">
-                                {t("connection.dialog.authMode.apiKey")}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {form.authMode === "basic" ? (
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div className="grid gap-2">
-                              <Label htmlFor="username">
-                                {t("connection.dialog.fields.username")}{" "}
-                                <span className="text-red-600">*</span>
-                              </Label>
-                              <Input
-                                id="username"
-                                value={form.username || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    username: e.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label htmlFor="password">
-                                {t("connection.dialog.fields.password")}
-                              </Label>
-                              <Input
-                                id="password"
-                                type="password"
-                                placeholder={
-                                  dialogMode === "edit"
-                                    ? t(
-                                        "connection.dialog.placeholders.keepPassword",
-                                      )
-                                    : undefined
-                                }
-                                value={form.password || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    password: e.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                          </div>
-                        ) : null}
-                        {form.authMode === "api_key" ? (
-                          <div className="space-y-3">
-                            <div className="grid gap-2">
-                              <Label htmlFor="apiKeyEncoded">
-                                {t("connection.dialog.fields.apiKeyEncoded")}
-                              </Label>
-                              <Input
-                                id="apiKeyEncoded"
-                                type="password"
-                                placeholder={
-                                  dialogMode === "edit"
-                                    ? t(
-                                        "connection.dialog.placeholders.keepApiKey",
-                                      )
-                                    : undefined
-                                }
-                                value={form.apiKeyEncoded || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    apiKeyEncoded: e.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div className="grid gap-2">
-                                <Label htmlFor="apiKeyId">
-                                  {t("connection.dialog.fields.apiKeyId")}
-                                </Label>
-                                <Input
-                                  id="apiKeyId"
-                                  value={form.apiKeyId || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      apiKeyId: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label htmlFor="apiKeySecret">
-                                  {t("connection.dialog.fields.apiKeySecret")}
-                                </Label>
-                                <Input
-                                  id="apiKeySecret"
-                                  type="password"
-                                  placeholder={
-                                    dialogMode === "edit"
-                                      ? t(
-                                          "connection.dialog.placeholders.keepApiKey",
-                                        )
-                                      : undefined
-                                  }
-                                  value={form.apiKeySecret || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      apiKeySecret: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {isMssql ? (
-                      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-                        <div className="grid gap-2">
-                          <Label htmlFor="authMode">
-                            {t("connection.dialog.fields.authMode")}
-                          </Label>
-                          <Select
-                            value={form.authMode || "sql_server"}
-                            onValueChange={(
-                              value:
-                                | "sql_server"
-                                | "windows"
-                                | "integrated"
-                                | "aad_token",
-                            ) =>
-                              setForm((current) => ({
-                                ...current,
-                                authMode: value,
-                                username:
-                                  value === "integrated" ||
-                                  value === "aad_token"
-                                    ? ""
-                                    : current.username,
-                                password:
-                                  value === "integrated"
-                                    ? ""
-                                    : current.password,
-                              }))
-                            }
-                          >
-                            <SelectTrigger id="authMode">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="sql_server">
-                                {t("connection.dialog.authMode.sqlServer")}
-                              </SelectItem>
-                              <SelectItem value="windows">
-                                {t("connection.dialog.authMode.windows")}
-                              </SelectItem>
-                              <SelectItem value="integrated">
-                                {t("connection.dialog.authMode.integrated")}
-                              </SelectItem>
-                              <SelectItem value="aad_token">
-                                {t("connection.dialog.authMode.aadToken")}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {(form.authMode === "sql_server" ||
-                          form.authMode === "windows") && (
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div className="grid gap-2">
-                              <Label htmlFor="username">
-                                {t("connection.dialog.fields.username")}{" "}
-                                <span className="text-red-600">*</span>
-                              </Label>
-                              <Input
-                                id="username"
-                                value={form.username || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    username: e.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label htmlFor="password">
-                                {t("connection.dialog.fields.password")}{" "}
-                                {dialogMode === "create" ? (
-                                  <span className="text-red-600">*</span>
-                                ) : null}
-                              </Label>
-                              <Input
-                                id="password"
-                                type="password"
-                                placeholder={
-                                  dialogMode === "edit"
-                                    ? t(
-                                        "connection.dialog.placeholders.keepPassword",
-                                      )
-                                    : undefined
-                                }
-                                value={form.password || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    password: e.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                          </div>
-                        )}
-                        {form.authMode === "aad_token" && (
-                          <div className="grid gap-2">
-                            <Label htmlFor="password">
-                              {t("connection.dialog.fields.aadToken")}{" "}
-                              {dialogMode === "create" ? (
-                                <span className="text-red-600">*</span>
-                              ) : null}
-                            </Label>
-                            <Input
-                              id="password"
-                              type="password"
-                              placeholder={
-                                dialogMode === "edit"
-                                  ? t(
-                                      "connection.dialog.placeholders.keepPassword",
-                                    )
-                                  : undefined
-                              }
-                              value={form.password || ""}
-                              onChange={(e) =>
-                                setForm((current) => ({
-                                  ...current,
-                                  password: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
+                    {isMssql && (
+                      <MssqlFormSection
+                        form={form}
+                        setForm={setForm}
+                        dialogMode={dialogMode}
+                      />
+                    )}
 
                     {(formCapabilities.showUsername ||
                       formCapabilities.showPassword) &&
@@ -789,13 +301,8 @@ export function ConnectionDialog({
                               </Label>
                               <Input
                                 id="username"
-                                value={form.username || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    username: e.target.value,
-                                  }))
-                                }
+                                value={username || ""}
+                                onChange={onUsernameChange}
                               />
                             </div>
                           ) : null}
@@ -818,13 +325,8 @@ export function ConnectionDialog({
                                       )
                                     : undefined
                                 }
-                                value={form.password || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    password: e.target.value,
-                                  }))
-                                }
+                                value={password || ""}
+                                onChange={onPasswordChange}
                               />
                             </div>
                           ) : null}
@@ -841,13 +343,8 @@ export function ConnectionDialog({
                             </Label>
                             <Input
                               id="database"
-                              value={form.database || ""}
-                              onChange={(e) =>
-                                setForm((current) => ({
-                                  ...current,
-                                  database: e.target.value,
-                                }))
-                              }
+                              value={database || ""}
+                              onChange={onDatabaseChange}
                             />
                           </div>
                         ) : null}
@@ -858,13 +355,8 @@ export function ConnectionDialog({
                             </Label>
                             <Input
                               id="schema"
-                              value={form.schema || ""}
-                              onChange={(e) =>
-                                setForm((current) => ({
-                                  ...current,
-                                  schema: e.target.value,
-                                }))
-                              }
+                              value={schema || ""}
+                              onChange={onSchemaChange}
                             />
                           </div>
                         ) : null}
@@ -941,13 +433,8 @@ export function ConnectionDialog({
                                   placeholder={t(
                                     "connection.dialog.placeholders.sslCaCert",
                                   )}
-                                  value={form.sslCaCert || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sslCaCert: e.target.value,
-                                    }))
-                                  }
+                                  value={sslCaCert || ""}
+                                  onChange={onSslCaCertChange}
                                 />
                               </div>
                             ) : null}
@@ -985,13 +472,8 @@ export function ConnectionDialog({
                                   placeholder={t(
                                     "connection.dialog.placeholders.sshHost",
                                   )}
-                                  value={form.sshHost || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sshHost: e.target.value,
-                                    }))
-                                  }
+                                  value={sshHost || ""}
+                                  onChange={onSshHostChange}
                                 />
                               </div>
                               <div className="grid gap-2">
@@ -1003,14 +485,8 @@ export function ConnectionDialog({
                                   placeholder={t(
                                     "connection.dialog.placeholders.sshPort",
                                   )}
-                                  value={String(form.sshPort || "")}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sshPort:
-                                        Number(e.target.value) || undefined,
-                                    }))
-                                  }
+                                  value={String(sshPort || "")}
+                                  onChange={onSshPortChange}
                                 />
                               </div>
                             </div>
@@ -1023,13 +499,8 @@ export function ConnectionDialog({
                                 placeholder={t(
                                   "connection.dialog.placeholders.sshUsername",
                                 )}
-                                value={form.sshUsername || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    sshUsername: e.target.value,
-                                  }))
-                                }
+                                value={sshUsername || ""}
+                                onChange={onSshUsernameChange}
                               />
                             </div>
                             <div className="grid gap-2">
@@ -1042,13 +513,8 @@ export function ConnectionDialog({
                                 placeholder={t(
                                   "connection.dialog.placeholders.sshPassword",
                                 )}
-                                value={form.sshPassword || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    sshPassword: e.target.value,
-                                  }))
-                                }
+                                value={sshPassword || ""}
+                                onChange={onSshPasswordChange}
                               />
                             </div>
                             <div className="grid gap-2">
@@ -1061,13 +527,8 @@ export function ConnectionDialog({
                                   placeholder={t(
                                     "connection.dialog.placeholders.sshKeyPath",
                                   )}
-                                  value={form.sshKeyPath || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sshKeyPath: e.target.value,
-                                    }))
-                                  }
+                                  value={sshKeyPath || ""}
+                                  onChange={onSshKeyPathChange}
                                 />
                                 <Button
                                   type="button"
@@ -1102,13 +563,8 @@ export function ConnectionDialog({
                             ? t("connection.dialog.placeholders.duckdbPath")
                             : t("connection.dialog.placeholders.sqlitePath")
                         }
-                        value={form.filePath || ""}
-                        onChange={(e) =>
-                          setForm((current) => ({
-                            ...current,
-                            filePath: e.target.value,
-                          }))
-                        }
+                        value={filePath || ""}
+                        onChange={onFilePathChange}
                         className="flex-1"
                       />
                       <Button
@@ -1134,13 +590,8 @@ export function ConnectionDialog({
                       placeholder={t(
                         "connection.dialog.placeholders.sqliteKey",
                       )}
-                      value={form.password || ""}
-                      onChange={(e) =>
-                        setForm((current) => ({
-                          ...current,
-                          password: e.target.value,
-                        }))
-                      }
+                      value={password || ""}
+                      onChange={onPasswordChange}
                     />
                   </div>
                 ) : null}

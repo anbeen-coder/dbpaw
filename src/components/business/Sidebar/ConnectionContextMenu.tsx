@@ -1,6 +1,13 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Upload } from "lucide-react";
+import { getInlineContextMenuViewportOffset } from "./connection-list/InlineContextMenu";
 
 interface ConnectionContextMenuProps {
   onNewConnection: () => void;
@@ -22,6 +29,7 @@ export function ConnectionContextMenu({
     y: 0,
   });
   const menuRef = useRef<HTMLDivElement>(null);
+  const [viewportOffset, setViewportOffset] = useState(0);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -51,6 +59,27 @@ export function ConnectionContextMenu({
     };
   }, [menu.visible, handleClose]);
 
+  useLayoutEffect(() => {
+    if (!menu.visible) {
+      setViewportOffset(0);
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const node = menuRef.current;
+      if (!node || typeof window === "undefined") return;
+      setViewportOffset(
+        getInlineContextMenuViewportOffset(
+          node.getBoundingClientRect(),
+          window.innerHeight,
+          8,
+        ),
+      );
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [menu.visible, menu.x, menu.y]);
+
   return (
     <>
       {children({ onContextMenu: handleContextMenu })}
@@ -58,7 +87,13 @@ export function ConnectionContextMenu({
         <div
           ref={menuRef}
           className="fixed z-50 min-w-[140px] bg-popover border border-border rounded-md shadow-lg py-1"
-          style={{ left: menu.x, top: menu.y }}
+          style={{
+            left: menu.x,
+            top: menu.y,
+            maxHeight: "calc(100vh - 16px)",
+            overflowY: "auto",
+            marginTop: viewportOffset === 0 ? undefined : viewportOffset,
+          }}
         >
           <button
             className="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 hover:bg-accent hover:text-accent-foreground"

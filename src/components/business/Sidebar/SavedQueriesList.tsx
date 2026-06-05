@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, SavedQuery, Driver } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Trash2, Edit3, Search, Plus } from "lucide-react";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { useTranslation } from "react-i18next";
 import { getConnectionIcon } from "@/lib/driver-registry";
+import { getInlineContextMenuViewportOffset } from "./connection-list/InlineContextMenu";
 
 interface SavedQueriesListProps {
   onSelectQuery: (query: SavedQuery) => void;
@@ -68,10 +69,33 @@ export function SavedQueriesList({
     y: number;
     queryId: number | null;
   }>({ visible: false, x: 0, y: 0, queryId: null });
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const [contextMenuViewportOffset, setContextMenuViewportOffset] = useState(0);
 
   useEffect(() => {
     fetchQueriesAndConnections();
   }, [lastUpdated]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu.visible) {
+      setContextMenuViewportOffset(0);
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const node = contextMenuRef.current;
+      if (!node || typeof window === "undefined") return;
+      setContextMenuViewportOffset(
+        getInlineContextMenuViewportOffset(
+          node.getBoundingClientRect(),
+          window.innerHeight,
+          8,
+        ),
+      );
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [contextMenu.visible, contextMenu.x, contextMenu.y]);
 
   const fetchQueriesAndConnections = async () => {
     try {
@@ -360,8 +384,18 @@ export function SavedQueriesList({
 
       {contextMenu.visible && (
         <div
+          ref={contextMenuRef}
           className="fixed z-50 min-w-[140px] bg-popover border border-border rounded-md shadow-lg py-1"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+            maxHeight: "calc(100vh - 16px)",
+            overflowY: "auto",
+            marginTop:
+              contextMenuViewportOffset === 0
+                ? undefined
+                : contextMenuViewportOffset,
+          }}
         >
           <button
             className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"

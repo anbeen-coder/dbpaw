@@ -166,6 +166,7 @@ export function TableNodeRenderer({
           ref={(el) => {
             tableNodeRefs.current[tableKey] = el;
           }}
+          onContextMenu={(e) => e.stopPropagation()}
         >
           <TreeNode
             level={tableLevel}

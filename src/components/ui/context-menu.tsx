@@ -6,6 +6,40 @@ import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
 
 import { cn } from "./utils";
 
+export function getContextMenuViewportOffset(
+  rect: Pick<DOMRect, "top" | "bottom">,
+  viewportHeight: number,
+  padding = 8,
+) {
+  let offset = 0;
+  const bottomOverflow = rect.bottom - (viewportHeight - padding);
+  if (bottomOverflow > 0) {
+    offset -= bottomOverflow;
+  }
+
+  const topOverflow = padding - (rect.top + offset);
+  if (topOverflow > 0) {
+    offset += topOverflow;
+  }
+
+  return offset;
+}
+
+function clampContextMenuToViewport(
+  node: HTMLDivElement | null,
+  padding: number,
+) {
+  if (!node || typeof window === "undefined") return;
+
+  node.style.marginTop = "";
+  const offset = getContextMenuViewportOffset(
+    node.getBoundingClientRect(),
+    window.innerHeight,
+    padding,
+  );
+  node.style.marginTop = offset === 0 ? "" : `${offset}px`;
+}
+
 function ContextMenu({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
@@ -79,13 +113,34 @@ function ContextMenuSubTrigger({
 
 function ContextMenuSubContent({
   className,
+  sideOffset = 4,
+  collisionPadding = 8,
+  style,
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.SubContent>) {
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const viewportPadding =
+    typeof collisionPadding === "number" ? collisionPadding : 8;
+
+  React.useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() =>
+      clampContextMenuToViewport(contentRef.current, viewportPadding),
+    );
+    return () => cancelAnimationFrame(frame);
+  });
+
   return (
     <ContextMenuPrimitive.SubContent
       data-slot="context-menu-sub-content"
+      ref={contentRef}
+      sideOffset={sideOffset}
+      collisionPadding={collisionPadding}
+      style={{
+        maxHeight: "min(var(--radix-context-menu-content-available-height), calc(100vh - 16px))",
+        ...style,
+      }}
       className={cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-md border p-1 shadow-lg",
+        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-context-menu-content-available-height) min-w-[8rem] origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-lg",
         className,
       )}
       {...props}
@@ -95,12 +150,31 @@ function ContextMenuSubContent({
 
 function ContextMenuContent({
   className,
+  collisionPadding = 8,
+  style,
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const viewportPadding =
+    typeof collisionPadding === "number" ? collisionPadding : 8;
+
+  React.useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() =>
+      clampContextMenuToViewport(contentRef.current, viewportPadding),
+    );
+    return () => cancelAnimationFrame(frame);
+  });
+
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
+        ref={contentRef}
+        collisionPadding={collisionPadding}
+        style={{
+          maxHeight: "min(var(--radix-context-menu-content-available-height), calc(100vh - 16px))",
+          ...style,
+        }}
         className={cn(
           "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-context-menu-content-available-height) min-w-[8rem] origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-md",
           className,

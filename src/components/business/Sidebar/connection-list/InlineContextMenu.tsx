@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Edit3,
@@ -17,6 +18,25 @@ import type {
   DatabaseInfo,
   DatasourceTreeAdapter,
 } from "./types";
+
+export function getInlineContextMenuViewportOffset(
+  rect: Pick<DOMRect, "top" | "bottom">,
+  viewportHeight: number,
+  padding = 8,
+) {
+  let offset = 0;
+  const bottomOverflow = rect.bottom - (viewportHeight - padding);
+  if (bottomOverflow > 0) {
+    offset -= bottomOverflow;
+  }
+
+  const topOverflow = padding - (rect.top + offset);
+  if (topOverflow > 0) {
+    offset += topOverflow;
+  }
+
+  return offset;
+}
 
 export interface ContextMenuState {
   visible: boolean;
@@ -77,13 +97,43 @@ export function InlineContextMenu({
   onCreateTable,
 }: InlineContextMenuProps) {
   const { t } = useTranslation();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [viewportOffset, setViewportOffset] = useState(0);
+
+  useLayoutEffect(() => {
+    if (!contextMenu.visible) {
+      setViewportOffset(0);
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const node = menuRef.current;
+      if (!node || typeof window === "undefined") return;
+      setViewportOffset(
+        getInlineContextMenuViewportOffset(
+          node.getBoundingClientRect(),
+          window.innerHeight,
+          8,
+        ),
+      );
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [contextMenu.visible, contextMenu.x, contextMenu.y, contextMenu.type]);
 
   if (!contextMenu.visible) return null;
 
   return (
     <div
+      ref={menuRef}
       className="fixed z-50 min-w-[140px] bg-popover border border-border rounded-md shadow-lg py-1"
-      style={{ left: contextMenu.x, top: contextMenu.y }}
+      style={{
+        left: contextMenu.x,
+        top: contextMenu.y,
+        maxHeight: "calc(100vh - 16px)",
+        overflowY: "auto",
+        marginTop: viewportOffset === 0 ? undefined : viewportOffset,
+      }}
     >
       {contextMenu.type === "connection" ? (
         <>

@@ -43,7 +43,7 @@ import { MongoDbFormSection } from "./MongoDbFormSection";
 import { MssqlFormSection } from "./MssqlFormSection";
 import { RedisFormSection } from "./RedisFormSection";
 
-interface ConnectionDialogTestMessage {
+export interface ConnectionDialogTestMessage {
   ok: boolean;
   text: string;
   latency?: number;

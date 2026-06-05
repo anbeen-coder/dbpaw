@@ -5,12 +5,7 @@ import { useTranslation } from "react-i18next";
 import { ConnectionDialog } from "./ConnectionDialog";
 import { ImportDialog } from "../ImportDialog";
 import type { ConnectionForm, Driver } from "@/services/api";
-
-interface ConnectionDialogTestMessage {
-  ok: boolean;
-  text: string;
-  latency?: number;
-}
+import type { ConnectionDialogTestMessage } from "./ConnectionDialog";
 
 interface SidebarHeaderProps {
   isLoadingConnections: boolean;

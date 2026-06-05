@@ -8,7 +8,21 @@ import { FileCode } from "lucide-react";
 import { isMysqlFamilyDriver } from "@/lib/driver-registry";
 import { api } from "@/services/api";
 import { useTranslation } from "react-i18next";
-import type { TabItem } from "@/types/tab";
+import type {
+  TabItem,
+  EditorTabItem,
+  TableTabItem,
+  DdlTabItem,
+  RoutineTabItem,
+  CreateTableTabItem,
+  AlterTableTabItem,
+  RedisKeyTabItem,
+  RedisConsoleTabItem,
+  RedisBrowserTabItem,
+  RedisServerInfoTabItem,
+  ElasticsearchIndexTabItem,
+  ERDiagramTabItem,
+} from "@/types/tab";
 
 const SqlEditor = lazy(async () => {
   const mod = await import("@/components/business/Editor/SqlEditor");
@@ -112,7 +126,7 @@ export interface TabContentRendererProps {
   showZebraStripes: boolean;
 }
 
-function EditorTab({ tab, props }: { tab: TabItem; props: TabContentRendererProps }) {
+function EditorTab({ tab, props }: { tab: EditorTabItem; props: TabContentRendererProps }) {
   const { t } = useTranslation();
   return (
     <Suspense fallback={<LazyPanelFallback label={t("common.loading")} />}>
@@ -168,7 +182,7 @@ function EditorTab({ tab, props }: { tab: TabItem; props: TabContentRendererProp
   );
 }
 
-function TableTab({ tab, props }: { tab: TabItem; props: TabContentRendererProps }) {
+function TableTab({ tab, props }: { tab: TableTabItem; props: TabContentRendererProps }) {
   return (
     <TableView
       isLoading={tab.isLoading}
@@ -224,7 +238,7 @@ function TableTab({ tab, props }: { tab: TabItem; props: TabContentRendererProps
   );
 }
 
-function RedisKeyTab({ tab, props }: { tab: TabItem; props: TabContentRendererProps }) {
+function RedisKeyTab({ tab, props }: { tab: RedisKeyTabItem; props: TabContentRendererProps }) {
   if (tab.connectionId === undefined || !tab.database || tab.redisKey === undefined) {
     return null;
   }
@@ -253,7 +267,7 @@ function RedisKeyTab({ tab, props }: { tab: TabItem; props: TabContentRendererPr
   );
 }
 
-function RedisConsoleTab({ tab }: { tab: TabItem }) {
+function RedisConsoleTab({ tab }: { tab: RedisConsoleTabItem }) {
   if (tab.connectionId === undefined || !tab.database) return null;
   return (
     <Suspense fallback={<LazyPanelFallback label="Loading Redis Console..." />}>
@@ -262,7 +276,7 @@ function RedisConsoleTab({ tab }: { tab: TabItem }) {
   );
 }
 
-function RedisBrowserTab({ tab, props }: { tab: TabItem; props: TabContentRendererProps }) {
+function RedisBrowserTab({ tab, props }: { tab: RedisBrowserTabItem; props: TabContentRendererProps }) {
   if (tab.connectionId === undefined || !tab.database) return null;
   return (
     <Suspense fallback={<LazyPanelFallback label="Loading Redis Browser..." />}>
@@ -282,7 +296,7 @@ function RedisBrowserTab({ tab, props }: { tab: TabItem; props: TabContentRender
   );
 }
 
-function RedisServerInfoTab({ tab }: { tab: TabItem }) {
+function RedisServerInfoTab({ tab }: { tab: RedisServerInfoTabItem }) {
   if (tab.connectionId === undefined || !tab.database) return null;
   return (
     <Suspense fallback={<LazyPanelFallback label="Loading Server Info..." />}>
@@ -291,7 +305,7 @@ function RedisServerInfoTab({ tab }: { tab: TabItem }) {
   );
 }
 
-function ElasticsearchIndexTab({ tab }: { tab: TabItem }) {
+function ElasticsearchIndexTab({ tab }: { tab: ElasticsearchIndexTabItem }) {
   if (tab.connectionId === undefined || !tab.elasticsearchIndex) return null;
   return (
     <Suspense fallback={<LazyPanelFallback label="Loading Elasticsearch index..." />}>
@@ -303,7 +317,7 @@ function ElasticsearchIndexTab({ tab }: { tab: TabItem }) {
   );
 }
 
-function ERDiagramTab({ tab }: { tab: TabItem }) {
+function ERDiagramTab({ tab }: { tab: ERDiagramTabItem }) {
   const { t } = useTranslation();
   if (tab.connectionId === undefined) return null;
   return (
@@ -317,7 +331,7 @@ function ERDiagramTab({ tab }: { tab: TabItem }) {
   );
 }
 
-function CreateTableTab({ tab, props }: { tab: TabItem; props: TabContentRendererProps }) {
+function CreateTableTab({ tab, props }: { tab: CreateTableTabItem; props: TabContentRendererProps }) {
   const { t } = useTranslation();
   if (tab.connectionId === undefined || !tab.database || !tab.driver) return null;
   return (
@@ -343,7 +357,7 @@ function CreateTableTab({ tab, props }: { tab: TabItem; props: TabContentRendere
   );
 }
 
-function AlterTableTab({ tab, props }: { tab: TabItem; props: TabContentRendererProps }) {
+function AlterTableTab({ tab, props }: { tab: AlterTableTabItem; props: TabContentRendererProps }) {
   const { t } = useTranslation();
   if (tab.connectionId === undefined || !tab.database || !tab.tableName || !tab.driver) return null;
   return (
@@ -361,7 +375,7 @@ function AlterTableTab({ tab, props }: { tab: TabItem; props: TabContentRenderer
   );
 }
 
-function RoutineTab({ tab }: { tab: TabItem }) {
+function RoutineTab({ tab }: { tab: RoutineTabItem }) {
   if (
     tab.connectionId === undefined ||
     !tab.database ||
@@ -382,7 +396,7 @@ function RoutineTab({ tab }: { tab: TabItem }) {
   );
 }
 
-function MetadataFallbackTab({ tab }: { tab: TabItem }) {
+function MetadataFallbackTab({ tab }: { tab: DdlTabItem }) {
   if (!tab.connectionId || !tab.database || !tab.schema || !tab.tableName) return null;
   return (
     <TableMetadataView
@@ -394,7 +408,7 @@ function MetadataFallbackTab({ tab }: { tab: TabItem }) {
   );
 }
 
-type TabRenderer = ComponentType<{ tab: TabItem; props: TabContentRendererProps }>;
+type TabRenderer = ComponentType<{ tab: any; props: TabContentRendererProps }>;
 
 const TAB_RENDERERS: Record<TabItem["type"], TabRenderer> = {
   editor: EditorTab,

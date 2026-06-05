@@ -575,6 +575,13 @@ struct MssqlKeyConstraint {
     columns: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MssqlStatementKind {
+    Read,
+    AffectedRows,
+    Other,
+}
+
 fn mssql_full_type_string(data_type: &str, max_length: i64, precision: i64, scale: i64) -> String {
     let dt = data_type.to_ascii_lowercase();
     match dt.as_str() {
@@ -772,15 +779,22 @@ impl MssqlDriver {
         &self,
         sql: &str,
     ) -> Result<(Vec<serde_json::Value>, Vec<QueryColumn>), String> {
-        let mut client = self.pool.get().await.map_err(map_pool_error)?;
         let json_sql = Self::build_for_json_query(sql);
+        let mut columns = self
+            .describe_query_result_columns(sql)
+            .await
+            .unwrap_or_default();
+        let high_precision_cols: HashSet<String> = columns
+            .iter()
+            .filter(|col| is_high_precision_mssql_query_type(&col.r#type))
+            .map(|col| col.name.clone())
+            .collect();
+        let mut client = self.pool.get().await.map_err(map_pool_error)?;
         let mut stream = client
             .simple_query(&json_sql)
             .await
             .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
 
-        let mut columns: Vec<QueryColumn> = Vec::new();
-        let mut high_precision_cols = HashSet::new();
         let mut json_text = String::new();
 
         while let Some(item) = stream
@@ -789,18 +803,6 @@ impl MssqlDriver {
             .map_err(|e| format!("[QUERY_ERROR] {}", e))?
         {
             match item {
-                QueryItem::Metadata(meta) if columns.is_empty() => {
-                    for col in meta.columns() {
-                        let type_str = format!("{:?}", col.column_type());
-                        if is_high_precision_mssql_query_type(&type_str) {
-                            high_precision_cols.insert(col.name().to_string());
-                        }
-                        columns.push(QueryColumn {
-                            name: col.name().to_string(),
-                            r#type: type_str,
-                        });
-                    }
-                }
                 QueryItem::Row(row) => {
                     json_text.push_str(&Self::parse_string(&row, 0));
                 }
@@ -824,8 +826,33 @@ impl MssqlDriver {
         for row in &mut data {
             normalize_mssql_row_json(row, &high_precision_cols)?;
         }
+        columns = normalize_mssql_for_json_columns(columns, &data);
 
         Ok((data, columns))
+    }
+
+    async fn describe_query_result_columns(&self, sql: &str) -> Result<Vec<QueryColumn>, String> {
+        let describe_sql = format!(
+            "EXEC sys.sp_describe_first_result_set @tsql = N'{}'",
+            escape_literal(sql)
+        );
+        let rows = self.fetch_rows(&describe_sql).await?;
+        let mut columns = Vec::new();
+        for row in rows {
+            let is_hidden = Self::parse_i64(&row, 0) == 1;
+            if is_hidden {
+                continue;
+            }
+            let name = Self::parse_string(&row, 2);
+            if name.trim().is_empty() {
+                continue;
+            }
+            columns.push(QueryColumn {
+                name,
+                r#type: Self::parse_string(&row, 5),
+            });
+        }
+        Ok(columns)
     }
 
     fn build_for_json_query(sql: &str) -> String {
@@ -863,31 +890,29 @@ impl MssqlDriver {
         String::new()
     }
 
-    fn is_mssql_read_query(sql: &str) -> bool {
+    fn classify_mssql_statement(sql: &str) -> MssqlStatementKind {
         let Some(first_keyword) = super::first_sql_keyword(sql) else {
-            return false;
+            return MssqlStatementKind::Other;
         };
         match first_keyword.as_str() {
-            "SELECT" | "WITH" | "SHOW" => true,
+            "SELECT" | "WITH" | "SHOW" => MssqlStatementKind::Read,
+            "INSERT" | "UPDATE" | "DELETE" | "MERGE" => MssqlStatementKind::AffectedRows,
             "EXEC" | "EXECUTE" => {
-                let upper = sql.to_uppercase();
-                if !upper.contains("SP_EXECUTESQL") {
-                    return true;
+                if !contains_sp_executesql(sql) {
+                    return MssqlStatementKind::Read;
                 }
-                let Some(inner_start) = upper.find("N'") else {
-                    return true;
-                };
-                let inner_sql = &sql[inner_start + 2..];
-                let Some(inner_end) = inner_sql.find('\'') else {
-                    return true;
-                };
-                let inner = &inner_sql[..inner_end];
-                matches!(
-                    super::first_sql_keyword(inner).as_deref(),
-                    Some("SELECT") | Some("WITH")
-                )
+                match extract_sp_executesql_text(sql)
+                    .and_then(|inner| super::first_sql_keyword(&inner))
+                    .as_deref()
+                {
+                    Some("SELECT") | Some("WITH") => MssqlStatementKind::Read,
+                    Some("INSERT") | Some("UPDATE") | Some("DELETE") | Some("MERGE") => {
+                        MssqlStatementKind::AffectedRows
+                    }
+                    _ => MssqlStatementKind::Other,
+                }
             }
-            _ => false,
+            _ => MssqlStatementKind::Other,
         }
     }
 
@@ -1169,18 +1194,32 @@ impl MssqlDriver {
         &self,
         sql: &str,
     ) -> Result<(Vec<QueryColumn>, Vec<serde_json::Value>, i64), String> {
-        if Self::is_mssql_read_query(sql) {
-            let (data, columns) = self.fetch_query_result_json(sql).await?;
-            let row_count = data.len() as i64;
-            Ok((columns, data, row_count))
-        } else {
-            let mut client = self.pool.get().await.map_err(map_pool_error)?;
-            let stream = client
-                .simple_query(sql)
-                .await
-                .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
-            let _ = stream.into_results().await;
-            Ok((Vec::new(), Vec::new(), 0))
+        match Self::classify_mssql_statement(sql) {
+            MssqlStatementKind::Read => {
+                let (data, columns) = self.fetch_query_result_json(sql).await?;
+                let row_count = data.len() as i64;
+                Ok((columns, data, row_count))
+            }
+            MssqlStatementKind::AffectedRows => {
+                let mut client = self.pool.get().await.map_err(map_pool_error)?;
+                let result = client
+                    .execute(sql, &[])
+                    .await
+                    .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+                Ok((Vec::new(), Vec::new(), result.total() as i64))
+            }
+            MssqlStatementKind::Other => {
+                let mut client = self.pool.get().await.map_err(map_pool_error)?;
+                let stream = client
+                    .simple_query(sql)
+                    .await
+                    .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+                let _ = stream
+                    .into_results()
+                    .await
+                    .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+                Ok((Vec::new(), Vec::new(), 0))
+            }
         }
     }
 }
@@ -1227,6 +1266,71 @@ fn normalize_mssql_row_json(
         }
     }
     Ok(())
+}
+
+fn normalize_mssql_for_json_columns(
+    columns: Vec<QueryColumn>,
+    rows: &[serde_json::Value],
+) -> Vec<QueryColumn> {
+    let has_json_wrapper_column = columns.len() == 1
+        && columns[0]
+            .name
+            .starts_with("JSON_F52E2B61-18A1-11d1-B105-00805F49916B");
+
+    if !columns.is_empty() && !has_json_wrapper_column {
+        return columns;
+    }
+
+    rows.first()
+        .and_then(|row| row.as_object())
+        .map(|obj| {
+            obj.keys()
+                .map(|name| QueryColumn {
+                    name: name.clone(),
+                    r#type: "Unknown".to_string(),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn contains_sp_executesql(sql: &str) -> bool {
+    sql.to_ascii_uppercase().contains("SP_EXECUTESQL")
+}
+
+fn extract_sp_executesql_text(sql: &str) -> Option<String> {
+    let bytes = sql.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'N' || bytes[i] == b'n' {
+            let mut quote_idx = i + 1;
+            while quote_idx < bytes.len() && bytes[quote_idx].is_ascii_whitespace() {
+                quote_idx += 1;
+            }
+            if quote_idx < bytes.len() && bytes[quote_idx] == b'\'' {
+                return parse_mssql_unicode_string_literal(sql, quote_idx);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn parse_mssql_unicode_string_literal(sql: &str, quote_idx: usize) -> Option<String> {
+    let mut out = String::new();
+    let mut chars = sql[quote_idx + 1..].chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\'' {
+            if matches!(chars.peek(), Some('\'')) {
+                chars.next();
+                out.push('\'');
+                continue;
+            }
+            return Some(out);
+        }
+        out.push(ch);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -1300,6 +1404,69 @@ mod tests {
         );
         assert_eq!(row.get("amount").and_then(|v| v.as_str()), Some("1234.56"));
         assert_eq!(row.get("name").and_then(|v| v.as_str()), Some("x"));
+    }
+
+    #[test]
+    fn test_mssql_for_json_columns_fall_back_to_row_keys() {
+        let rows = vec![serde_json::json!({
+            "id": 1,
+            "name": "Alice"
+        })];
+        let columns = vec![super::QueryColumn {
+            name: "JSON_F52E2B61-18A1-11d1-B105-00805F49916B".to_string(),
+            r#type: "NVarchar".to_string(),
+        }];
+
+        let normalized = super::normalize_mssql_for_json_columns(columns, &rows);
+
+        assert_eq!(
+            normalized
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["id", "name"]
+        );
+    }
+
+    #[test]
+    fn test_classify_mssql_statement_distinguishes_read_and_affected_rows() {
+        assert_eq!(
+            MssqlDriver::classify_mssql_statement("SELECT 1 AS ok"),
+            super::MssqlStatementKind::Read
+        );
+        assert_eq!(
+            MssqlDriver::classify_mssql_statement("INSERT INTO t(id) VALUES (1)"),
+            super::MssqlStatementKind::AffectedRows
+        );
+        assert_eq!(
+            MssqlDriver::classify_mssql_statement("CREATE TABLE t(id INT)"),
+            super::MssqlStatementKind::Other
+        );
+    }
+
+    #[test]
+    fn test_classify_mssql_sp_executesql_by_inner_statement() {
+        assert_eq!(
+            MssqlDriver::classify_mssql_statement(
+                "EXEC sp_executesql N'SELECT id FROM dbo.t WHERE name = N''alice'''"
+            ),
+            super::MssqlStatementKind::Read
+        );
+        assert_eq!(
+            MssqlDriver::classify_mssql_statement(
+                "EXEC sp_executesql N'INSERT INTO dbo.t(name) VALUES (N''alice'')'"
+            ),
+            super::MssqlStatementKind::AffectedRows
+        );
+    }
+
+    #[test]
+    fn test_extract_sp_executesql_text_unescapes_doubled_quotes() {
+        assert_eq!(
+            super::extract_sp_executesql_text("EXEC sp_executesql N'SELECT N''alice'' AS name'")
+                .as_deref(),
+            Some("SELECT N'alice' AS name")
+        );
     }
 
     #[test]

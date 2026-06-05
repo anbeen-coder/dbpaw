@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { RedisKeyValue, RedisValue } from "@/services/api";
+import type { SetOptions } from "./useRedisKey";
 import { formatTtl, formatBytes, formatIdleTime } from "./redis-format";
 
 type RedisKind = RedisValue["kind"];
@@ -42,16 +43,8 @@ interface RedisKeyFormHeaderProps {
   onRefresh: () => void;
   onDelete: () => void;
   isLoading: boolean;
-  setOptionsExpanded: boolean;
-  onSetOptionsExpandedChange: (v: boolean) => void;
-  setNx: boolean;
-  onSetNxChange: (v: boolean) => void;
-  setXx: boolean;
-  onSetXxChange: (v: boolean) => void;
-  setPx: string;
-  onSetPxChange: (v: string) => void;
-  setKeepttl: boolean;
-  onSetKeepttlChange: (v: boolean) => void;
+  setOptions: SetOptions;
+  onSetOptionsChange: (patch: Partial<SetOptions>) => void;
 }
 
 export function RedisKeyFormHeader({
@@ -72,16 +65,8 @@ export function RedisKeyFormHeader({
   onRefresh,
   onDelete,
   isLoading,
-  setOptionsExpanded,
-  onSetOptionsExpandedChange,
-  setNx,
-  onSetNxChange,
-  setXx,
-  onSetXxChange,
-  setPx,
-  onSetPxChange,
-  setKeepttl,
-  onSetKeepttlChange,
+  setOptions,
+  onSetOptionsChange,
 }: RedisKeyFormHeaderProps) {
   return (
     <>
@@ -233,14 +218,14 @@ export function RedisKeyFormHeader({
           <button
             type="button"
             className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => onSetOptionsExpandedChange(!setOptionsExpanded)}
+            onClick={() => onSetOptionsChange({ expanded: !setOptions.expanded })}
           >
             <span>Advanced SET options</span>
             <span className="text-[10px]">
-              {setOptionsExpanded ? "▲" : "▼"}
+              {setOptions.expanded ? "▲" : "▼"}
             </span>
           </button>
-          {setOptionsExpanded && (
+          {setOptions.expanded && (
             <div className="grid gap-3 border-t px-4 py-3 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs">Condition</Label>
@@ -249,10 +234,9 @@ export function RedisKeyFormHeader({
                     <input
                       type="radio"
                       name="set-condition"
-                      checked={!setNx && !setXx}
+                      checked={!setOptions.nx && !setOptions.xx}
                       onChange={() => {
-                        onSetNxChange(false);
-                        onSetXxChange(false);
+                        onSetOptionsChange({ nx: false, xx: false });
                       }}
                     />
                     None
@@ -261,10 +245,9 @@ export function RedisKeyFormHeader({
                     <input
                       type="radio"
                       name="set-condition"
-                      checked={setNx}
+                      checked={setOptions.nx}
                       onChange={() => {
-                        onSetNxChange(true);
-                        onSetXxChange(false);
+                        onSetOptionsChange({ nx: true, xx: false });
                       }}
                     />
                     NX
@@ -273,10 +256,9 @@ export function RedisKeyFormHeader({
                     <input
                       type="radio"
                       name="set-condition"
-                      checked={setXx}
+                      checked={setOptions.xx}
                       onChange={() => {
-                        onSetNxChange(false);
-                        onSetXxChange(true);
+                        onSetOptionsChange({ nx: false, xx: true });
                       }}
                     />
                     XX
@@ -290,8 +272,8 @@ export function RedisKeyFormHeader({
                 <Label className="text-xs">PX (ms expiry)</Label>
                 <Input
                   className="h-7 text-xs"
-                  value={setPx}
-                  onChange={(e) => onSetPxChange(e.target.value)}
+                  value={setOptions.px}
+                  onChange={(e) => onSetOptionsChange({ px: e.target.value })}
                   placeholder="disabled"
                   inputMode="numeric"
                   disabled={!!ttl.trim()}
@@ -304,8 +286,8 @@ export function RedisKeyFormHeader({
                 <input
                   type="checkbox"
                   id="set-keepttl"
-                  checked={setKeepttl}
-                  onChange={(e) => onSetKeepttlChange(e.target.checked)}
+                  checked={setOptions.keepttl}
+                  onChange={(e) => onSetOptionsChange({ keepttl: e.target.checked })}
                 />
                 <Label
                   htmlFor="set-keepttl"

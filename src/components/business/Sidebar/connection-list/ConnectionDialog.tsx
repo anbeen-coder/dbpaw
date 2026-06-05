@@ -36,6 +36,7 @@ import {
   requiresPasswordOnCreate,
   requiresUsername,
 } from "@/lib/connection-form/rules";
+import { useFormField } from "@/lib/connection-form/use-form-field";
 import type { ConnectionForm, Driver } from "@/services/api";
 import { ElasticsearchFormSection } from "./ElasticsearchFormSection";
 import { MongoDbFormSection } from "./MongoDbFormSection";
@@ -113,6 +114,21 @@ export function ConnectionDialog({
   const isElasticsearch = form.driver === "elasticsearch";
   const isMssql = form.driver === "mssql";
   const hasElasticCloudId = isElasticsearch && !!(form.cloudId || "").trim();
+
+  const [name, onNameChange] = useFormField(form, setForm, "name");
+  const [host, onHostChange] = useFormField(form, setForm, "host");
+  const [port, onPortChange] = useFormField(form, setForm, "port", (v) => Number(v) || undefined);
+  const [username, onUsernameChange] = useFormField(form, setForm, "username");
+  const [password, onPasswordChange] = useFormField(form, setForm, "password");
+  const [database, onDatabaseChange] = useFormField(form, setForm, "database");
+  const [schema, onSchemaChange] = useFormField(form, setForm, "schema");
+  const [sslCaCert, onSslCaCertChange] = useFormField(form, setForm, "sslCaCert");
+  const [sshHost, onSshHostChange] = useFormField(form, setForm, "sshHost");
+  const [sshPort, onSshPortChange] = useFormField(form, setForm, "sshPort", (v) => Number(v) || undefined);
+  const [sshUsername, onSshUsernameChange] = useFormField(form, setForm, "sshUsername");
+  const [sshPassword, onSshPasswordChange] = useFormField(form, setForm, "sshPassword");
+  const [sshKeyPath, onSshKeyPathChange] = useFormField(form, setForm, "sshKeyPath");
+  const [filePath, onFilePathChange] = useFormField(form, setForm, "filePath");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,13 +212,8 @@ export function ConnectionDialog({
                   </Label>
                   <Input
                     id="name"
-                    value={form.name || ""}
-                    onChange={(e) =>
-                      setForm((current) => ({
-                        ...current,
-                        name: e.target.value,
-                      }))
-                    }
+                    value={name || ""}
+                    onChange={onNameChange}
                   />
                 </div>
 
@@ -236,13 +247,8 @@ export function ConnectionDialog({
                               <Input
                                 id="host"
                                 placeholder={undefined}
-                                value={form.host || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    host: e.target.value,
-                                  }))
-                                }
+                                value={host || ""}
+                                onChange={onHostChange}
                               />
                               {isMssql && (
                                 <p className="text-xs text-muted-foreground">
@@ -264,13 +270,8 @@ export function ConnectionDialog({
                                 placeholder={String(
                                   getDefaultPort(form.driver) ?? "",
                                 )}
-                                value={String(form.port || "")}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    port: Number(e.target.value) || undefined,
-                                  }))
-                                }
+                                value={String(port || "")}
+                                onChange={onPortChange}
                               />
                             </div>
                           ) : null}
@@ -300,13 +301,8 @@ export function ConnectionDialog({
                               </Label>
                               <Input
                                 id="username"
-                                value={form.username || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    username: e.target.value,
-                                  }))
-                                }
+                                value={username || ""}
+                                onChange={onUsernameChange}
                               />
                             </div>
                           ) : null}
@@ -329,13 +325,8 @@ export function ConnectionDialog({
                                       )
                                     : undefined
                                 }
-                                value={form.password || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    password: e.target.value,
-                                  }))
-                                }
+                                value={password || ""}
+                                onChange={onPasswordChange}
                               />
                             </div>
                           ) : null}
@@ -352,13 +343,8 @@ export function ConnectionDialog({
                             </Label>
                             <Input
                               id="database"
-                              value={form.database || ""}
-                              onChange={(e) =>
-                                setForm((current) => ({
-                                  ...current,
-                                  database: e.target.value,
-                                }))
-                              }
+                              value={database || ""}
+                              onChange={onDatabaseChange}
                             />
                           </div>
                         ) : null}
@@ -369,13 +355,8 @@ export function ConnectionDialog({
                             </Label>
                             <Input
                               id="schema"
-                              value={form.schema || ""}
-                              onChange={(e) =>
-                                setForm((current) => ({
-                                  ...current,
-                                  schema: e.target.value,
-                                }))
-                              }
+                              value={schema || ""}
+                              onChange={onSchemaChange}
                             />
                           </div>
                         ) : null}
@@ -452,13 +433,8 @@ export function ConnectionDialog({
                                   placeholder={t(
                                     "connection.dialog.placeholders.sslCaCert",
                                   )}
-                                  value={form.sslCaCert || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sslCaCert: e.target.value,
-                                    }))
-                                  }
+                                  value={sslCaCert || ""}
+                                  onChange={onSslCaCertChange}
                                 />
                               </div>
                             ) : null}
@@ -496,13 +472,8 @@ export function ConnectionDialog({
                                   placeholder={t(
                                     "connection.dialog.placeholders.sshHost",
                                   )}
-                                  value={form.sshHost || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sshHost: e.target.value,
-                                    }))
-                                  }
+                                  value={sshHost || ""}
+                                  onChange={onSshHostChange}
                                 />
                               </div>
                               <div className="grid gap-2">
@@ -514,14 +485,8 @@ export function ConnectionDialog({
                                   placeholder={t(
                                     "connection.dialog.placeholders.sshPort",
                                   )}
-                                  value={String(form.sshPort || "")}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sshPort:
-                                        Number(e.target.value) || undefined,
-                                    }))
-                                  }
+                                  value={String(sshPort || "")}
+                                  onChange={onSshPortChange}
                                 />
                               </div>
                             </div>
@@ -534,13 +499,8 @@ export function ConnectionDialog({
                                 placeholder={t(
                                   "connection.dialog.placeholders.sshUsername",
                                 )}
-                                value={form.sshUsername || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    sshUsername: e.target.value,
-                                  }))
-                                }
+                                value={sshUsername || ""}
+                                onChange={onSshUsernameChange}
                               />
                             </div>
                             <div className="grid gap-2">
@@ -553,13 +513,8 @@ export function ConnectionDialog({
                                 placeholder={t(
                                   "connection.dialog.placeholders.sshPassword",
                                 )}
-                                value={form.sshPassword || ""}
-                                onChange={(e) =>
-                                  setForm((current) => ({
-                                    ...current,
-                                    sshPassword: e.target.value,
-                                  }))
-                                }
+                                value={sshPassword || ""}
+                                onChange={onSshPasswordChange}
                               />
                             </div>
                             <div className="grid gap-2">
@@ -572,13 +527,8 @@ export function ConnectionDialog({
                                   placeholder={t(
                                     "connection.dialog.placeholders.sshKeyPath",
                                   )}
-                                  value={form.sshKeyPath || ""}
-                                  onChange={(e) =>
-                                    setForm((current) => ({
-                                      ...current,
-                                      sshKeyPath: e.target.value,
-                                    }))
-                                  }
+                                  value={sshKeyPath || ""}
+                                  onChange={onSshKeyPathChange}
                                 />
                                 <Button
                                   type="button"
@@ -613,13 +563,8 @@ export function ConnectionDialog({
                             ? t("connection.dialog.placeholders.duckdbPath")
                             : t("connection.dialog.placeholders.sqlitePath")
                         }
-                        value={form.filePath || ""}
-                        onChange={(e) =>
-                          setForm((current) => ({
-                            ...current,
-                            filePath: e.target.value,
-                          }))
-                        }
+                        value={filePath || ""}
+                        onChange={onFilePathChange}
                         className="flex-1"
                       />
                       <Button
@@ -645,13 +590,8 @@ export function ConnectionDialog({
                       placeholder={t(
                         "connection.dialog.placeholders.sqliteKey",
                       )}
-                      value={form.password || ""}
-                      onChange={(e) =>
-                        setForm((current) => ({
-                          ...current,
-                          password: e.target.value,
-                        }))
-                      }
+                      value={password || ""}
+                      onChange={onPasswordChange}
                     />
                   </div>
                 ) : null}

@@ -48,10 +48,7 @@ pub enum AppError {
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
     /// Input validation errors
-    Validation {
-        code: u16,
-        message: String,
-    },
+    Validation { code: u16, message: String },
     /// AI provider errors
     Ai {
         code: u16,
@@ -59,10 +56,7 @@ pub enum AppError {
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
     /// Unsupported operation
-    Unsupported {
-        code: u16,
-        message: String,
-    },
+    Unsupported { code: u16, message: String },
     /// Internal/unexpected errors
     Internal {
         code: u16,
@@ -74,7 +68,12 @@ pub enum AppError {
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AppError::ConnectionFailed { code, message, hint, .. } => {
+            AppError::ConnectionFailed {
+                code,
+                message,
+                hint,
+                ..
+            } => {
                 write!(f, "[ERR-{code}] {message}")?;
                 if let Some(h) = hint {
                     write!(f, " ({h})")?;
@@ -99,18 +98,18 @@ impl From<AppError> for String {
 impl std::error::Error for AppError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            AppError::ConnectionFailed { source, .. } => {
-                source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
-            }
-            AppError::Query { source, .. } => {
-                source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
-            }
-            AppError::Ai { source, .. } => {
-                source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
-            }
-            AppError::Internal { source, .. } => {
-                source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
-            }
+            AppError::ConnectionFailed { source, .. } => source
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
+            AppError::Query { source, .. } => source
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
+            AppError::Ai { source, .. } => source
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
+            AppError::Internal { source, .. } => source
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
             _ => None,
         }
     }
@@ -258,7 +257,10 @@ mod tests {
     #[test]
     fn test_conn_failed_display() {
         let err = AppError::conn_failed("connection refused", "check host and port");
-        assert_eq!(err.to_string(), "[ERR-1001] connection refused (check host and port)");
+        assert_eq!(
+            err.to_string(),
+            "[ERR-1001] connection refused (check host and port)"
+        );
     }
 
     #[test]
@@ -287,7 +289,10 @@ mod tests {
     #[test]
     fn test_unsupported_display() {
         let err = AppError::unsupported("Routines not supported for this driver");
-        assert_eq!(err.to_string(), "[ERR-5001] Routines not supported for this driver");
+        assert_eq!(
+            err.to_string(),
+            "[ERR-5001] Routines not supported for this driver"
+        );
     }
 
     #[test]

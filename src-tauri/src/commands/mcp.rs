@@ -5,9 +5,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
 
 fn home_dir() -> PathBuf {
-    std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default()
+    std::env::var("HOME").map(PathBuf::from).unwrap_or_default()
 }
 
 const DEFAULT_TRANSPORT: &str = "stdio";
@@ -275,8 +273,7 @@ pub async fn mcp_configure_client(
     let mut json: serde_json::Value = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path)
             .map_err(|e| format!("Failed to read config file: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse config file: {}", e))?
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse config file: {}", e))?
     } else {
         serde_json::json!({})
     };

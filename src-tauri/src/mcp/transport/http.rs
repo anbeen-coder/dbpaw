@@ -82,7 +82,12 @@ async fn handle_post(
 
     {
         let mut sessions = state.sessions.lock().await;
-        sessions.insert(session_id.clone(), Arc::new(Session { response_tx: resp_tx }));
+        sessions.insert(
+            session_id.clone(),
+            Arc::new(Session {
+                response_tx: resp_tx,
+            }),
+        );
     }
 
     if let Err(_) = state.request_tx.send((session_id, request)).await {
@@ -95,9 +100,7 @@ async fn handle_post(
     }
 }
 
-async fn handle_sse(
-    AxumState(_state): AxumState<Arc<AppState>>,
-) -> impl IntoResponse {
+async fn handle_sse(AxumState(_state): AxumState<Arc<AppState>>) -> impl IntoResponse {
     Sse::new(async_stream::stream! {
         yield Ok::<Event, std::convert::Infallible>(Event::default().data("connected"))
     })

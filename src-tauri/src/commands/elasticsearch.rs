@@ -14,7 +14,9 @@ async fn client_from_id(
     state: &State<'_, AppState>,
     id: i64,
 ) -> Result<ElasticsearchClient, String> {
-    ElasticsearchClient::connect(&super::get_connection_form_by_id_with_driver_check(state, id, "elasticsearch").await?)
+    ElasticsearchClient::connect(
+        &super::get_connection_form_by_id_with_driver_check(state, id, "elasticsearch").await?,
+    )
 }
 
 #[tauri::command]

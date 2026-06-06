@@ -1,8 +1,8 @@
 use super::{conn_failed_error, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, PackageInfo, QueryColumn,
-    QueryResult, SchemaForeignKey, SchemaOverview, SequenceInfo, SingleResultSet, TableDataResponse,
-    TableInfo, TableMetadata, TableSchema, TableStructure, TypeInfo,
+    QueryResult, SchemaForeignKey, SchemaOverview, SequenceInfo, SingleResultSet,
+    TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure, TypeInfo,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -198,8 +198,13 @@ impl DatabaseDriver for OracleDriver {
                 let tgt_table: Option<String> = row.get(5).ok().flatten();
                 let tgt_col: Option<String> = row.get(6).ok().flatten();
                 let delete_rule: Option<String> = row.get(7).ok().flatten();
-                if let (Some(name), Some(src_table), Some(src_col), Some(tgt_table), Some(tgt_col)) =
-                    (fk_name, src_table, src_col, tgt_table, tgt_col)
+                if let (
+                    Some(name),
+                    Some(src_table),
+                    Some(src_col),
+                    Some(tgt_table),
+                    Some(tgt_col),
+                ) = (fk_name, src_table, src_col, tgt_table, tgt_col)
                 {
                     foreign_keys.push(SchemaForeignKey {
                         name,

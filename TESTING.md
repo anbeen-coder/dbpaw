@@ -89,6 +89,20 @@ IT_REUSE_LOCAL_DB=1 ORACLE_HOST=127.0.0.1 ORACLE_PORT=1521 ORACLE_USER=system OR
 IT_DB=all bun run test:integration
 ```
 
+### Doris Integration Tests
+
+- Doris integration tests currently run against a manually prepared local Doris instance.
+- Use `IT_REUSE_LOCAL_DB=1` and point the test suite at your Doris FE MySQL-compatible port:
+
+```bash
+IT_REUSE_LOCAL_DB=1 \
+DORIS_HOST=127.0.0.1 \
+DORIS_PORT=9030 \
+DORIS_USER=root \
+DORIS_PASSWORD='' \
+IT_DB=doris bun run test:integration
+```
+
 ### Manual Test Execution
 
 ```bash

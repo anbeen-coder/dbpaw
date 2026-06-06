@@ -49,7 +49,10 @@ fn main() {
             }
         }
 
-        println!("cargo:warning=Oracle Instant Client copied for {}", platform);
+        println!(
+            "cargo:warning=Oracle Instant Client copied for {}",
+            platform
+        );
     } else {
         println!(
             "cargo:warning=Oracle Instant Client not found for {}. Run setup.sh first.",

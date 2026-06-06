@@ -1,8 +1,8 @@
 use super::{conn_failed_error, DatabaseDriver};
 use crate::models::{
     CassandraTableExtra, ColumnInfo, ColumnSchema, ConnectionForm, IndexInfo, QueryColumn,
-    QueryResult, RoutineInfo, SchemaOverview, TableDataResponse, TableInfo,
-    TableMetadata, TableSchema, TableStructure,
+    QueryResult, RoutineInfo, SchemaOverview, TableDataResponse, TableInfo, TableMetadata,
+    TableSchema, TableStructure,
 };
 use async_trait::async_trait;
 use chrono::{NaiveDate, NaiveTime, TimeZone, Utc};
@@ -217,9 +217,12 @@ fn cql_value_to_json(val: Option<&CqlValue>) -> Value {
                     .collect();
                 Value::Object(map)
             }
-            CqlValue::Tuple(items) => {
-                Value::Array(items.iter().map(|v| cql_value_to_json(v.as_ref())).collect())
-            }
+            CqlValue::Tuple(items) => Value::Array(
+                items
+                    .iter()
+                    .map(|v| cql_value_to_json(v.as_ref()))
+                    .collect(),
+            ),
             CqlValue::UserDefinedType { fields, .. } => {
                 let map: serde_json::Map<String, Value> = fields
                     .iter()
@@ -239,10 +242,20 @@ fn cql_value_to_json(val: Option<&CqlValue>) -> Value {
                     let scale = scale as usize;
                     if scale >= digits.len() {
                         let zeros = "0".repeat(scale - digits.len());
-                        Value::String(format!("{}0.{}{}", if negative { "-" } else { "" }, zeros, digits))
+                        Value::String(format!(
+                            "{}0.{}{}",
+                            if negative { "-" } else { "" },
+                            zeros,
+                            digits
+                        ))
                     } else {
                         let (int_part, frac_part) = digits.split_at(digits.len() - scale);
-                        Value::String(format!("{}{}.{}", if negative { "-" } else { "" }, int_part, frac_part))
+                        Value::String(format!(
+                            "{}{}.{}",
+                            if negative { "-" } else { "" },
+                            int_part,
+                            frac_part
+                        ))
                     }
                 }
             }
@@ -473,7 +486,9 @@ impl DatabaseDriver for CassandraDriver {
         schema: String,
         table: String,
     ) -> Result<TableMetadata, String> {
-        let columns = self.get_table_structure(schema.clone(), table.clone()).await?;
+        let columns = self
+            .get_table_structure(schema.clone(), table.clone())
+            .await?;
 
         let indexes = self.get_table_indexes(&schema, &table).await?;
 
@@ -542,7 +557,10 @@ impl DatabaseDriver for CassandraDriver {
         partition_keys.sort_by_key(|k| k.0);
         clustering_columns.sort_by_key(|k| k.0);
 
-        let pk_cols: Vec<String> = partition_keys.iter().map(|(_, name)| name.clone()).collect();
+        let pk_cols: Vec<String> = partition_keys
+            .iter()
+            .map(|(_, name)| name.clone())
+            .collect();
 
         let mut ddl = format!("CREATE TABLE {}.{} (\n", schema, table);
 
@@ -554,8 +572,10 @@ impl DatabaseDriver for CassandraDriver {
         if clustering_columns.is_empty() && partition_keys.len() == 1 {
             ddl.push_str(&format!("    PRIMARY KEY ({})\n", pk_cols[0]));
         } else {
-            let clustering_names: Vec<String> =
-                clustering_columns.iter().map(|(_, name)| name.clone()).collect();
+            let clustering_names: Vec<String> = clustering_columns
+                .iter()
+                .map(|(_, name)| name.clone())
+                .collect();
             if clustering_names.is_empty() {
                 ddl.push_str(&format!("    PRIMARY KEY (({}))\n", pk_cols.join(", ")));
             } else {
@@ -825,15 +845,14 @@ impl CassandraDriver {
             };
             // Extract target column from options map (key: "target")
             let index_columns = match row.columns.get(2).and_then(|c| c.as_ref()) {
-                Some(CqlValue::Map(pairs)) => {
-                    pairs.iter()
-                        .find(|(k, _)| matches!(k, CqlValue::Text(s) if s == "target"))
-                        .and_then(|(_, v)| match v {
-                            CqlValue::Text(target) => Some(vec![target.clone()]),
-                            _ => None,
-                        })
-                        .unwrap_or_default()
-                }
+                Some(CqlValue::Map(pairs)) => pairs
+                    .iter()
+                    .find(|(k, _)| matches!(k, CqlValue::Text(s) if s == "target"))
+                    .and_then(|(_, v)| match v {
+                        CqlValue::Text(target) => Some(vec![target.clone()]),
+                        _ => None,
+                    })
+                    .unwrap_or_default(),
                 _ => vec![],
             };
 
@@ -938,17 +957,14 @@ impl CassandraDriver {
                 _ => 0,
             };
             let compaction_strategy = match row.columns.get(3).and_then(|c| c.as_ref()) {
-                Some(CqlValue::Map(pairs)) => {
-                    pairs.iter()
-                        .find(|(k, _)| matches!(k, CqlValue::Text(s) if s == "class"))
-                        .and_then(|(_, v)| match v {
-                            CqlValue::Text(s) => {
-                                Some(s.rsplit('.').next().unwrap_or(s).to_string())
-                            }
-                            _ => None,
-                        })
-                        .unwrap_or_else(|| "unknown".to_string())
-                }
+                Some(CqlValue::Map(pairs)) => pairs
+                    .iter()
+                    .find(|(k, _)| matches!(k, CqlValue::Text(s) if s == "class"))
+                    .and_then(|(_, v)| match v {
+                        CqlValue::Text(s) => Some(s.rsplit('.').next().unwrap_or(s).to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "unknown".to_string()),
                 _ => "unknown".to_string(),
             };
             let caching = match row.columns.get(4).and_then(|c| c.as_ref()) {

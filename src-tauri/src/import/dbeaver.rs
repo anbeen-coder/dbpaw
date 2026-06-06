@@ -38,10 +38,7 @@ pub fn parse_dbeaver_json(content: &str) -> Result<(Vec<ConnectionForm>, usize),
     let mut skipped = 0usize;
 
     for (_key, entry) in obj {
-        let provider = entry
-            .get("provider")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let provider = entry.get("provider").and_then(|v| v.as_str()).unwrap_or("");
 
         let driver = match map_provider_to_driver(provider) {
             Some(d) => d.to_string(),

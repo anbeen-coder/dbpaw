@@ -1,4 +1,4 @@
-use super::super::sql_safety::{SqlSafetyConfig, SqlSafetyCheck, check_sql_safety};
+use super::super::sql_safety::{check_sql_safety, SqlSafetyCheck, SqlSafetyConfig};
 use super::super::types::*;
 use crate::state::AppState;
 use serde_json::Value;
@@ -33,10 +33,7 @@ pub async fn execute_query(state: &AppState, args: Value) -> Result<ToolResult, 
         .as_i64()
         .ok_or("Missing connection_id")?;
     let database = args["database"].as_str().map(|s| s.to_string());
-    let sql = args["sql"]
-        .as_str()
-        .ok_or("Missing sql")?
-        .to_string();
+    let sql = args["sql"].as_str().ok_or("Missing sql")?.to_string();
 
     // SQL 安全检查
     let config = SqlSafetyConfig::from_env();
@@ -48,10 +45,15 @@ pub async fn execute_query(state: &AppState, args: Value) -> Result<ToolResult, 
     }
 
     // 执行查询
-    let result = crate::commands::execute_with_retry_from_app_state(state, connection_id, database, |driver| {
-        let sql = sql.clone();
-        async move { driver.execute_query(sql).await }
-    })
+    let result = crate::commands::execute_with_retry_from_app_state(
+        state,
+        connection_id,
+        database,
+        |driver| {
+            let sql = sql.clone();
+            async move { driver.execute_query(sql).await }
+        },
+    )
     .await?;
 
     // 格式化结果
@@ -73,7 +75,10 @@ pub async fn execute_query(state: &AppState, args: Value) -> Result<ToolResult, 
     let mut output = String::new();
 
     if result.columns.is_empty() {
-        output.push_str(&format!("Query executed successfully. {} row(s) affected.\n", result.row_count));
+        output.push_str(&format!(
+            "Query executed successfully. {} row(s) affected.\n",
+            result.row_count
+        ));
     } else {
         // 表头
         output.push_str("| ");
@@ -94,7 +99,10 @@ pub async fn execute_query(state: &AppState, args: Value) -> Result<ToolResult, 
         for row in data {
             output.push_str("| ");
             for col in &result.columns {
-                let value = row.get(&col.name).map(|v| format_value(v)).unwrap_or_else(|| "NULL".to_string());
+                let value = row
+                    .get(&col.name)
+                    .map(|v| format_value(v))
+                    .unwrap_or_else(|| "NULL".to_string());
                 output.push_str(&value);
                 output.push_str(" | ");
             }
@@ -174,7 +182,10 @@ mod tests {
 
     #[test]
     fn format_value_object() {
-        assert_eq!(format_value(&Value::Object(serde_json::Map::new())), "{object}");
+        assert_eq!(
+            format_value(&Value::Object(serde_json::Map::new())),
+            "{object}"
+        );
     }
 
     #[test]

@@ -1,14 +1,12 @@
 use super::super::types::*;
 
 pub fn get_definitions() -> Vec<ResourceDefinition> {
-    vec![
-        ResourceDefinition {
-            uri: "dbpaw://connections".to_string(),
-            name: "connections".to_string(),
-            description: "List all saved database connections".to_string(),
-            mime_type: "application/json".to_string(),
-        },
-    ]
+    vec![ResourceDefinition {
+        uri: "dbpaw://connections".to_string(),
+        name: "connections".to_string(),
+        description: "List all saved database connections".to_string(),
+        mime_type: "application/json".to_string(),
+    }]
 }
 
 pub fn get_templates() -> Vec<ResourceTemplate> {

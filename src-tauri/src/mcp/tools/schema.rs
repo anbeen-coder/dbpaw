@@ -5,7 +5,9 @@ use serde_json::Value;
 pub fn get_definitions() -> Vec<ToolDefinition> {
     vec![ToolDefinition {
         name: "dbpaw_get_schema_context".to_string(),
-        description: "Get schema context for AI - provides table structures as a dictionary for writing SQL".to_string(),
+        description:
+            "Get schema context for AI - provides table structures as a dictionary for writing SQL"
+                .to_string(),
         input_schema: serde_json::json!({
             "type": "object",
             "properties": {
@@ -37,13 +39,12 @@ pub async fn get_schema_context(state: &AppState, args: Value) -> Result<ToolRes
         .as_i64()
         .ok_or("Missing connection_id")?;
     let database = args["database"].as_str().map(|s| s.to_string());
-    let tables_filter: Option<Vec<String>> = args["tables"]
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_lowercase())).collect());
-    let max_tables = args["max_tables"]
-        .as_u64()
-        .unwrap_or(10)
-        .min(30) as usize;
+    let tables_filter: Option<Vec<String>> = args["tables"].as_array().map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
+            .collect()
+    });
+    let max_tables = args["max_tables"].as_u64().unwrap_or(10).min(30) as usize;
 
     // 获取连接信息
     let connections = crate::commands::connection::get_connections_direct(state).await?;

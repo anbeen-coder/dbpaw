@@ -76,7 +76,8 @@ async fn test_oracle_bundled_lib_query_execution() {
     }
 
     let Some(form) =
-        oracle_context::oracle_test_context_or_skip("test_oracle_bundled_lib_query_execution").await
+        oracle_context::oracle_test_context_or_skip("test_oracle_bundled_lib_query_execution")
+            .await
     else {
         return;
     };
@@ -97,7 +98,9 @@ async fn test_oracle_bundled_lib_query_execution() {
 
     // Verify the value
     let row = &result.data[0];
-    let test_value = row.get("TEST_VALUE").expect("TEST_VALUE column should exist");
+    let test_value = row
+        .get("TEST_VALUE")
+        .expect("TEST_VALUE column should exist");
     assert_eq!(
         test_value.as_i64().unwrap_or(0),
         1,
@@ -120,10 +123,7 @@ fn test_oracle_bundled_lib_path_detection() {
     }
 
     // Verify the directory is accessible
-    assert!(
-        current_dir.is_dir(),
-        "current/ should be a directory"
-    );
+    assert!(current_dir.is_dir(), "current/ should be a directory");
 
     // Check if it contains library files or placeholder
     let entries: Vec<_> = std::fs::read_dir(&current_dir)

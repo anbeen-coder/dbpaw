@@ -4,10 +4,10 @@ use crate::models::{
     SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use mongodb::bson::{doc, Bson, Document};
 use mongodb::options::{ClientOptions, Tls, TlsOptions};
 use mongodb::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -100,8 +100,12 @@ fn parse_json_doc(json_str: &str, label: &str) -> Result<Document, String> {
     }
     let value: serde_json::Value = serde_json::from_str(trimmed)
         .map_err(|e| format!("[VALIDATION_ERROR] Invalid {} JSON: {}", label, e))?;
-    mongodb::bson::to_document(&value)
-        .map_err(|e| format!("[VALIDATION_ERROR] Failed to convert {} to BSON: {}", label, e))
+    mongodb::bson::to_document(&value).map_err(|e| {
+        format!(
+            "[VALIDATION_ERROR] Failed to convert {} to BSON: {}",
+            label, e
+        )
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +118,10 @@ fn bson_to_json(bson: &Bson) -> Value {
         Bson::String(v) => Value::String(v.clone()),
         Bson::Array(arr) => Value::Array(arr.iter().map(bson_to_json).collect()),
         Bson::Document(doc) => {
-            let map = doc.iter().map(|(k, v)| (k.clone(), bson_to_json(v))).collect();
+            let map = doc
+                .iter()
+                .map(|(k, v)| (k.clone(), bson_to_json(v)))
+                .collect();
             Value::Object(map)
         }
         Bson::Boolean(v) => serde_json::json!(v),
@@ -258,7 +265,10 @@ impl MongoDBDriver {
         db_name: &str,
         collection_name: &str,
     ) -> Result<Vec<ColumnInfo>, String> {
-        let collection = self.client.database(db_name).collection::<Document>(collection_name);
+        let collection = self
+            .client
+            .database(db_name)
+            .collection::<Document>(collection_name);
 
         let mut cursor = collection
             .find(Document::new())
@@ -269,9 +279,14 @@ impl MongoDBDriver {
         let mut field_types: HashMap<String, HashSet<&str>> = HashMap::new();
 
         while cursor.advance().await.map_err(normalize_mongo_error)? {
-            let doc = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            let doc = cursor
+                .deserialize_current()
+                .map_err(normalize_mongo_error)?;
             for (key, value) in doc.iter() {
-                field_types.entry(key.clone()).or_default().insert(bson_type_name(value));
+                field_types
+                    .entry(key.clone())
+                    .or_default()
+                    .insert(bson_type_name(value));
             }
         }
 
@@ -312,7 +327,9 @@ impl MongoDBDriver {
         let mut columns_set = HashSet::new();
 
         while cursor.advance().await.map_err(normalize_mongo_error)? {
-            let doc = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            let doc = cursor
+                .deserialize_current()
+                .map_err(normalize_mongo_error)?;
             for key in doc.keys() {
                 columns_set.insert(key.clone());
             }
@@ -321,7 +338,10 @@ impl MongoDBDriver {
 
         let mut columns: Vec<QueryColumn> = columns_set
             .into_iter()
-            .map(|name| QueryColumn { name, r#type: "mixed".to_string() })
+            .map(|name| QueryColumn {
+                name,
+                r#type: "mixed".to_string(),
+            })
             .collect();
         columns.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -346,10 +366,15 @@ impl MongoDBDriver {
     }
 
     /// Collect all documents from a cursor into a Vec<Value>.
-    async fn collect_cursor(&self, mut cursor: mongodb::Cursor<Document>) -> Result<Vec<Value>, String> {
+    async fn collect_cursor(
+        &self,
+        mut cursor: mongodb::Cursor<Document>,
+    ) -> Result<Vec<Value>, String> {
         let mut rows = Vec::new();
         while cursor.advance().await.map_err(normalize_mongo_error)? {
-            let doc = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            let doc = cursor
+                .deserialize_current()
+                .map_err(normalize_mongo_error)?;
             rows.push(bson_to_json(&Bson::Document(doc)));
         }
         Ok(rows)
@@ -375,7 +400,11 @@ impl MongoDBDriver {
     }
 
     pub async fn list_databases_info(&self) -> Result<Vec<MongodbDatabaseInfo>, String> {
-        let databases = self.client.list_databases().await.map_err(normalize_mongo_error)?;
+        let databases = self
+            .client
+            .list_databases()
+            .await
+            .map_err(normalize_mongo_error)?;
         Ok(databases
             .into_iter()
             .map(|db| MongodbDatabaseInfo {
@@ -391,14 +420,13 @@ impl MongoDBDriver {
         database: &str,
     ) -> Result<Vec<MongodbCollectionInfo>, String> {
         let db = self.client.database(database);
-        let mut cursor = db
-            .list_collections()
-            .await
-            .map_err(normalize_mongo_error)?;
+        let mut cursor = db.list_collections().await.map_err(normalize_mongo_error)?;
 
         let mut result = Vec::new();
         while cursor.advance().await.map_err(normalize_mongo_error)? {
-            let collection = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            let collection = cursor
+                .deserialize_current()
+                .map_err(normalize_mongo_error)?;
             result.push(MongodbCollectionInfo {
                 name: collection.name,
                 database: database.to_string(),
@@ -430,7 +458,11 @@ impl DatabaseDriver for MongoDBDriver {
     }
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {
-        let databases = self.client.list_databases().await.map_err(normalize_mongo_error)?;
+        let databases = self
+            .client
+            .list_databases()
+            .await
+            .map_err(normalize_mongo_error)?;
         Ok(databases.into_iter().map(|db| db.name).collect())
     }
 
@@ -444,7 +476,9 @@ impl DatabaseDriver for MongoDBDriver {
 
         let mut result = Vec::new();
         while cursor.advance().await.map_err(normalize_mongo_error)? {
-            let collection = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            let collection = cursor
+                .deserialize_current()
+                .map_err(normalize_mongo_error)?;
             result.push(TableInfo {
                 schema: db_name.clone(),
                 name: collection.name,
@@ -473,11 +507,16 @@ impl DatabaseDriver for MongoDBDriver {
 
         let db = self.get_database(&schema);
         let collection = db.collection::<Document>(&table);
-        let mut cursor = collection.list_indexes().await.map_err(normalize_mongo_error)?;
+        let mut cursor = collection
+            .list_indexes()
+            .await
+            .map_err(normalize_mongo_error)?;
 
         let mut indexes = Vec::new();
         while cursor.advance().await.map_err(normalize_mongo_error)? {
-            let index = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            let index = cursor
+                .deserialize_current()
+                .map_err(normalize_mongo_error)?;
             let options = index.options.unwrap_or_default();
             indexes.push(IndexInfo {
                 name: options.name.unwrap_or_else(|| "unknown".to_string()),
@@ -502,7 +541,9 @@ impl DatabaseDriver for MongoDBDriver {
         let mut cursor = db.list_collections().await.map_err(normalize_mongo_error)?;
 
         while cursor.advance().await.map_err(normalize_mongo_error)? {
-            let info = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            let info = cursor
+                .deserialize_current()
+                .map_err(normalize_mongo_error)?;
             if info.name == table {
                 return serde_json::to_string_pretty(&info)
                     .map_err(|e| format!("[SERIALIZE_ERROR] {}", e));
@@ -580,7 +621,17 @@ impl DatabaseDriver for MongoDBDriver {
         filter: Option<String>,
         order_by: Option<String>,
     ) -> Result<TableDataResponse, String> {
-        self.get_table_data(schema, table, page, limit, sort_column, sort_direction, filter, order_by).await
+        self.get_table_data(
+            schema,
+            table,
+            page,
+            limit,
+            sort_column,
+            sort_direction,
+            filter,
+            order_by,
+        )
+        .await
     }
 
     async fn execute_query(&self, query: String) -> Result<QueryResult, String> {
@@ -591,8 +642,8 @@ impl DatabaseDriver for MongoDBDriver {
             return Err("[QUERY_ERROR] Empty query".to_string());
         }
 
-        let parsed: serde_json::Value =
-            serde_json::from_str(trimmed).map_err(|e| format!("[QUERY_ERROR] Invalid JSON: {}", e))?;
+        let parsed: serde_json::Value = serde_json::from_str(trimmed)
+            .map_err(|e| format!("[QUERY_ERROR] Invalid JSON: {}", e))?;
 
         let obj = parsed
             .as_object()
@@ -609,11 +660,16 @@ impl DatabaseDriver for MongoDBDriver {
                 .get("filter")
                 .and_then(|v| mongodb::bson::to_document(v).ok())
                 .unwrap_or_default();
-            let sort = obj.get("sort").and_then(|v| mongodb::bson::to_document(v).ok());
+            let sort = obj
+                .get("sort")
+                .and_then(|v| mongodb::bson::to_document(v).ok());
             let limit = obj.get("limit").and_then(|v| v.as_i64()).unwrap_or(100);
             let skip = obj.get("skip").and_then(|v| v.as_i64()).unwrap_or(0);
 
-            let collection = self.client.database(db_name).collection::<Document>(collection_name);
+            let collection = self
+                .client
+                .database(db_name)
+                .collection::<Document>(collection_name);
             let mut builder = collection.find(filter).skip(skip as u64).limit(limit);
             if let Some(sort_doc) = sort {
                 builder = builder.sort(sort_doc);
@@ -638,8 +694,14 @@ impl DatabaseDriver for MongoDBDriver {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let collection = self.client.database(db_name).collection::<Document>(collection_name);
-            let cursor = collection.aggregate(bson_pipeline).await.map_err(normalize_mongo_error)?;
+            let collection = self
+                .client
+                .database(db_name)
+                .collection::<Document>(collection_name);
+            let cursor = collection
+                .aggregate(bson_pipeline)
+                .await
+                .map_err(normalize_mongo_error)?;
             return self.cursor_to_query_result(cursor, trimmed, start).await;
         }
 
@@ -656,14 +718,19 @@ impl DatabaseDriver for MongoDBDriver {
 
         let mut tables = Vec::new();
         while cursor.advance().await.map_err(normalize_mongo_error)? {
-            let collection = cursor.deserialize_current().map_err(normalize_mongo_error)?;
+            let collection = cursor
+                .deserialize_current()
+                .map_err(normalize_mongo_error)?;
 
             let columns = self
                 .infer_collection_schema(&db_name, &collection.name)
                 .await
                 .unwrap_or_default()
                 .into_iter()
-                .map(|c| ColumnSchema { name: c.name, r#type: c.r#type })
+                .map(|c| ColumnSchema {
+                    name: c.name,
+                    r#type: c.r#type,
+                })
                 .collect();
 
             tables.push(TableSchema {

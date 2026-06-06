@@ -67,7 +67,9 @@ impl PoolManager {
                 Ok(mut last) => *last = std::time::Instant::now(),
                 Err(e) => eprintln!("[POOL_ERROR] Failed to lock last_used timestamp: {}", e),
             }
-            entry.use_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            entry
+                .use_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Some(entry.driver.clone());
         }
         None
@@ -117,12 +119,14 @@ impl PoolManager {
             drivers::connect(form),
         )
         .await
-        .map_err(|_| format!(
-            "[POOL_ERROR] Connection timeout after {} seconds",
-            self.config.connection_timeout_secs
-        ))?
+        .map_err(|_| {
+            format!(
+                "[POOL_ERROR] Connection timeout after {} seconds",
+                self.config.connection_timeout_secs
+            )
+        })?
         .map_err(|e| format!("[POOL_CONNECT_ERROR] {}", e))?;
-        
+
         let driver: Arc<dyn DatabaseDriver> = Arc::from(driver_box);
 
         // 6. Store in pool
@@ -199,9 +203,9 @@ impl PoolManager {
         let pools = Arc::clone(&manager.pools);
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(
-                std::time::Duration::from_secs(config.health_check_interval_secs),
-            );
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                config.health_check_interval_secs,
+            ));
 
             loop {
                 interval.tick().await;
@@ -291,7 +295,9 @@ impl PoolManager {
             let is_healthy = self.check_health(&key).await;
             let pools = self.pools.read().await;
             if let Some(entry) = pools.get(&key) {
-                entry.is_healthy.store(is_healthy, std::sync::atomic::Ordering::Relaxed);
+                entry
+                    .is_healthy
+                    .store(is_healthy, std::sync::atomic::Ordering::Relaxed);
             }
         }
     }
@@ -435,8 +441,12 @@ mod tests {
         let manager = PoolManager::new(config);
         let driver = Arc::new(MockDriver);
 
-        manager.insert_mock_connection("idle1", driver.clone()).await;
-        manager.insert_mock_connection("idle2", driver.clone()).await;
+        manager
+            .insert_mock_connection("idle1", driver.clone())
+            .await;
+        manager
+            .insert_mock_connection("idle2", driver.clone())
+            .await;
         assert_eq!(manager.count().await, 2);
 
         // Wait for connections to become idle
@@ -458,7 +468,9 @@ mod tests {
         let manager = PoolManager::new(config);
         let driver = Arc::new(MockDriver);
 
-        manager.insert_mock_connection("recent1", driver.clone()).await;
+        manager
+            .insert_mock_connection("recent1", driver.clone())
+            .await;
         assert_eq!(manager.count().await, 1);
 
         PoolManager::cleanup_idle_connections(&manager.pools, &manager.config).await;
@@ -474,15 +486,21 @@ mod tests {
         let manager = PoolManager::new(config);
         let driver = Arc::new(MockDriver);
 
-        manager.insert_mock_connection("healthy", driver.clone()).await;
-        manager.insert_mock_connection("unhealthy", driver.clone()).await;
+        manager
+            .insert_mock_connection("healthy", driver.clone())
+            .await;
+        manager
+            .insert_mock_connection("unhealthy", driver.clone())
+            .await;
         assert_eq!(manager.count().await, 2);
 
         // Mark one as unhealthy
         {
             let pools = manager.pools.read().await;
             if let Some(entry) = pools.get("unhealthy") {
-                entry.is_healthy.store(false, std::sync::atomic::Ordering::Relaxed);
+                entry
+                    .is_healthy
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
             }
         }
 
@@ -503,7 +521,9 @@ mod tests {
         let manager = Arc::new(PoolManager::new(config));
         let driver = Arc::new(MockDriver);
 
-        manager.insert_mock_connection("task_idle", driver.clone()).await;
+        manager
+            .insert_mock_connection("task_idle", driver.clone())
+            .await;
         assert_eq!(manager.count().await, 1);
 
         manager.start_cleanup_task().await;
@@ -591,7 +611,9 @@ mod tests {
         let manager = PoolManager::new(config);
         let driver = Arc::new(MockDriver);
 
-        manager.insert_mock_connection("healthy", driver.clone()).await;
+        manager
+            .insert_mock_connection("healthy", driver.clone())
+            .await;
 
         assert!(manager.check_health("healthy").await);
     }
@@ -602,7 +624,9 @@ mod tests {
         let manager = PoolManager::new(config);
         let driver = Arc::new(UnhealthyMockDriver);
 
-        manager.insert_mock_connection("unhealthy", driver.clone()).await;
+        manager
+            .insert_mock_connection("unhealthy", driver.clone())
+            .await;
 
         assert!(!manager.check_health("unhealthy").await);
     }
@@ -622,14 +646,26 @@ mod tests {
         let healthy_driver = Arc::new(MockDriver);
         let unhealthy_driver = Arc::new(UnhealthyMockDriver);
 
-        manager.insert_mock_connection("healthy", healthy_driver.clone()).await;
-        manager.insert_mock_connection("unhealthy", unhealthy_driver.clone()).await;
+        manager
+            .insert_mock_connection("healthy", healthy_driver.clone())
+            .await;
+        manager
+            .insert_mock_connection("unhealthy", unhealthy_driver.clone())
+            .await;
 
         manager.check_all_connections_health().await;
 
         let pools = manager.pools.read().await;
-        assert!(pools.get("healthy").unwrap().is_healthy.load(std::sync::atomic::Ordering::Relaxed));
-        assert!(!pools.get("unhealthy").unwrap().is_healthy.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(pools
+            .get("healthy")
+            .unwrap()
+            .is_healthy
+            .load(std::sync::atomic::Ordering::Relaxed));
+        assert!(!pools
+            .get("unhealthy")
+            .unwrap()
+            .is_healthy
+            .load(std::sync::atomic::Ordering::Relaxed));
     }
 
     #[tokio::test]
@@ -642,8 +678,12 @@ mod tests {
         let driver = Arc::new(MockDriver);
 
         // Insert two connections (at limit)
-        manager.insert_mock_connection("conn1", driver.clone()).await;
-        manager.insert_mock_connection("conn2", driver.clone()).await;
+        manager
+            .insert_mock_connection("conn1", driver.clone())
+            .await;
+        manager
+            .insert_mock_connection("conn2", driver.clone())
+            .await;
         assert_eq!(manager.count().await, 2);
 
         // Try to add a third connection via connect (should fail)
@@ -697,7 +737,9 @@ mod tests {
         let driver = Arc::new(MockDriver);
 
         // Insert one connection (below limit)
-        manager.insert_mock_connection("conn1", driver.clone()).await;
+        manager
+            .insert_mock_connection("conn1", driver.clone())
+            .await;
         assert_eq!(manager.count().await, 1);
 
         // Get existing connection should work

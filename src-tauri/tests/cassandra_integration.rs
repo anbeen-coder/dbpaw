@@ -47,7 +47,10 @@ async fn test_cassandra_list_tables_in_system_schema() {
         .list_tables(Some("system_schema".to_string()))
         .await
         .expect("list_tables failed");
-    assert!(!tables.is_empty(), "list_tables returned empty for system_schema");
+    assert!(
+        !tables.is_empty(),
+        "list_tables returned empty for system_schema"
+    );
     assert!(
         tables.iter().any(|t| t.name == "tables"),
         "system_schema should contain 'tables' table"
@@ -69,10 +72,7 @@ async fn test_cassandra_table_structure() {
         cassandra_context::connect_with_retry(|| CassandraDriver::connect(&form)).await;
 
     let structure = driver
-        .get_table_structure(
-            "system_schema".to_string(),
-            "tables".to_string(),
-        )
+        .get_table_structure("system_schema".to_string(), "tables".to_string())
         .await
         .expect("get_table_structure failed");
     assert!(
@@ -106,10 +106,7 @@ async fn test_cassandra_table_metadata() {
         cassandra_context::connect_with_retry(|| CassandraDriver::connect(&form)).await;
 
     let metadata = driver
-        .get_table_metadata(
-            "system_schema".to_string(),
-            "tables".to_string(),
-        )
+        .get_table_metadata("system_schema".to_string(), "tables".to_string())
         .await
         .expect("get_table_metadata failed");
     assert!(
@@ -159,10 +156,7 @@ async fn test_cassandra_create_insert_select_drop() {
 
     // Create keyspace
     let _ = driver
-        .execute_query(format!(
-            "DROP KEYSPACE IF EXISTS {}",
-            keyspace
-        ))
+        .execute_query(format!("DROP KEYSPACE IF EXISTS {}", keyspace))
         .await;
     driver
         .execute_query(format!(
@@ -286,7 +280,11 @@ async fn test_cassandra_get_table_data() {
         driver
             .execute_query(format!(
                 "INSERT INTO {}.{} (id, name, score) VALUES ({}, 'user_{}', {})",
-                keyspace, table, i, i, i * 10
+                keyspace,
+                table,
+                i,
+                i,
+                i * 10
             ))
             .await
             .expect("insert failed");
@@ -327,10 +325,7 @@ async fn test_cassandra_get_table_data() {
         .await
         .expect("get_table_data_chunk failed");
     assert_eq!(chunk.data.len(), 2);
-    assert_eq!(
-        chunk.data[0]["id"],
-        serde_json::json!(3)
-    );
+    assert_eq!(chunk.data[0]["id"], serde_json::json!(3));
 
     let _ = driver
         .execute_query(format!("DROP KEYSPACE IF EXISTS {}", keyspace))

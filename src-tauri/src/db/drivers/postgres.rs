@@ -1,8 +1,8 @@
 use super::{strip_trailing_statement_terminator, DatabaseDriver};
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
-    RoutineInfo, SchemaForeignKey, SchemaOverview, SequenceInfo, SingleResultSet, TableDataResponse,
-    TableInfo, TableMetadata, TableSchema, TableStructure, TypeInfo,
+    RoutineInfo, SchemaForeignKey, SchemaOverview, SequenceInfo, SingleResultSet,
+    TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure, TypeInfo,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -1163,10 +1163,18 @@ impl DatabaseDriver for PostgresDriver {
             let target_schema: String = row.try_get(4).unwrap_or_default();
             foreign_keys.push(SchemaForeignKey {
                 name: row.try_get(0).unwrap_or_default(),
-                source_schema: if source_schema.is_empty() { None } else { Some(source_schema) },
+                source_schema: if source_schema.is_empty() {
+                    None
+                } else {
+                    Some(source_schema)
+                },
                 source_table: row.try_get(2).unwrap_or_default(),
                 source_column: row.try_get(3).unwrap_or_default(),
-                target_schema: if target_schema.is_empty() { None } else { Some(target_schema) },
+                target_schema: if target_schema.is_empty() {
+                    None
+                } else {
+                    Some(target_schema)
+                },
                 target_table: row.try_get(5).unwrap_or_default(),
                 target_column: row.try_get(6).unwrap_or_default(),
                 on_update: row.try_get::<Option<String>, _>(7).unwrap_or(None),

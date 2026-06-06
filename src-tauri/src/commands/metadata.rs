@@ -278,7 +278,11 @@ pub async fn get_schema_foreign_keys(
 ) -> Result<Vec<SchemaForeignKey>, String> {
     super::execute_with_retry_from_app_state(&state, id, database, |driver| {
         let schema_clone = schema.clone();
-        async move { driver.get_schema_foreign_keys(schema_clone.as_deref()).await }
+        async move {
+            driver
+                .get_schema_foreign_keys(schema_clone.as_deref())
+                .await
+        }
     })
     .await
 }

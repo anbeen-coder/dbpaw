@@ -1,7 +1,7 @@
 #![recursion_limit = "256"]
 
-use dbpaw_lib::mcp::McpServer;
 use dbpaw_lib::mcp::transport::http::HttpTransport;
+use dbpaw_lib::mcp::McpServer;
 use dbpaw_lib::state::AppState;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -41,7 +41,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("Options:");
                 eprintln!("  --transport <stdio|http|both>  Transport mode (default: stdio)");
                 eprintln!("  --port <PORT>                  HTTP port (default: 3000)");
-                eprintln!("  --host <HOST>                  HTTP bind address (default: 127.0.0.1)");
+                eprintln!(
+                    "  --host <HOST>                  HTTP bind address (default: 127.0.0.1)"
+                );
                 eprintln!("  --help, -h                     Show this help");
                 return Ok(());
             }

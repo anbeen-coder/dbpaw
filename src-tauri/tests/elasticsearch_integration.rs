@@ -67,10 +67,16 @@ async fn test_es_index_lifecycle() {
     let indices = client.list_indices().await.expect("list indices");
     assert!(indices.iter().any(|i| i.name == index));
 
-    client.refresh_index(index.to_string()).await.expect("refresh");
+    client
+        .refresh_index(index.to_string())
+        .await
+        .expect("refresh");
     client.close_index(index.to_string()).await.expect("close");
     client.open_index(index.to_string()).await.expect("open");
-    client.delete_index(index.to_string()).await.expect("delete");
+    client
+        .delete_index(index.to_string())
+        .await
+        .expect("delete");
 
     let after = client.list_indices().await.expect("list after delete");
     assert!(!after.iter().any(|i| i.name == index));
@@ -120,20 +126,41 @@ async fn test_es_search_and_aggregations() {
     create_probe_index(&client, &http, &base_url, index).await;
 
     client
-        .upsert_document(index.to_string(), Some("1".to_string()), json!({"title": "A", "status": "ok", "count": 10}), true)
+        .upsert_document(
+            index.to_string(),
+            Some("1".to_string()),
+            json!({"title": "A", "status": "ok", "count": 10}),
+            true,
+        )
         .await
         .expect("doc1");
     client
-        .upsert_document(index.to_string(), Some("2".to_string()), json!({"title": "B", "status": "ok", "count": 20}), true)
+        .upsert_document(
+            index.to_string(),
+            Some("2".to_string()),
+            json!({"title": "B", "status": "ok", "count": 20}),
+            true,
+        )
         .await
         .expect("doc2");
     client
-        .upsert_document(index.to_string(), Some("3".to_string()), json!({"title": "C", "status": "error", "count": 5}), true)
+        .upsert_document(
+            index.to_string(),
+            Some("3".to_string()),
+            json!({"title": "C", "status": "error", "count": 5}),
+            true,
+        )
         .await
         .expect("doc3");
 
     let search = client
-        .search_documents(index.to_string(), Some("status:ok".to_string()), None, 0, 50)
+        .search_documents(
+            index.to_string(),
+            Some("status:ok".to_string()),
+            None,
+            0,
+            50,
+        )
         .await
         .expect("search");
     assert_eq!(search.total, 2);
@@ -186,11 +213,21 @@ async fn test_es_export_import_cycle() {
 
     create_probe_index(&client, &http, &base_url, source_index).await;
     client
-        .upsert_document(source_index.to_string(), Some("1".to_string()), json!({"title": "Export", "status": "ok", "count": 1}), true)
+        .upsert_document(
+            source_index.to_string(),
+            Some("1".to_string()),
+            json!({"title": "Export", "status": "ok", "count": 1}),
+            true,
+        )
         .await
         .expect("doc1");
     client
-        .upsert_document(source_index.to_string(), Some("2".to_string()), json!({"title": "Export2", "status": "ok", "count": 2}), true)
+        .upsert_document(
+            source_index.to_string(),
+            Some("2".to_string()),
+            json!({"title": "Export2", "status": "ok", "count": 2}),
+            true,
+        )
         .await
         .expect("doc2");
 
@@ -241,8 +278,7 @@ async fn test_es_malformed_import_rejects() {
     create_probe_index(&client, &http, &base_url, index).await;
 
     let malformed_path = std::env::temp_dir().join("dbpaw-es-malformed.ndjson");
-    fs::write(&malformed_path, "{\"delete\":{\"_id\":\"1\"}}\n{}\n")
-        .expect("write malformed");
+    fs::write(&malformed_path, "{\"delete\":{\"_id\":\"1\"}}\n{}\n").expect("write malformed");
     assert!(client
         .import_documents(
             index.to_string(),

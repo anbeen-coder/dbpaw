@@ -1475,8 +1475,14 @@ mod tests {
 
     #[test]
     fn build_auth_auto_mode_no_credentials_returns_none() {
-        let form = ConnectionForm { driver: "elasticsearch".to_string(), ..Default::default() };
-        assert!(matches!(build_auth(&form).unwrap(), ElasticsearchAuth::None));
+        let form = ConnectionForm {
+            driver: "elasticsearch".to_string(),
+            ..Default::default()
+        };
+        assert!(matches!(
+            build_auth(&form).unwrap(),
+            ElasticsearchAuth::None
+        ));
     }
 
     #[test]
@@ -1536,7 +1542,8 @@ mod tests {
         let result = build_search_body(
             Some("ignored".to_string()),
             Some(r#"{"match":{"title":"hello"}}"#.to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(result["match"]["title"], "hello");
     }
 
@@ -1601,7 +1608,10 @@ mod tests {
 
     #[test]
     fn validate_raw_path_auto_prepends_slash() {
-        assert_eq!(validate_raw_path("_cluster/health").unwrap(), "/_cluster/health");
+        assert_eq!(
+            validate_raw_path("_cluster/health").unwrap(),
+            "/_cluster/health"
+        );
     }
 
     #[test]

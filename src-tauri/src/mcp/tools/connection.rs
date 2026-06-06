@@ -172,10 +172,7 @@ pub async fn describe_table(state: &AppState, args: Value) -> Result<ToolResult,
         .as_str()
         .ok_or("Missing database")?
         .to_string();
-    let table = args["table"]
-        .as_str()
-        .ok_or("Missing table")?
-        .to_string();
+    let table = args["table"].as_str().ok_or("Missing table")?.to_string();
 
     let schema = get_schema_for_connection(state, connection_id).await?;
 
@@ -250,10 +247,7 @@ pub async fn get_ddl(state: &AppState, args: Value) -> Result<ToolResult, String
         .as_str()
         .ok_or("Missing database")?
         .to_string();
-    let table = args["table"]
-        .as_str()
-        .ok_or("Missing table")?
-        .to_string();
+    let table = args["table"].as_str().ok_or("Missing table")?.to_string();
 
     let schema = get_schema_for_connection(state, connection_id).await?;
 

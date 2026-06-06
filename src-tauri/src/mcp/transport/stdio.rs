@@ -37,8 +37,8 @@ impl Transport for StdioTransport {
     }
 
     async fn send(&mut self, response: &JsonRpcResponse) -> Result<(), TransportError> {
-        let json = serde_json::to_string(response)
-            .map_err(|e| TransportError::Parse(format!("{}", e)))?;
+        let json =
+            serde_json::to_string(response).map_err(|e| TransportError::Parse(format!("{}", e)))?;
         self.stdout.write_all(json.as_bytes()).await?;
         self.stdout.write_all(b"\n").await?;
         self.stdout.flush().await?;

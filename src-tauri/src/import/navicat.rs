@@ -42,9 +42,10 @@ pub fn parse_navicat_ncx(content: &str) -> Result<(Vec<ConnectionForm>, usize), 
                 let name = e.name();
                 let tag_name = std::str::from_utf8(name.as_ref()).unwrap_or("");
                 if tag_name == "Connection" {
-                    let attrs = e.attributes().collect::<Result<Vec<_>, _>>().map_err(
-                        |e| format!("Navicat NCX: failed to read attributes: {e}"),
-                    )?;
+                    let attrs = e
+                        .attributes()
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| format!("Navicat NCX: failed to read attributes: {e}"))?;
 
                     let conn_type = attr_value(&attrs, "ConnType").unwrap_or_default();
                     let driver = match map_conn_type_to_driver(&conn_type) {
@@ -60,8 +61,8 @@ pub fn parse_navicat_ncx(content: &str) -> Result<(Vec<ConnectionForm>, usize), 
                     let port = attr_value(&attrs, "Port").and_then(|s| s.parse::<i64>().ok());
                     let database = attr_value(&attrs, "DatabaseName");
                     let username = attr_value(&attrs, "UserName");
-                    let ssl = attr_value(&attrs, "SSL")
-                        .map(|s| s.to_lowercase() == "true" || s == "1");
+                    let ssl =
+                        attr_value(&attrs, "SSL").map(|s| s.to_lowercase() == "true" || s == "1");
                     let ssh_host = attr_value(&attrs, "SSHHost");
                     let ssh_port =
                         attr_value(&attrs, "SSHPort").and_then(|s| s.parse::<i64>().ok());

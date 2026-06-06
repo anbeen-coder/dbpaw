@@ -183,7 +183,8 @@ mod tests {
 
     #[test]
     fn jsonrpc_response_error() {
-        let resp = JsonRpcResponse::error(Some(serde_json::json!(1)), -32601, "not found".to_string());
+        let resp =
+            JsonRpcResponse::error(Some(serde_json::json!(1)), -32601, "not found".to_string());
         assert_eq!(resp.jsonrpc, "2.0");
         assert!(resp.result.is_none());
         let err = resp.error.unwrap();

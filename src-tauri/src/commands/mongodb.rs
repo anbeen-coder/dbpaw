@@ -1,5 +1,5 @@
 use crate::db::drivers::mongodb::{
-    MongodbCollectionInfo, MongodbConnectionInfo, MongodbDatabaseInfo, MongoDBDriver,
+    MongoDBDriver, MongodbCollectionInfo, MongodbConnectionInfo, MongodbDatabaseInfo,
 };
 use crate::models::TestConnectionResult;
 use crate::state::AppState;
@@ -34,7 +34,10 @@ pub async fn mongodb_test_connection(
     state: State<'_, AppState>,
     id: i64,
 ) -> Result<MongodbConnectionInfo, String> {
-    driver_from_id(&state, id).await?.test_connection_info().await
+    driver_from_id(&state, id)
+        .await?
+        .test_connection_info()
+        .await
 }
 
 #[tauri::command]
@@ -61,7 +64,10 @@ pub async fn mongodb_list_databases(
     state: State<'_, AppState>,
     id: i64,
 ) -> Result<Vec<MongodbDatabaseInfo>, String> {
-    driver_from_id(&state, id).await?.list_databases_info().await
+    driver_from_id(&state, id)
+        .await?
+        .list_databases_info()
+        .await
 }
 
 #[tauri::command]

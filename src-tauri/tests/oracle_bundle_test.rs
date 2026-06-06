@@ -12,7 +12,12 @@ fn oracle_libs_directory_structure_exists() {
     assert!(base.exists(), "libs/oracle directory should exist");
 
     // Check platform directories
-    let platforms = ["macos-arm64", "macos-x86_64", "windows-x86_64", "linux-x86_64"];
+    let platforms = [
+        "macos-arm64",
+        "macos-x86_64",
+        "windows-x86_64",
+        "linux-x86_64",
+    ];
     for platform in platforms {
         let platform_dir = base.join(platform);
         assert!(

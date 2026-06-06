@@ -8,6 +8,13 @@ it never happens again.
 
 - After modifying any `.rs` file, always run `cargo check` before declaring
   done. TypeScript compilation alone does not catch Rust errors.
+- Structured errors must cross the backend from the inside out. New or modified
+  service/internal code should return `Result<T, AppError>` from
+  `src-tauri/src/error.rs`; Tauri commands should convert to `String` only at
+  the final command boundary with `map_err(String::from)`. Database drivers are
+  still migrating, so do not introduce new string-tag protocols like
+  `[VALIDATION_ERROR]`, `[UNSUPPORTED]`, or `[ERR-1001]`; when touching driver
+  code, migrate toward `DbError` or `AppError` instead of parsing strings.
 - When adding a new database driver, do **three** things — not two, not four:
   1. Add the module in `src-tauri/src/db/drivers/<name>.rs`
   2. Add the `pub mod <name>;` declaration in `src-tauri/src/db/drivers/mod.rs`

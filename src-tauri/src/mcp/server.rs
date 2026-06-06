@@ -29,7 +29,10 @@ impl McpServer {
                 Ok(Some(request)) => {
                     let response = self.handler.handle(request).await;
                     if let Some(resp) = response {
-                        self.transport.send(&resp).await.map_err(|e| e.to_string())?;
+                        self.transport
+                            .send(&resp)
+                            .await
+                            .map_err(|e| e.to_string())?;
                     }
                 }
                 Ok(None) => {

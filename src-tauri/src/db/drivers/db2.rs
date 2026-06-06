@@ -84,7 +84,10 @@ fn collect_cursor_data(
     }
 
     let mut rows = Vec::new();
-    while let Some(mut row) = cursor.next_row().map_err(|e| format!("[QUERY_ERROR] {e}"))? {
+    while let Some(mut row) = cursor
+        .next_row()
+        .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+    {
         let mut map = serde_json::Map::new();
         for (i, name) in col_names.iter().enumerate() {
             map.insert(name.clone(), odbc_value_to_json(&mut row, (i + 1) as u16));
@@ -172,7 +175,9 @@ impl DatabaseDriver for Db2Driver {
                 .execute("SELECT 1 FROM SYSIBM.SYSDUMMY1", ())
                 .map_err(|e| conn_failed_error(&e))?;
             if cursor.is_none() {
-                return Err(conn_failed_error(&"Empty response from SYSIBM.SYSDUMMY1".to_string()));
+                return Err(conn_failed_error(
+                    &"Empty response from SYSIBM.SYSDUMMY1".to_string(),
+                ));
             }
             Ok(())
         })
@@ -523,9 +528,11 @@ impl DatabaseDriver for Db2Driver {
                                 .unwrap_or(0);
 
                             if !idx_name.is_empty() && !col_name.is_empty() {
-                                let entry = idx_map
-                                    .entry(idx_name.to_string())
-                                    .or_insert((false, idx_type.map(|s| s.to_string()), Vec::new()));
+                                let entry = idx_map.entry(idx_name.to_string()).or_insert((
+                                    false,
+                                    idx_type.map(|s| s.to_string()),
+                                    Vec::new(),
+                                ));
                                 entry.0 = is_unique == 1;
                                 if entry.1.is_none() {
                                     entry.1 = idx_type.map(|s| s.to_string());
@@ -703,10 +710,7 @@ impl DatabaseDriver for Db2Driver {
             if let Some(c) = count_cursor {
                 let (_, count_rows) = collect_cursor_data(c)?;
                 if let Some(row) = count_rows.first() {
-                    total = row
-                        .as_str()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(0);
+                    total = row.as_str().and_then(|s| s.parse().ok()).unwrap_or(0);
                 }
             }
 
@@ -790,9 +794,8 @@ impl DatabaseDriver for Db2Driver {
                                 let mut col_names = Vec::with_capacity(num_cols as usize);
                                 let mut col_types = Vec::with_capacity(num_cols as usize);
                                 for i in 1..=num_cols {
-                                    let name = c
-                                        .col_name(i)
-                                        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                                    let name =
+                                        c.col_name(i).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                                     let data_type = c
                                         .col_data_type(i)
                                         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
@@ -809,9 +812,8 @@ impl DatabaseDriver for Db2Driver {
                                     .collect();
 
                                 let mut data = Vec::new();
-                                while let Some(mut row) = c
-                                    .next_row()
-                                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+                                while let Some(mut row) =
+                                    c.next_row().map_err(|e| format!("[QUERY_ERROR] {e}"))?
                                 {
                                     let mut map = serde_json::Map::new();
                                     for (i, name) in col_names.iter().enumerate() {
@@ -850,8 +852,14 @@ impl DatabaseDriver for Db2Driver {
                         prepared
                             .execute(())
                             .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                        conn.commit().map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
-                        let row_count = prepared.row_count().map_err(|e| format!("[QUERY_ERROR] {e}")).ok().flatten().unwrap_or(0) as i64;
+                        conn.commit()
+                            .map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
+                        let row_count = prepared
+                            .row_count()
+                            .map_err(|e| format!("[QUERY_ERROR] {e}"))
+                            .ok()
+                            .flatten()
+                            .unwrap_or(0) as i64;
                         Ok(QueryResult {
                             row_count,
                             data: vec![],
@@ -892,9 +900,8 @@ impl DatabaseDriver for Db2Driver {
                             let mut col_names = Vec::with_capacity(num_cols as usize);
                             let mut col_types = Vec::with_capacity(num_cols as usize);
                             for i in 1..=num_cols {
-                                let name = c
-                                    .col_name(i)
-                                    .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                                let name =
+                                    c.col_name(i).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
                                 let data_type = c
                                     .col_data_type(i)
                                     .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
@@ -911,9 +918,8 @@ impl DatabaseDriver for Db2Driver {
                                 .collect();
 
                             let mut data = Vec::new();
-                            while let Some(mut row) = c
-                                .next_row()
-                                .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+                            while let Some(mut row) =
+                                c.next_row().map_err(|e| format!("[QUERY_ERROR] {e}"))?
                             {
                                 let mut map = serde_json::Map::new();
                                 for (i, name) in col_names.iter().enumerate() {
@@ -936,8 +942,14 @@ impl DatabaseDriver for Db2Driver {
                     prepared
                         .execute(())
                         .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
-                    conn.commit().map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
-                    let row_count = prepared.row_count().map_err(|e| format!("[QUERY_ERROR] {e}")).ok().flatten().unwrap_or(0) as i64;
+                    conn.commit()
+                        .map_err(|e| format!("[QUERY_ERROR] commit failed: {e}"))?;
+                    let row_count = prepared
+                        .row_count()
+                        .map_err(|e| format!("[QUERY_ERROR] {e}"))
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0) as i64;
                     Ok((Vec::new(), Vec::new(), row_count))
                 };
 
@@ -1015,9 +1027,7 @@ impl DatabaseDriver for Db2Driver {
                         let table_name = arr.get(1).and_then(|v| v.as_str()).unwrap_or("");
                         let col_name = arr.get(2).and_then(|v| v.as_str()).unwrap_or("");
                         let col_type = arr.get(3).and_then(|v| v.as_str()).unwrap_or("");
-                        if !schema_name.is_empty()
-                            && !table_name.is_empty()
-                            && !col_name.is_empty()
+                        if !schema_name.is_empty() && !table_name.is_empty() && !col_name.is_empty()
                         {
                             table_map
                                 .entry((schema_name.to_string(), table_name.to_string()))

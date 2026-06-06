@@ -27,7 +27,9 @@ impl ResourceRegistry {
         if uri.starts_with("dbpaw://connections") {
             if uri.contains("/tables/") && !uri.ends_with("/tables") {
                 tables::read_resource(state, uri).await
-            } else if uri.ends_with("/tables") || uri.contains("/tables") && !uri.contains("/tables/") {
+            } else if uri.ends_with("/tables")
+                || uri.contains("/tables") && !uri.contains("/tables/")
+            {
                 tables::read_table_list(state, uri).await
             } else if uri.ends_with("/databases") {
                 connections::read_databases(state, uri).await

@@ -54,8 +54,7 @@ fn deduplicate_name(base: &str, existing: &mut Vec<String>) -> String {
 }
 
 pub async fn import_from_file(path: &str, local_db: &LocalDb) -> Result<ImportResult, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read file: {e}"))?;
+    let content = std::fs::read_to_string(path).map_err(|e| format!("Cannot read file: {e}"))?;
 
     let format = detect_format(path)?;
 
@@ -66,7 +65,8 @@ pub async fn import_from_file(path: &str, local_db: &LocalDb) -> Result<ImportRe
 
     // Get existing connection names for deduplication
     let existing_connections = local_db.list_connections().await?;
-    let mut existing_names: Vec<String> = existing_connections.into_iter().map(|c| c.name).collect();
+    let mut existing_names: Vec<String> =
+        existing_connections.into_iter().map(|c| c.name).collect();
 
     let mut imported = Vec::new();
     for form in &mut forms {
@@ -76,7 +76,10 @@ pub async fn import_from_file(path: &str, local_db: &LocalDb) -> Result<ImportRe
         }
         if form.name.is_none() || form.name.as_deref() == Some("") {
             let host = form.host.as_deref().unwrap_or("localhost");
-            let port = form.port.map(|p| p.to_string()).unwrap_or_else(|| "default".to_string());
+            let port = form
+                .port
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "default".to_string());
             form.name = Some(format!("{} - {}:{}", form.driver, host, port));
         }
 
@@ -91,7 +94,10 @@ pub async fn import_from_file(path: &str, local_db: &LocalDb) -> Result<ImportRe
             Ok(conn) => imported.push(conn),
             Err(e) => {
                 // Continue with remaining connections on partial failure
-                eprintln!("Failed to import connection '{}': {e}", form.name.as_deref().unwrap_or("?"));
+                eprintln!(
+                    "Failed to import connection '{}': {e}",
+                    form.name.as_deref().unwrap_or("?")
+                );
             }
         }
     }
@@ -105,8 +111,14 @@ mod tests {
 
     #[test]
     fn test_detect_format() {
-        assert!(matches!(detect_format("data-sources.json"), Ok(ImportFormat::DBeaver)));
-        assert!(matches!(detect_format("connections.ncx"), Ok(ImportFormat::Navicat)));
+        assert!(matches!(
+            detect_format("data-sources.json"),
+            Ok(ImportFormat::DBeaver)
+        ));
+        assert!(matches!(
+            detect_format("connections.ncx"),
+            Ok(ImportFormat::Navicat)
+        ));
         assert!(detect_format("file.csv").is_err());
     }
 

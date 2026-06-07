@@ -113,7 +113,7 @@ export function RedisGeoViewer({
         if (positions[0]) {
           setPosLookup((prev) => new Map(prev).set(member, positions[0]!));
         } else {
-          toast.warning("No coordinates found for this member");
+          toast.warning(t("redis.geo.noCoordinates"));
         }
       } catch (e) {
         handleApiError(t("redis.geo.lookupFailed"), e);
@@ -133,15 +133,15 @@ export function RedisGeoViewer({
     const lon = parseFloat(newLon);
     const lat = parseFloat(newLat);
     if (!m) {
-      setAddError("Member name is required");
+      setAddError(t("redis.geo.memberNameRequired"));
       return;
     }
     if (isNaN(lon) || lon < -180 || lon > 180) {
-      setAddError("Longitude must be between -180 and 180");
+      setAddError(t("redis.geo.longitudeRange"));
       return;
     }
     if (isNaN(lat) || lat < -85.05112878 || lat > 85.05112878) {
-      setAddError("Latitude must be between -85.05 and 85.05");
+      setAddError(t("redis.geo.latitudeRange"));
       return;
     }
     setAddError(null);
@@ -151,7 +151,7 @@ export function RedisGeoViewer({
       await api.redis.geoAdd(connectionId, database, redisKey, [
         { member: m, longitude: lon, latitude: lat },
       ]);
-      toast.success(`Location "${m}" added`);
+      toast.success(t("redis.geo.locationAdded", { member: m }));
       setNewMember("");
       setNewLon("");
       setNewLat("");
@@ -178,7 +178,7 @@ export function RedisGeoViewer({
         distUnit,
       );
       setDistResult(result);
-      toast.success("Distance calculated");
+      toast.success(t("redis.geo.distanceCalculated"));
     } catch (e) {
       setDistResult(null);
       handleApiError(t("redis.geo.distanceFailed"), e);
@@ -207,7 +207,7 @@ export function RedisGeoViewer({
         },
       );
       setSearchResults(results);
-      toast.success(`Found ${results.length} location(s) nearby`);
+      toast.success(t("redis.geo.nearbyFound", { count: results.length }));
     } catch (e) {
       setSearchResults(null);
       handleApiError(t("redis.geo.nearbyFailed"), e);
@@ -236,10 +236,10 @@ export function RedisGeoViewer({
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
           <MapPin className="w-4 h-4 text-teal-600" />
-          <span className="text-sm font-medium">Geo</span>
+          <span className="text-sm font-medium">{t("redis.geo.title")}</span>
         </div>
         <Badge variant="outline" className="text-xs font-mono">
-          {geoCount.toLocaleString()} locations
+          {t("redis.geo.locationCount", { count: geoCount })}
         </Badge>
         <div className="ml-auto flex gap-1.5">
           <Button
@@ -249,7 +249,7 @@ export function RedisGeoViewer({
             onClick={() => setShowDistTool(!showDistTool)}
           >
             <Ruler className="w-3 h-3 mr-1" />
-            Distance
+            {t("redis.geo.distance")}
           </Button>
           <Button
             variant="outline"
@@ -258,7 +258,7 @@ export function RedisGeoViewer({
             onClick={() => setShowSearch(!showSearch)}
           >
             <Search className="w-3 h-3 mr-1" />
-            Nearby
+            {t("redis.geo.nearby")}
           </Button>
           <Button
             variant="outline"
@@ -267,7 +267,7 @@ export function RedisGeoViewer({
             onClick={() => setSortAsc((a) => !a)}
           >
             <ArrowUpDown className="w-3 h-3 mr-1" />
-            Score {sortAsc ? "↑" : "↓"}
+            {t("redis.geo.score")} {sortAsc ? "↑" : "↓"}
           </Button>
           <Button
             variant="outline"
@@ -276,7 +276,7 @@ export function RedisGeoViewer({
             onClick={() => setShowAddRow(true)}
           >
             <Plus className="w-3 h-3 mr-1" />
-            Add
+            {t("redis.geo.add")}
           </Button>
         </div>
       </div>
@@ -285,7 +285,7 @@ export function RedisGeoViewer({
       {showDistTool && (
         <div className="rounded-md border bg-muted/20 p-3 space-y-2">
           <div className="text-xs font-medium text-muted-foreground">
-            GEODIST — Calculate distance between two members
+            {t("redis.geo.distDescription")}
           </div>
           <div className="flex gap-2 items-center flex-wrap">
             <select
@@ -293,7 +293,7 @@ export function RedisGeoViewer({
               value={distMember1}
               onChange={(e) => setDistMember1(e.target.value)}
             >
-              <option value="">Member 1</option>
+              <option value="">{t("redis.geo.member1")}</option>
               {members.map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -306,7 +306,7 @@ export function RedisGeoViewer({
               value={distMember2}
               onChange={(e) => setDistMember2(e.target.value)}
             >
-              <option value="">Member 2</option>
+              <option value="">{t("redis.geo.member2")}</option>
               {members.map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -331,7 +331,7 @@ export function RedisGeoViewer({
               onClick={handleDist}
               disabled={distLoading || !distMember1 || !distMember2}
             >
-              {distLoading ? "..." : "Calculate"}
+              {distLoading ? "..." : t("redis.geo.calculate")}
             </Button>
           </div>
           {distResult !== null && (
@@ -349,7 +349,7 @@ export function RedisGeoViewer({
       {showSearch && (
         <div className="rounded-md border bg-muted/20 p-3 space-y-2">
           <div className="text-xs font-medium text-muted-foreground">
-            GEOSEARCH — Find locations near a member
+            {t("redis.geo.searchDescription")}
           </div>
           <div className="flex gap-2 items-center flex-wrap">
             <select
@@ -357,7 +357,7 @@ export function RedisGeoViewer({
               value={searchCenter}
               onChange={(e) => setSearchCenter(e.target.value)}
             >
-              <option value="">Center member</option>
+              <option value="">{t("redis.geo.centerMember")}</option>
               {members.map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -366,7 +366,7 @@ export function RedisGeoViewer({
             </select>
             <Input
               className="h-7 font-mono text-xs w-20"
-              placeholder="Radius"
+              placeholder={t("redis.geo.radius")}
               value={searchRadius}
               onChange={(e) => setSearchRadius(e.target.value)}
               inputMode="numeric"
@@ -389,13 +389,13 @@ export function RedisGeoViewer({
               onClick={handleSearch}
               disabled={searchLoading || !searchCenter || !searchRadius}
             >
-              {searchLoading ? "..." : "Search"}
+              {searchLoading ? "..." : t("redis.geo.search")}
             </Button>
           </div>
           {searchResults !== null && (
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">
-                {searchResults.length} result(s) found
+                {t("redis.geo.searchResultsFound", { count: searchResults.length })}
               </div>
               {searchResults.map((r) => (
                 <div
@@ -428,25 +428,25 @@ export function RedisGeoViewer({
       {showAddRow && (
         <div className="rounded-md border bg-muted/20 p-3 space-y-2">
           <div className="text-xs font-medium text-muted-foreground">
-            GEOADD — Add a new location
+            {t("redis.geo.addDescription")}
           </div>
           <div className="flex gap-2 items-center flex-wrap">
             <Input
               className="h-7 font-mono text-xs w-32"
-              placeholder="Member name"
+              placeholder={t("redis.geo.memberNamePlaceholder")}
               value={newMember}
               onChange={(e) => setNewMember(e.target.value)}
             />
             <Input
               className="h-7 font-mono text-xs w-28"
-              placeholder="Longitude"
+              placeholder={t("redis.geo.longitude")}
               value={newLon}
               onChange={(e) => setNewLon(e.target.value)}
               inputMode="decimal"
             />
             <Input
               className="h-7 font-mono text-xs w-28"
-              placeholder="Latitude"
+              placeholder={t("redis.geo.latitude")}
               value={newLat}
               onChange={(e) => setNewLat(e.target.value)}
               inputMode="decimal"
@@ -457,7 +457,7 @@ export function RedisGeoViewer({
               onClick={handleAdd}
               disabled={adding}
             >
-              {adding ? "Adding..." : "Add"}
+              {adding ? t("redis.geo.adding") : t("redis.geo.add")}
             </Button>
             <Button
               variant="ghost"
@@ -468,7 +468,7 @@ export function RedisGeoViewer({
                 setAddError(null);
               }}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
           </div>
           {addError && <div className="text-xs text-red-600">{addError}</div>}
@@ -481,13 +481,13 @@ export function RedisGeoViewer({
           <TableHeader>
             <TableRow className="h-8">
               <TableHead className="w-[40px] text-xs py-1">#</TableHead>
-              <TableHead className="text-xs py-1">Member</TableHead>
-              <TableHead className="text-xs py-1 text-right">Geohash</TableHead>
+              <TableHead className="text-xs py-1">{t("redis.geo.colMember")}</TableHead>
+              <TableHead className="text-xs py-1 text-right">{t("redis.geo.colGeohash")}</TableHead>
               <TableHead className="text-xs py-1 text-right">
-                Longitude
+                {t("redis.geo.longitude")}
               </TableHead>
               <TableHead className="text-xs py-1 text-right">
-                Latitude
+                {t("redis.geo.latitude")}
               </TableHead>
               <TableHead className="w-[40px] py-1" />
             </TableRow>
@@ -499,7 +499,7 @@ export function RedisGeoViewer({
                   colSpan={6}
                   className="text-center text-xs text-muted-foreground py-4"
                 >
-                  No locations
+                  {t("redis.geo.emptyLocations")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -526,7 +526,7 @@ export function RedisGeoViewer({
                           onClick={() => lookupPos(m.member)}
                           disabled={isLoadingPos}
                         >
-                          {isLoadingPos ? "..." : "lookup"}
+                          {isLoadingPos ? "..." : t("redis.geo.lookup")}
                         </button>
                       )}
                     </TableCell>
@@ -539,7 +539,7 @@ export function RedisGeoViewer({
                           onClick={() => lookupPos(m.member)}
                           disabled={isLoadingPos}
                         >
-                          {isLoadingPos ? "..." : "lookup"}
+                          {isLoadingPos ? "..." : t("redis.geo.lookup")}
                         </button>
                       )}
                     </TableCell>
@@ -563,8 +563,7 @@ export function RedisGeoViewer({
 
       {/* Footer info */}
       <div className="text-[10px] text-muted-foreground pt-1 border-t">
-        Scores are geohash values. Click "lookup" to fetch real coordinates via
-        GEOPOS. Use "Distance" and "Nearby" tools for spatial queries.
+        {t("redis.geo.footerHint")}
       </div>
     </div>
   );

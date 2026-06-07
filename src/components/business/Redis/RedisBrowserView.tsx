@@ -639,9 +639,9 @@ export function RedisBrowserView({
       <Dialog open={mgetDialogOpen} onOpenChange={setMgetDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>MGET Export</DialogTitle>
+            <DialogTitle>{t("redis.browser.mgetExport")}</DialogTitle>
             <DialogDescription>
-              Values of {selectedKeys.size} selected key(s)
+              {t("redis.browser.mgetDescription", { count: selectedKeys.size })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -657,14 +657,14 @@ export function RedisBrowserView({
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(msetData);
-                    toast.success("Copied to clipboard");
+                    toast.success(t("redis.browser.copiedToClipboard"));
                   } catch {
                     toast.error(t("redis.browser.copyFailed"));
                   }
                 }}
               >
                 <Copy className="w-3.5 h-3.5 mr-1.5" />
-                Copy
+                {t("redis.browser.copy")}
               </Button>
               <Button
                 variant="outline"
@@ -680,7 +680,7 @@ export function RedisBrowserView({
                     });
                     if (filePath) {
                       await writeTextFile(filePath, msetData);
-                      toast.success("Exported successfully");
+                      toast.success(t("redis.browser.exportedSuccessfully"));
                     }
                   } catch (e) {
                     handleApiError(t("redis.browser.exportFailed"), e);
@@ -688,7 +688,7 @@ export function RedisBrowserView({
                 }}
               >
                 <FileDown className="w-3.5 h-3.5 mr-1.5" />
-                Save to File
+                {t("redis.browser.saveToFile")}
               </Button>
             </div>
           </div>
@@ -699,9 +699,9 @@ export function RedisBrowserView({
       <Dialog open={msetDialogOpen} onOpenChange={setMsetDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>MSET Import</DialogTitle>
+            <DialogTitle>{t("redis.browser.msetImport")}</DialogTitle>
             <DialogDescription>
-              Import key-value pairs (JSON object or lines of key:value)
+              {t("redis.browser.msetDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -715,7 +715,7 @@ export function RedisBrowserView({
                   onClick={handleMsetFileImport}
                 >
                   <Upload className="w-3 h-3 mr-1" />
-                  Import File
+                  {t("redis.browser.importFile")}
                 </Button>
               </div>
               <Textarea
@@ -737,7 +737,7 @@ export function RedisBrowserView({
                 setMsetImportText("");
               }}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               size="sm"
@@ -747,7 +747,7 @@ export function RedisBrowserView({
               {msetLoading && (
                 <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
               )}
-              Import
+              {t("redis.browser.import")}
             </Button>
           </DialogFooter>
         </DialogContent>

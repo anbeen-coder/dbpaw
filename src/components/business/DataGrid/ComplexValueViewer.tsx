@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Copy, Check, ChevronRight, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -223,8 +224,9 @@ export function ComplexValueViewer({
 }: ComplexValueViewerProps) {
   const [activeTab, setActiveTab] = useState<TabId>("json");
   const [copied, setCopied] = useState(false);
+  const { t } = useTranslation();
   const formatted = JSON.stringify(value, null, 2);
-  const typeLabel = Array.isArray(value) ? "array" : "object";
+  const typeLabel = Array.isArray(value) ? t("datagrid.viewer.typeArray") : t("datagrid.viewer.typeObject");
 
   const handleCopy = () => {
     navigator.clipboard.writeText(formatted).then(() => {
@@ -253,7 +255,7 @@ export function ComplexValueViewer({
             className="ml-auto h-7 gap-1.5 text-xs shrink-0"
           >
             {copied ? <Check size={11} /> : <Copy size={11} />}
-            {copied ? "Copied" : "Copy JSON"}
+            {copied ? t("datagrid.viewer.copied") : t("datagrid.viewer.copyJson")}
           </Button>
         </div>
 

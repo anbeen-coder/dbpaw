@@ -231,21 +231,21 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
               <ContextMenuItem onClick={() => handleCopySelection()}>
                 <Copy className="w-4 h-4 mr-2" />
                 {getNormalizedCellRange()
-                  ? "Copy Selection"
-                  : "Copy Cell"}
+                  ? t("tableView.contextMenu.copySelection")
+                  : t("tableView.contextMenu.copyCell")}
               </ContextMenuItem>
               {getNormalizedCellRange() ? (
                 <ContextMenuSub>
                   <ContextMenuSubTrigger>
                     <Files className="w-4 h-4 mr-2" />
-                    Copy Selection as
+                    {t("tableView.contextMenu.copySelectionAs")}
                   </ContextMenuSubTrigger>
                   <ContextMenuSubContent>
                     <ContextMenuItem
                       onClick={() =>
                         handleCopy(
                           buildSelectionCSV(),
-                          "Selection copied as CSV",
+                          t("tableView.contextMenu.selectionCopiedAsCsv"),
                         )
                       }
                     >
@@ -256,7 +256,7 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                         onClick={() =>
                           handleCopy(
                             buildSelectionInsertSQL(),
-                            "Selection copied as Insert SQL",
+                            t("tableView.contextMenu.selectionCopiedAsInsertSql"),
                           )
                         }
                       >
@@ -268,7 +268,7 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                         onClick={() =>
                           handleCopy(
                             buildSelectionUpdateSQL(),
-                            "Selection copied as Update SQL",
+                            t("tableView.contextMenu.selectionCopiedAsUpdateSql"),
                           )
                         }
                       >
@@ -284,7 +284,7 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                       if (isMultiRowCopyTarget) {
                         handleCopy(
                           buildRowsTSV(copyTargetRows),
-                          `Copied ${copyTargetRows.length} row(s)`,
+                          t("tableView.contextMenu.copiedRows", { count: copyTargetRows.length }),
                         );
                         return;
                       }
@@ -300,13 +300,13 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                             : String(val);
                         })
                         .join("\t");
-                      handleCopy(values, "Row copied");
+                      handleCopy(values, t("tableView.contextMenu.rowCopied"));
                     }}
                   >
                     <TableIcon className="w-4 h-4 mr-2" />
                     {isMultiRowCopyTarget
-                      ? "Copy Selected Rows"
-                      : "Copy Row"}
+                      ? t("tableView.contextMenu.copySelectedRows")
+                      : t("tableView.contextMenu.copyRow")}
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   {canUpdateDelete &&
@@ -331,7 +331,7 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                           }}
                         >
                           <Undo2 className="w-4 h-4 mr-2" />
-                          Undo This Cell
+                          {t("tableView.contextMenu.undoThisCell")}
                         </ContextMenuItem>
                         <ContextMenuSeparator />
                       </>
@@ -339,7 +339,7 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                   <ContextMenuSub>
                     <ContextMenuSubTrigger>
                       <Files className="w-4 h-4 mr-2" />
-                      Copy as
+                      {t("tableView.contextMenu.copyAs")}
                     </ContextMenuSubTrigger>
                     <ContextMenuSubContent>
                       <ContextMenuItem
@@ -347,14 +347,14 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                           handleCopy(
                             buildRowsCSV(copyTargetRows),
                             isMultiRowCopyTarget
-                              ? "Copied as CSV"
-                              : "Row copied as CSV",
+                              ? t("tableView.contextMenu.copiedAsCsv")
+                              : t("tableView.contextMenu.rowCopiedAsCsv"),
                           )
                         }
                       >
-                        {isMultiRowCopyTarget
-                          ? "Copy Selected as CSV"
-                          : "Copy as CSV"}
+                          {isMultiRowCopyTarget
+                            ? t("tableView.contextMenu.copySelectedAsCsv")
+                            : t("tableView.contextMenu.copyAsCsv")}
                       </ContextMenuItem>
                       {!!tableContext && (
                         <ContextMenuItem
@@ -364,14 +364,14 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                             handleCopy(
                               sql,
                               isMultiRowCopyTarget
-                                ? "Copied as Insert SQL"
-                                : "Row copied as Insert SQL",
+                                ? t("tableView.contextMenu.copiedAsInsertSql")
+                                : t("tableView.contextMenu.rowCopiedAsInsertSql"),
                             );
                           }}
                         >
                           {isMultiRowCopyTarget
-                            ? "Copy Selected as Insert SQL"
-                            : "Copy as Insert SQL"}
+                            ? t("tableView.contextMenu.copySelectedAsInsertSql")
+                            : t("tableView.contextMenu.copyAsInsertSql")}
                         </ContextMenuItem>
                       )}
                       {canUpdateDelete && (
@@ -382,14 +382,14 @@ export const TableContextMenuContent = memo(function TableContextMenuContent({
                             handleCopy(
                               sql,
                               isMultiRowCopyTarget
-                                ? "Copied as Update SQL"
-                                : "Row copied as Update SQL",
+                                ? t("tableView.contextMenu.copiedAsUpdateSql")
+                                : t("tableView.contextMenu.rowCopiedAsUpdateSql"),
                             );
                           }}
                         >
                           {isMultiRowCopyTarget
-                            ? "Copy Selected as Update SQL"
-                            : "Copy as Update SQL"}
+                            ? t("tableView.contextMenu.copySelectedAsUpdateSql")
+                            : t("tableView.contextMenu.copyAsUpdateSql")}
                         </ContextMenuItem>
                       )}
                     </ContextMenuSubContent>

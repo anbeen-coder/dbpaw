@@ -25,7 +25,7 @@ pub async fn geo_add(
     conn: &mut RedisConnection,
     key: String,
     members: Vec<RedisGeoMember>,
-) -> Result<i64, String> {
+) -> error::RedisResult<i64> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("GEOADD");
     cmd.arg(&key);
@@ -35,7 +35,7 @@ pub async fn geo_add(
     let result: i64 = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
     Ok(result)
 }
 
@@ -43,7 +43,7 @@ pub async fn geo_pos(
     conn: &mut RedisConnection,
     key: String,
     members: Vec<String>,
-) -> Result<Vec<Option<RedisGeoPosition>>, String> {
+) -> error::RedisResult<Vec<Option<RedisGeoPosition>>> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("GEOPOS");
     cmd.arg(&key);
@@ -53,7 +53,7 @@ pub async fn geo_pos(
     let positions: Vec<Option<(f64, f64)>> = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
     Ok(positions
         .into_iter()
         .map(|p| {
@@ -71,7 +71,7 @@ pub async fn geo_dist(
     member1: String,
     member2: String,
     unit: Option<String>,
-) -> Result<f64, String> {
+) -> error::RedisResult<f64> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("GEODIST");
     cmd.arg(&key).arg(&member1).arg(&member2);
@@ -81,7 +81,7 @@ pub async fn geo_dist(
     let result: f64 = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
     Ok(result)
 }
 
@@ -97,7 +97,7 @@ pub async fn geo_search(
     with_dist: bool,
     with_hash: bool,
     count: Option<u64>,
-) -> Result<Vec<RedisGeoSearchResult>, String> {
+) -> error::RedisResult<Vec<RedisGeoSearchResult>> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("GEOSEARCH");
     cmd.arg(&key);
@@ -107,9 +107,9 @@ pub async fn geo_search(
     } else if let (Some(lon), Some(lat)) = (longitude, latitude) {
         cmd.arg("FROMLONLAT").arg(lon).arg(lat);
     } else {
-        return Err(
-            "[VALIDATION_ERROR] Either member or longitude+latitude is required".to_string(),
-        );
+        return Err(error::validation(
+            "Either member or longitude+latitude is required",
+        ));
     }
 
     cmd.arg("BYRADIUS").arg(radius).arg(&unit);
@@ -125,7 +125,7 @@ pub async fn geo_search(
     let results: Value = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
 
     let arr = match results {
         Value::Array(a) => a,
@@ -139,7 +139,7 @@ pub async fn geo_search(
                 continue;
             }
             let member_name =
-                from_redis_value::<String>(&inner[0]).map_err(|e| error::to_command_string(e))?;
+                from_redis_value::<String>(&inner[0]).map_err(|e| error::to_command_error(e))?;
             let mut result = RedisGeoSearchResult {
                 member: member_name,
                 distance: None,

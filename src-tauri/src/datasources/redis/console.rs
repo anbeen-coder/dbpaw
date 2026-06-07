@@ -3,7 +3,7 @@ pub struct RedisRawResult {
     pub output: String,
 }
 
-fn tokenize_command(input: &str) -> Result<Vec<String>, String> {
+fn tokenize_command(input: &str) -> error::RedisResult<Vec<String>> {
     let mut tokens = Vec::new();
     let mut chars = input.chars().peekable();
     loop {
@@ -17,10 +17,14 @@ fn tokenize_command(input: &str) -> Result<Vec<String>, String> {
                 let mut tok = String::new();
                 loop {
                     match chars.next() {
-                        None => return Err("Unterminated double quote in command".to_string()),
+                        None => {
+                            return Err(error::validation("Unterminated double quote in command"));
+                        }
                         Some('"') => break,
                         Some('\\') => match chars.next() {
-                            None => return Err("Unexpected end after backslash".to_string()),
+                            None => {
+                                return Err(error::validation("Unexpected end after backslash"));
+                            }
                             Some(c) => tok.push(c),
                         },
                         Some(c) => tok.push(c),
@@ -33,7 +37,9 @@ fn tokenize_command(input: &str) -> Result<Vec<String>, String> {
                 let mut tok = String::new();
                 loop {
                     match chars.next() {
-                        None => return Err("Unterminated single quote in command".to_string()),
+                        None => {
+                            return Err(error::validation("Unterminated single quote in command"));
+                        }
                         Some('\'') => break,
                         Some(c) => tok.push(c),
                     }

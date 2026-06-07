@@ -5,7 +5,7 @@ pub async fn zrangebyscore(
     max: String,
     offset: Option<u64>,
     limit: Option<u64>,
-) -> Result<RedisZRangeByScoreResult, String> {
+) -> error::RedisResult<RedisZRangeByScoreResult> {
     validate_key(&key)?;
 
     let mut count_cmd = redis::cmd("ZCOUNT");
@@ -25,7 +25,7 @@ pub async fn zrangebyscore(
         if let Some(score_str) = iter.next() {
             let score: f64 = score_str
                 .parse()
-                .map_err(|_| format!("[REDIS_ERROR] Cannot parse score: {score_str}"))?;
+                .map_err(|_| error::command(format!("Cannot parse score: {score_str}")))?;
             members.push(RedisZSetMember {
                 member: member.clone(),
                 score,
@@ -41,7 +41,7 @@ pub async fn zrank(
     key: String,
     member: String,
     reverse: bool,
-) -> Result<Option<i64>, String> {
+) -> error::RedisResult<Option<i64>> {
     validate_key(&key)?;
 
     let cmd_name = if reverse { "ZREVRANK" } else { "ZRANK" };
@@ -56,7 +56,7 @@ pub async fn zscore(
     conn: &mut RedisConnection,
     key: String,
     member: String,
-) -> Result<Option<f64>, String> {
+) -> error::RedisResult<Option<f64>> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("ZSCORE");
@@ -70,10 +70,10 @@ pub async fn zmscore(
     conn: &mut RedisConnection,
     key: String,
     members: Vec<String>,
-) -> Result<Vec<Option<f64>>, String> {
+) -> error::RedisResult<Vec<Option<f64>>> {
     validate_key(&key)?;
     if members.is_empty() {
-        return Err("[VALIDATION_ERROR] At least one member is required".to_string());
+        return Err(error::validation("At least one member is required"));
     }
 
     let mut cmd = redis::cmd("ZMSCORE");
@@ -93,7 +93,7 @@ pub async fn zrangebylex(
     max: String,
     offset: Option<u64>,
     limit: Option<u64>,
-) -> Result<RedisZRangeByLexResult, String> {
+) -> error::RedisResult<RedisZRangeByLexResult> {
     validate_key(&key)?;
 
     let mut count_cmd = redis::cmd("ZLEXCOUNT");
@@ -115,7 +115,7 @@ pub async fn zlexcount(
     key: String,
     min: String,
     max: String,
-) -> Result<u64, String> {
+) -> error::RedisResult<u64> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("ZLEXCOUNT");
@@ -129,7 +129,7 @@ pub async fn zpopmin(
     conn: &mut RedisConnection,
     key: String,
     count: Option<u64>,
-) -> Result<Vec<RedisZSetMember>, String> {
+) -> error::RedisResult<Vec<RedisZSetMember>> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("ZPOPMIN");
@@ -145,7 +145,7 @@ pub async fn zpopmin(
         if let Some(score_str) = iter.next() {
             let score: f64 = score_str
                 .parse()
-                .map_err(|_| format!("[REDIS_ERROR] Cannot parse score: {score_str}"))?;
+                .map_err(|_| error::command(format!("Cannot parse score: {score_str}")))?;
             members.push(RedisZSetMember {
                 member: member.clone(),
                 score,
@@ -160,7 +160,7 @@ pub async fn zpopmax(
     conn: &mut RedisConnection,
     key: String,
     count: Option<u64>,
-) -> Result<Vec<RedisZSetMember>, String> {
+) -> error::RedisResult<Vec<RedisZSetMember>> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("ZPOPMAX");
@@ -176,7 +176,7 @@ pub async fn zpopmax(
         if let Some(score_str) = iter.next() {
             let score: f64 = score_str
                 .parse()
-                .map_err(|_| format!("[REDIS_ERROR] Cannot parse score: {score_str}"))?;
+                .map_err(|_| error::command(format!("Cannot parse score: {score_str}")))?;
             members.push(RedisZSetMember {
                 member: member.clone(),
                 score,
@@ -191,9 +191,9 @@ pub async fn set_operation(
     conn: &mut RedisConnection,
     keys: Vec<String>,
     op: RedisSetOperation,
-) -> Result<Vec<String>, String> {
+) -> error::RedisResult<Vec<String>> {
     if keys.is_empty() {
-        return Err("[VALIDATION_ERROR] At least one key is required".to_string());
+        return Err(error::validation("At least one key is required"));
     }
     for k in &keys {
         validate_key(k)?;
@@ -217,7 +217,7 @@ pub async fn sismember(
     conn: &mut RedisConnection,
     key: String,
     member: String,
-) -> Result<bool, String> {
+) -> error::RedisResult<bool> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("SISMEMBER");
@@ -232,7 +232,7 @@ pub async fn smove(
     source: String,
     destination: String,
     member: String,
-) -> Result<bool, String> {
+) -> error::RedisResult<bool> {
     validate_key(&source)?;
     validate_key(&destination)?;
 
@@ -249,7 +249,7 @@ pub async fn lindex(
     conn: &mut RedisConnection,
     key: String,
     index: i64,
-) -> Result<Option<String>, String> {
+) -> error::RedisResult<Option<String>> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("LINDEX");
@@ -266,7 +266,7 @@ pub async fn lpos(
     rank: Option<i64>,
     count: Option<u64>,
     maxlen: Option<u64>,
-) -> Result<Vec<i64>, String> {
+) -> error::RedisResult<Vec<i64>> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("LPOS");
@@ -290,7 +290,7 @@ pub async fn ltrim(
     key: String,
     start: i64,
     stop: i64,
-) -> Result<bool, String> {
+) -> error::RedisResult<bool> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("LTRIM");
@@ -306,7 +306,7 @@ pub async fn linsert(
     position: RedisLInsertPosition,
     pivot: String,
     element: String,
-) -> Result<i64, String> {
+) -> error::RedisResult<i64> {
     validate_key(&key)?;
 
     let pos_str = match position {
@@ -326,7 +326,7 @@ pub async fn lmove(
     destination: String,
     src_direction: RedisLMoveDirection,
     dst_direction: RedisLMoveDirection,
-) -> Result<Option<String>, String> {
+) -> error::RedisResult<Option<String>> {
     validate_key(&source)?;
     validate_key(&destination)?;
 

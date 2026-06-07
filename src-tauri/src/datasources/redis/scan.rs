@@ -1,27 +1,26 @@
-fn encode_cluster_scan_state(cursors: &HashMap<String, u64>) -> Result<String, String> {
-    let json = serde_json::to_string(cursors).map_err(|e| error::to_scan_string(e))?;
+fn encode_cluster_scan_state(cursors: &HashMap<String, u64>) -> error::RedisResult<String> {
+    let json = serde_json::to_string(cursors).map_err(|e| error::to_scan_error(e))?;
     Ok(base64::prelude::BASE64_STANDARD.encode(json.as_bytes()))
 }
 
-fn decode_cluster_scan_state(s: &str) -> Result<HashMap<String, u64>, String> {
+fn decode_cluster_scan_state(s: &str) -> error::RedisResult<HashMap<String, u64>> {
     let bytes = base64::prelude::BASE64_STANDARD
         .decode(s)
-        .map_err(|e| format!("[REDIS_SCAN_ERROR] Invalid cursor: {e}"))?;
-    let json =
-        String::from_utf8(bytes).map_err(|e| format!("[REDIS_SCAN_ERROR] Invalid cursor: {e}"))?;
-    serde_json::from_str(&json).map_err(|e| format!("[REDIS_SCAN_ERROR] Invalid cursor: {e}"))
+        .map_err(|e| error::scan(format!("Invalid cursor: {e}")))?;
+    let json = String::from_utf8(bytes).map_err(|e| error::scan(format!("Invalid cursor: {e}")))?;
+    serde_json::from_str(&json).map_err(|e| error::scan(format!("Invalid cursor: {e}")))
 }
 
 async fn get_cluster_master_nodes(
     conn: &mut RedisConnection,
-) -> Result<Vec<(String, u16)>, String> {
+) -> error::RedisResult<Vec<(String, u16)>> {
     let mut cmd = redis::cmd("CLUSTER");
     cmd.arg("SLOTS");
     let value: Value = conn.query(cmd).await?;
 
     let slots = match value {
         Value::Array(arr) => arr,
-        _ => return Err("[REDIS_SCAN_ERROR] Unexpected CLUSTER SLOTS response".to_string()),
+        _ => return Err(error::scan("Unexpected CLUSTER SLOTS response")),
     };
 
     let mut masters = Vec::new();
@@ -40,10 +39,9 @@ async fn get_cluster_master_nodes(
         if master_info.len() < 2 {
             continue;
         }
-        let host = from_redis_value::<String>(&master_info[0])
-            .map_err(|e| error::to_scan_string(e))?;
-        let port = from_redis_value::<u16>(&master_info[1])
-            .map_err(|e| error::to_scan_string(e))?;
+        let host =
+            from_redis_value::<String>(&master_info[0]).map_err(|e| error::to_scan_error(e))?;
+        let port = from_redis_value::<u16>(&master_info[1]).map_err(|e| error::to_scan_error(e))?;
         masters.push((host, port));
     }
 
@@ -52,17 +50,17 @@ async fn get_cluster_master_nodes(
     Ok(masters)
 }
 
-fn parse_node_addr(addr: &str) -> Result<(&str, u16), String> {
+fn parse_node_addr(addr: &str) -> error::RedisResult<(&str, u16)> {
     let mut parts = addr.rsplitn(2, ':');
     let port_part = parts
         .next()
-        .ok_or_else(|| "[REDIS_SCAN_ERROR] Invalid node addr".to_string())?;
+        .ok_or_else(|| error::scan("Invalid node addr"))?;
     let host_part = parts
         .next()
-        .ok_or_else(|| "[REDIS_SCAN_ERROR] Invalid node addr".to_string())?;
+        .ok_or_else(|| error::scan("Invalid node addr"))?;
     let port = port_part
         .parse::<u16>()
-        .map_err(|_| "[REDIS_SCAN_ERROR] Invalid node port".to_string())?;
+        .map_err(|_| error::scan("Invalid node port"))?;
     Ok((host_part, port))
 }
 
@@ -83,7 +81,7 @@ async fn scan_one_cluster_node(
     cursor: u64,
     pattern: &str,
     count: u32,
-) -> Result<(u64, Vec<String>), String> {
+) -> error::RedisResult<(u64, Vec<String>)> {
     if cursor == 0 {
         return Ok((0, Vec::new()));
     }
@@ -97,7 +95,7 @@ async fn scan_one_cluster_node(
         .arg(count);
     conn.query_on_node(host, port, cmd)
         .await
-        .map_err(|e| error::to_scan_string(e))
+        .map_err(|e| error::to_scan_error(e))
 }
 
 async fn scan_cluster_keys(
@@ -105,9 +103,11 @@ async fn scan_cluster_keys(
     state: Option<&str>,
     pattern: &str,
     count: u32,
-) -> Result<(Vec<String>, String, bool), String> {
+) -> error::RedisResult<(Vec<String>, String, bool)> {
     if is_dangerous_wildcard(pattern) {
-        return Err("[VALIDATION_ERROR] Cluster scan requires a non-wildcard pattern".to_string());
+        return Err(error::validation(
+            "Cluster scan requires a non-wildcard pattern",
+        ));
     }
     let masters = get_cluster_master_nodes(conn).await?;
 
@@ -165,7 +165,7 @@ async fn scan_cluster_keys(
 async fn query_key_metas(
     conn: &mut RedisConnection,
     keys: Vec<String>,
-) -> Result<Vec<RedisKeyInfo>, String> {
+) -> error::RedisResult<Vec<RedisKeyInfo>> {
     if keys.is_empty() {
         return Ok(Vec::new());
     }
@@ -194,7 +194,7 @@ async fn query_key_metas(
         let results: Vec<Value> = conn
             .pipe_query(&mut pipe)
             .await
-            .map_err(|e| error::to_scan_string(e))?;
+            .map_err(|e| error::to_scan_error(e))?;
         Ok(keys
             .into_iter()
             .enumerate()
@@ -214,7 +214,7 @@ pub async fn scan_keys(
     cursor: Option<String>,
     pattern: Option<String>,
     limit: Option<u32>,
-) -> Result<RedisScanResponse, String> {
+) -> error::RedisResult<RedisScanResponse> {
     let count = limit.unwrap_or(DEFAULT_SCAN_LIMIT).clamp(1, MAX_SCAN_LIMIT);
     let match_pattern = pattern
         .as_deref()
@@ -231,17 +231,15 @@ pub async fn scan_keys(
             .as_deref()
             .unwrap_or("0")
             .parse()
-            .map_err(|_| "[VALIDATION_ERROR] Invalid cursor".to_string())?;
+            .map_err(|_| error::validation("Invalid cursor"))?;
         let mut cmd = redis::cmd("SCAN");
         cmd.arg(scan_cursor)
             .arg("MATCH")
             .arg(match_pattern)
             .arg("COUNT")
             .arg(count);
-        let (next_cursor, keys): (u64, Vec<String>) = conn
-            .query(cmd)
-            .await
-            .map_err(|e| error::to_scan_string(e))?;
+        let (next_cursor, keys): (u64, Vec<String>) =
+            conn.query(cmd).await.map_err(|e| error::to_scan_error(e))?;
         let partial = next_cursor != 0;
         (next_cursor.to_string(), partial, keys)
     };

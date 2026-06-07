@@ -4,7 +4,7 @@ pub async fn xgroup_create(
     group: String,
     start_id: String,
     mkstream: bool,
-) -> Result<bool, String> {
+) -> error::RedisResult<bool> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("XGROUP");
@@ -20,7 +20,7 @@ pub async fn xgroup_del(
     conn: &mut RedisConnection,
     key: String,
     group: String,
-) -> Result<bool, String> {
+) -> error::RedisResult<bool> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("XGROUP");
@@ -34,7 +34,7 @@ pub async fn xgroup_setid(
     key: String,
     group: String,
     start_id: String,
-) -> Result<bool, String> {
+) -> error::RedisResult<bool> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("XGROUP");
@@ -48,10 +48,10 @@ pub async fn xack(
     key: String,
     group: String,
     ids: Vec<String>,
-) -> Result<i64, String> {
+) -> error::RedisResult<i64> {
     validate_key(&key)?;
     if ids.is_empty() {
-        return Err("[VALIDATION_ERROR] At least one ID is required".to_string());
+        return Err(error::validation("At least one ID is required"));
     }
 
     let mut cmd = redis::cmd("XACK");
@@ -71,7 +71,7 @@ pub async fn xpending(
     end: Option<String>,
     count: Option<i64>,
     consumer: Option<String>,
-) -> Result<RedisXPendingResult, String> {
+) -> error::RedisResult<RedisXPendingResult> {
     validate_key(&key)?;
 
     if start.is_some() && end.is_some() && count.is_some() {
@@ -98,11 +98,11 @@ pub async fn xpending(
     }
 }
 
-fn parse_xpending_summary(raw: &Value) -> Result<RedisXPendingSummary, String> {
+fn parse_xpending_summary(raw: &Value) -> error::RedisResult<RedisXPendingSummary> {
     // XPENDING without range returns [count, min_id, max_id, [[consumer, count], ...]]
     let items = match raw {
         Value::Array(arr) if arr.len() >= 4 => arr,
-        _ => return Err("[PARSE_ERROR] Unexpected XPENDING summary format".to_string()),
+        _ => return Err(error::command("Unexpected XPENDING summary format")),
     };
     let count: i64 = from_redis_value(&items[0]).unwrap_or(0);
     let min_id: String = from_redis_value(&items[1]).unwrap_or_default();
@@ -127,11 +127,11 @@ fn parse_xpending_summary(raw: &Value) -> Result<RedisXPendingSummary, String> {
     })
 }
 
-fn parse_xpending_entries(raw: &Value) -> Result<Vec<RedisXPendingEntry>, String> {
+fn parse_xpending_entries(raw: &Value) -> error::RedisResult<Vec<RedisXPendingEntry>> {
     // XPENDING with range returns array of [id, consumer, idle_ms, delivery_count]
     let items = match raw {
         Value::Array(arr) => arr,
-        _ => return Err("[PARSE_ERROR] Unexpected XPENDING entries format".to_string()),
+        _ => return Err(error::command("Unexpected XPENDING entries format")),
     };
     let mut entries = Vec::new();
     for item in items {
@@ -156,10 +156,10 @@ pub async fn xclaim(
     consumer: String,
     min_idle_ms: i64,
     ids: Vec<String>,
-) -> Result<Vec<RedisXClaimEntry>, String> {
+) -> error::RedisResult<Vec<RedisXClaimEntry>> {
     validate_key(&key)?;
     if ids.is_empty() {
-        return Err("[VALIDATION_ERROR] At least one ID is required".to_string());
+        return Err(error::validation("At least one ID is required"));
     }
 
     let mut cmd = redis::cmd("XCLAIM");
@@ -171,11 +171,11 @@ pub async fn xclaim(
     parse_xclaim_entries(&raw)
 }
 
-fn parse_xclaim_entries(raw: &Value) -> Result<Vec<RedisXClaimEntry>, String> {
+fn parse_xclaim_entries(raw: &Value) -> error::RedisResult<Vec<RedisXClaimEntry>> {
     // XCLAIM returns same format as XRANGE: [[id, [field, value, ...]], ...]
     let items = match raw {
         Value::Array(arr) => arr,
-        _ => return Err("[PARSE_ERROR] Unexpected XCLAIM format".to_string()),
+        _ => return Err(error::command("Unexpected XCLAIM format")),
     };
     let mut entries = Vec::new();
     for item in items {
@@ -216,15 +216,15 @@ pub async fn xtrim(
     strategy: String,
     threshold: String,
     approximate: Option<bool>,
-) -> Result<i64, String> {
+) -> error::RedisResult<i64> {
     validate_key(&key)?;
 
     let strategy_upper = strategy.to_uppercase();
     if strategy_upper != "MAXLEN" && strategy_upper != "MINID" {
-        return Err(format!(
-            "[VALIDATION_ERROR] Invalid strategy '{}': must be MAXLEN or MINID",
+        return Err(error::validation(format!(
+            "Invalid strategy '{}': must be MAXLEN or MINID",
             strategy
-        ));
+        )));
     }
 
     let mut cmd = redis::cmd("XTRIM");
@@ -244,7 +244,7 @@ pub async fn xreadgroup(
     consumer: String,
     start_id: String,
     count: Option<i64>,
-) -> Result<Vec<RedisStreamEntry>, String> {
+) -> error::RedisResult<Vec<RedisStreamEntry>> {
     validate_key(&key)?;
 
     let mut cmd = redis::cmd("XREADGROUP");

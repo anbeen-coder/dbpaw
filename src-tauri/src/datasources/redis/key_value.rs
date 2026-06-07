@@ -1,4 +1,4 @@
-pub async fn get_key(conn: &mut RedisConnection, key: String) -> Result<RedisKeyValue, String> {
+pub async fn get_key(conn: &mut RedisConnection, key: String) -> error::RedisResult<RedisKeyValue> {
     validate_key(&key)?;
 
     let mut pipe1 = redis::pipe();
@@ -6,7 +6,7 @@ pub async fn get_key(conn: &mut RedisConnection, key: String) -> Result<RedisKey
     let (key_type, ttl): (String, i64) = conn
         .pipe_query(&mut pipe1)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
 
     let page = PAGE_SIZE - 1;
     let (value, value_total_len, value_offset, is_binary, extra): (
@@ -168,13 +168,13 @@ pub async fn get_key(conn: &mut RedisConnection, key: String) -> Result<RedisKey
                     let extra = Some(build_json_module_missing_extra());
                     (RedisValue::Json(text), None, 0, is_binary, extra)
                 }
-                Err(e) => return Err(error::to_command_string(e)),
+                Err(e) => return Err(error::to_command_error(e)),
             }
         }
         other => {
-            return Err(format!(
-                "[UNSUPPORTED] Redis type '{other}' is not supported"
-            ))
+            return Err(error::unsupported(format!(
+                "Redis type '{other}' is not supported"
+            )));
         }
     };
 
@@ -230,7 +230,7 @@ pub async fn get_key_page(
     key: String,
     offset: u64,
     limit: u32,
-) -> Result<RedisKeyValue, String> {
+) -> error::RedisResult<RedisKeyValue> {
     validate_key(&key)?;
     let limit = limit.clamp(1, MAX_SCAN_LIMIT);
 
@@ -239,7 +239,7 @@ pub async fn get_key_page(
     let (key_type, ttl): (String, i64) = conn
         .pipe_query(&mut pipe1)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
 
     let end = offset.saturating_add(limit as u64).saturating_sub(1);
 
@@ -326,9 +326,9 @@ pub async fn get_key_page(
             return get_key(conn, key).await;
         }
         other => {
-            return Err(format!(
-                "[UNSUPPORTED] Redis type '{other}' is not supported"
-            ))
+            return Err(error::unsupported(format!(
+                "Redis type '{other}' is not supported"
+            )));
         }
     };
 
@@ -382,7 +382,7 @@ pub async fn get_key_page(
 pub async fn set_key(
     conn: &mut RedisConnection,
     payload: RedisSetKeyPayload,
-) -> Result<RedisMutationResult, String> {
+) -> error::RedisResult<RedisMutationResult> {
     validate_key(&payload.key)?;
     validate_value_for_write(&payload.value)?;
     let mut del_cmd = redis::cmd("DEL");
@@ -476,7 +476,7 @@ pub async fn set_key(
 pub async fn delete_key(
     conn: &mut RedisConnection,
     key: String,
-) -> Result<RedisMutationResult, String> {
+) -> error::RedisResult<RedisMutationResult> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("DEL");
     cmd.arg(key);
@@ -490,7 +490,7 @@ pub async fn delete_key(
 pub async fn patch_key(
     conn: &mut RedisConnection,
     payload: RedisKeyPatchPayload,
-) -> Result<RedisMutationResult, String> {
+) -> error::RedisResult<RedisMutationResult> {
     validate_key(&payload.key)?;
     let key = &payload.key;
 
@@ -668,7 +668,7 @@ pub async fn rename_key(
     old_key: String,
     new_key: String,
     force: bool,
-) -> Result<RedisMutationResult, String> {
+) -> error::RedisResult<RedisMutationResult> {
     validate_key(&old_key)?;
     validate_key(&new_key)?;
     let cmd_name = if force { "RENAME" } else { "RENAMENX" };
@@ -676,10 +676,10 @@ pub async fn rename_key(
     cmd.arg(&old_key).arg(&new_key);
     let renamed: i64 = conn.query(cmd).await?;
     if renamed == 0 && !force {
-        return Err(format!(
-            "[REDIS_ERROR] Key '{}' already exists. RENAMENX refused to overwrite.",
+        return Err(error::command(format!(
+            "Key '{}' already exists. RENAMENX refused to overwrite.",
             new_key
-        ));
+        )));
     }
     Ok(RedisMutationResult {
         success: true,
@@ -691,7 +691,7 @@ pub async fn set_ttl(
     conn: &mut RedisConnection,
     key: String,
     ttl_seconds: Option<i64>,
-) -> Result<RedisMutationResult, String> {
+) -> error::RedisResult<RedisMutationResult> {
     validate_key(&key)?;
     let changed: bool = match ttl_seconds {
         Some(ttl) if ttl > 0 => {
@@ -715,14 +715,14 @@ pub async fn bitmap_get_bit(
     conn: &mut RedisConnection,
     key: String,
     offset: u64,
-) -> Result<bool, String> {
+) -> error::RedisResult<bool> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("GETBIT");
     cmd.arg(&key).arg(offset);
     let result: i64 = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
     Ok(result != 0)
 }
 
@@ -731,7 +731,7 @@ pub async fn bitmap_count(
     key: String,
     start: Option<i64>,
     end: Option<i64>,
-) -> Result<u64, String> {
+) -> error::RedisResult<u64> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("BITCOUNT");
     cmd.arg(&key);
@@ -741,7 +741,7 @@ pub async fn bitmap_count(
     let count: i64 = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
     Ok(count as u64)
 }
 
@@ -752,7 +752,7 @@ pub async fn bitmap_pos(
     start: Option<u64>,
     end: Option<u64>,
     count: Option<u64>,
-) -> Result<Vec<u64>, String> {
+) -> error::RedisResult<Vec<u64>> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("BITPOS");
     cmd.arg(&key).arg(if bit { 1 } else { 0 });
@@ -768,7 +768,7 @@ pub async fn bitmap_pos(
     let positions: Vec<i64> = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
     Ok(positions.into_iter().map(|p| p as u64).collect())
 }
 
@@ -776,7 +776,7 @@ pub async fn hll_pfadd(
     conn: &mut RedisConnection,
     key: String,
     elements: Vec<String>,
-) -> Result<bool, String> {
+) -> error::RedisResult<bool> {
     validate_key(&key)?;
     let mut cmd = redis::cmd("PFADD");
     cmd.arg(&key);
@@ -786,7 +786,6 @@ pub async fn hll_pfadd(
     let result: i64 = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
     Ok(result != 0)
 }
-

@@ -167,7 +167,7 @@ async fn fetch_stream_view_internal(
     start_id: &str,
     end_id: &str,
     count: u32,
-) -> Result<RedisStreamView, String> {
+) -> error::RedisResult<RedisStreamView> {
     let fetch_count = count.saturating_add(1);
     let mut pipe = redis::pipe();
     pipe.cmd("XRANGE")
@@ -186,7 +186,7 @@ async fn fetch_stream_view_internal(
     let (entries_raw, info_raw, groups_raw): (Value, Value, Value) = conn
         .pipe_query(&mut pipe)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
 
     let mut entries = parse_xrange_value(entries_raw);
     let has_more = entries.len() > count as usize;
@@ -219,7 +219,7 @@ pub async fn get_stream_range(
     key: String,
     start_id: String,
     count: u32,
-) -> Result<Vec<RedisStreamEntry>, String> {
+) -> error::RedisResult<Vec<RedisStreamEntry>> {
     validate_key(&key)?;
     let count = count.clamp(1, MAX_SCAN_LIMIT);
     let mut cmd = redis::cmd("XRANGE");
@@ -231,7 +231,7 @@ pub async fn get_stream_range(
     let value: Value = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
     Ok(parse_xrange_value(value))
 }
 
@@ -241,7 +241,7 @@ pub async fn get_stream_view(
     start_id: String,
     end_id: String,
     count: u32,
-) -> Result<RedisStreamView, String> {
+) -> error::RedisResult<RedisStreamView> {
     validate_key(&key)?;
     let count = count.clamp(1, MAX_SCAN_LIMIT);
     let normalized_start = if start_id.trim().is_empty() {

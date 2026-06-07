@@ -1,4 +1,5 @@
-type RedisCommandFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, String>> + Send + 'a>>;
+type RedisCommandFuture<'a, T> =
+    Pin<Box<dyn Future<Output = crate::datasources::redis::error::RedisResult<T>> + Send + 'a>>;
 
 /// Cache key: standalone uses "{id}:{db}" so different databases on the same
 /// server each get their own persistent connection (SELECT is connection-level).
@@ -13,15 +14,13 @@ fn cache_key(id: i64, database: Option<&str>, is_cluster: bool) -> String {
 
 /// Returns true if the error string looks like a broken/dropped TCP connection.
 fn is_io_error(e: &str) -> bool {
-    e.contains("[REDIS_ERROR]") && {
-        let lower = e.to_lowercase();
-        lower.contains("broken pipe")
-            || lower.contains("connection reset")
-            || lower.contains("connection refused")
-            || lower.contains("connection closed")
-            || lower.contains("eof")
-            || lower.contains("os error")
-    }
+    let lower = e.to_lowercase();
+    lower.contains("broken pipe")
+        || lower.contains("connection reset")
+        || lower.contains("connection refused")
+        || lower.contains("connection closed")
+        || lower.contains("eof")
+        || lower.contains("os error")
 }
 
 /// Get a cached connection for (id, database), creating one if not present.
@@ -30,7 +29,7 @@ async fn acquire(
     id: i64,
     form: &ConnectionForm,
     database: Option<&str>,
-) -> Result<RedisConnection, String> {
+) -> crate::datasources::redis::error::RedisResult<RedisConnection> {
     let is_cluster = form
         .host
         .as_deref()
@@ -79,15 +78,15 @@ async fn evict(
 async fn retry_once_on_redis_io_error<T, Operation, OperationFuture, OnRetry, OnRetryFuture>(
     mut operation: Operation,
     mut on_retry: OnRetry,
-) -> Result<T, String>
+) -> crate::datasources::redis::error::RedisResult<T>
 where
     Operation: FnMut() -> OperationFuture,
-    OperationFuture: Future<Output = Result<T, String>>,
+    OperationFuture: Future<Output = crate::datasources::redis::error::RedisResult<T>>,
     OnRetry: FnMut() -> OnRetryFuture,
     OnRetryFuture: Future<Output = ()>,
 {
     match operation().await {
-        Err(ref e) if is_io_error(e) => {
+        Err(ref e) if is_io_error(&e.to_string()) => {
             on_retry().await;
             operation().await
         }
@@ -107,13 +106,13 @@ where
 {
     let form = super::get_connection_form_by_id_with_driver_check(state, id, "redis")
         .await
-        .map_err(|e| String::from(crate::error::AppError::from(e)))?;
+        .map_err(crate::error::AppError::from)
+        .map_err(String::from)?;
     let mut conn = acquire(state, id, &form, database)
         .await
-        .map_err(|e| String::from(crate::error::AppError::from(e)))?;
-    operation(&form, &mut conn)
-        .await
-        .map_err(|e| String::from(crate::error::AppError::from(e)))
+        .map_err(crate::error::AppError::from)
+        .map_err(String::from)?;
+    operation(&form, &mut conn).await.map_err(String::from)
 }
 
 async fn with_redis_retry<T, F>(
@@ -127,7 +126,8 @@ where
 {
     let form = super::get_connection_form_by_id_with_driver_check(state, id, "redis")
         .await
-        .map_err(|e| String::from(crate::error::AppError::from(e)))?;
+        .map_err(crate::error::AppError::from)
+        .map_err(String::from)?;
     let operation = &operation;
 
     retry_once_on_redis_io_error(
@@ -146,5 +146,5 @@ where
         },
     )
     .await
-    .map_err(|e| String::from(crate::error::AppError::from(e)))
+    .map_err(String::from)
 }

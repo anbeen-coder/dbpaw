@@ -1,10 +1,10 @@
 pub async fn execute_raw(
     conn: &mut RedisConnection,
     command: String,
-) -> Result<RedisRawResult, String> {
+) -> error::RedisResult<RedisRawResult> {
     let tokens = tokenize_command(&command)?;
     if tokens.is_empty() {
-        return Err("[VALIDATION_ERROR] Command cannot be empty".to_string());
+        return Err(error::validation("Command cannot be empty"));
     }
     let mut cmd = redis::cmd(&tokens[0]);
     for arg in &tokens[1..] {
@@ -21,7 +21,7 @@ pub async fn execute_raw(
 pub async fn batch_key_ops(
     conn: &mut RedisConnection,
     operations: Vec<RedisBatchKeyOp>,
-) -> Result<Vec<RedisBatchKeyOpResult>, String> {
+) -> error::RedisResult<Vec<RedisBatchKeyOpResult>> {
     if operations.is_empty() {
         return Ok(Vec::new());
     }
@@ -46,10 +46,10 @@ pub async fn batch_key_ops(
                 pipe.cmd("PERSIST").arg(&op.key);
             }
             _ => {
-                return Err(format!(
-                    "[VALIDATION_ERROR] Unknown batch operation: {}",
+                return Err(error::validation(format!(
+                    "Unknown batch operation: {}",
                     op.op
-                ));
+                )));
             }
         }
     }
@@ -77,7 +77,7 @@ pub async fn batch_key_ops(
 pub async fn mget_keys(
     conn: &mut RedisConnection,
     keys: Vec<String>,
-) -> Result<Vec<RedisMgetEntry>, String> {
+) -> error::RedisResult<Vec<RedisMgetEntry>> {
     if keys.is_empty() {
         return Ok(Vec::new());
     }
@@ -122,7 +122,7 @@ pub async fn mget_keys(
 pub async fn mset_keys(
     conn: &mut RedisConnection,
     entries: Vec<(String, String)>,
-) -> Result<RedisMutationResult, String> {
+) -> error::RedisResult<RedisMutationResult> {
     if entries.is_empty() {
         return Ok(RedisMutationResult {
             success: true,
@@ -142,7 +142,7 @@ pub async fn mset_keys(
     })
 }
 
-pub async fn cluster_info(conn: &mut RedisConnection) -> Result<RedisClusterInfo, String> {
+pub async fn cluster_info(conn: &mut RedisConnection) -> error::RedisResult<RedisClusterInfo> {
     let mut pipe = redis::pipe();
     pipe.cmd("CLUSTER").arg("INFO");
     pipe.cmd("CLUSTER").arg("NODES");
@@ -203,4 +203,3 @@ fn parse_cluster_nodes_text(raw: &str) -> Vec<RedisClusterNode> {
     }
     nodes
 }
-

@@ -1,7 +1,7 @@
-fn parse_host_port(raw: &str, fallback_port: i64) -> Result<(String, i64), String> {
+fn parse_host_port(raw: &str, fallback_port: i64) -> error::RedisResult<(String, i64)> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Err("[VALIDATION_ERROR] Redis host is required".to_string());
+        return Err(error::validation("Redis host is required"));
     }
     if trimmed.starts_with('[') {
         return Ok((trimmed.to_string(), fallback_port));
@@ -13,7 +13,7 @@ fn parse_host_port(raw: &str, fallback_port: i64) -> Result<(String, i64), Strin
         if !host.is_empty() && port_part.chars().all(|c| c.is_ascii_digit()) {
             let port = port_part
                 .parse::<i64>()
-                .map_err(|_| "[VALIDATION_ERROR] Redis port is invalid".to_string())?;
+                .map_err(|_| error::validation("Redis port is invalid"))?;
             return Ok((host.to_string(), port));
         }
     }
@@ -24,10 +24,10 @@ fn build_connection_info_for_host(
     form: &ConnectionForm,
     host: &str,
     db: i64,
-) -> Result<ConnectionInfo, String> {
+) -> error::RedisResult<ConnectionInfo> {
     let (host, port) = parse_host_port(host, form.port.unwrap_or(DEFAULT_REDIS_PORT))?;
     if !(1..=65535).contains(&port) {
-        return Err("[VALIDATION_ERROR] Redis port must be between 1 and 65535".to_string());
+        return Err(error::validation("Redis port must be between 1 and 65535"));
     }
 
     let addr = if form.ssl.unwrap_or(false) {
@@ -60,25 +60,25 @@ fn build_connection_info_for_host(
     })
 }
 
-fn build_connection_info(form: &ConnectionForm, db: i64) -> Result<ConnectionInfo, String> {
+fn build_connection_info(form: &ConnectionForm, db: i64) -> error::RedisResult<ConnectionInfo> {
     let host = if let Some(seed_nodes) = form.seed_nodes.as_ref() {
         seed_nodes
             .first()
             .cloned()
             .or_else(|| form.host.clone())
-            .ok_or_else(|| "[VALIDATION_ERROR] Redis host is required".to_string())?
+            .ok_or_else(|| error::validation("Redis host is required"))?
     } else {
         form.host
             .clone()
-            .ok_or_else(|| "[VALIDATION_ERROR] Redis host is required".to_string())?
+            .ok_or_else(|| error::validation("Redis host is required"))?
     };
     build_connection_info_for_host(form, &host, db)
 }
 
-fn build_cluster_nodes(form: &ConnectionForm) -> Result<Vec<ConnectionInfo>, String> {
+fn build_cluster_nodes(form: &ConnectionForm) -> error::RedisResult<Vec<ConnectionInfo>> {
     let db = selected_database(form, None)?;
     if db != 0 {
-        return Err("[VALIDATION_ERROR] Redis Cluster only supports database 0".to_string());
+        return Err(error::validation("Redis Cluster only supports database 0"));
     }
     let nodes: Vec<ConnectionInfo> = form
         .seed_nodes
@@ -97,9 +97,9 @@ fn build_cluster_nodes(form: &ConnectionForm) -> Result<Vec<ConnectionInfo>, Str
         .map(|part| build_connection_info_for_host(form, &part, 0))
         .collect::<Result<_, _>>()?;
     if nodes.len() < 2 {
-        return Err(
-            "[VALIDATION_ERROR] Redis Cluster requires at least two seed nodes".to_string(),
-        );
+        return Err(error::validation(
+            "Redis Cluster requires at least two seed nodes",
+        ));
     }
     Ok(nodes)
 }
@@ -134,12 +134,12 @@ fn build_sentinel_node_info(form: &ConnectionForm, db: i64) -> SentinelNodeConne
 pub async fn connect(
     form: &ConnectionForm,
     database: Option<&str>,
-) -> Result<RedisConnection, String> {
+) -> error::RedisResult<RedisConnection> {
     if is_sentinel_form(form) {
         let sentinel_nodes = form
             .sentinels
             .clone()
-            .ok_or("[VALIDATION_ERROR] Sentinel nodes required")?;
+            .ok_or_else(|| error::validation("Sentinel nodes required"))?;
         let service_name = form
             .service_name
             .clone()
@@ -178,7 +178,7 @@ pub async fn connect(
     if is_cluster_form(form) {
         if let Some(db) = database {
             if parse_database(Some(db))? != 0 {
-                return Err("[VALIDATION_ERROR] Redis Cluster only supports database 0".to_string());
+                return Err(error::validation("Redis Cluster only supports database 0"));
             }
         }
         let nodes = build_cluster_nodes(form)?;
@@ -207,23 +207,23 @@ pub async fn connect(
 async fn query_on<T: FromRedisValue, C: ConnectionLike + Send + Sync>(
     conn: &mut C,
     cmd: Cmd,
-) -> Result<T, String> {
+) -> error::RedisResult<T> {
     cmd.query_async::<T>(conn)
         .await
-        .map_err(|e| error::to_command_string(e))
+        .map_err(|e| error::to_command_error(e))
 }
 
-pub async fn ping(conn: &mut RedisConnection) -> Result<(), String> {
+pub async fn ping(conn: &mut RedisConnection) -> error::RedisResult<()> {
     conn.query::<String>(redis::cmd("PING"))
         .await
         .map(|_| ())
-        .map_err(|e| conn_failed_error(&e))
+        .map_err(|e| crate::error::AppError::from(conn_failed_error(&e)))
 }
 
 pub fn list_databases(
     form: &ConnectionForm,
     db_count: i64,
-) -> Result<Vec<RedisDatabaseInfo>, String> {
+) -> error::RedisResult<Vec<RedisDatabaseInfo>> {
     if is_cluster_form(form) {
         build_cluster_nodes(form)?;
         return Ok(vec![RedisDatabaseInfo {
@@ -247,11 +247,11 @@ pub fn list_databases(
         .collect())
 }
 
-pub async fn server_info(conn: &mut RedisConnection) -> Result<RedisServerInfo, String> {
+pub async fn server_info(conn: &mut RedisConnection) -> error::RedisResult<RedisServerInfo> {
     let info_str: String = conn
         .query(redis::cmd("INFO"))
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
 
     let mut sections: HashMap<String, HashMap<String, String>> = HashMap::new();
     let mut current_section = String::new();
@@ -275,18 +275,20 @@ pub async fn server_info(conn: &mut RedisConnection) -> Result<RedisServerInfo, 
     let dbsize: u64 = conn
         .query(redis::cmd("DBSIZE"))
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
 
     Ok(RedisServerInfo { sections, dbsize })
 }
 
-pub async fn server_config(conn: &mut RedisConnection) -> Result<HashMap<String, String>, String> {
+pub async fn server_config(
+    conn: &mut RedisConnection,
+) -> error::RedisResult<HashMap<String, String>> {
     let mut cmd = redis::cmd("CONFIG");
     cmd.arg("GET").arg("*");
     let values: Vec<String> = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
 
     let mut config = HashMap::new();
     let mut iter = values.into_iter();
@@ -301,13 +303,13 @@ pub async fn server_config(conn: &mut RedisConnection) -> Result<HashMap<String,
 pub async fn slowlog_get(
     conn: &mut RedisConnection,
     count: i64,
-) -> Result<Vec<RedisSlowlogEntry>, String> {
+) -> error::RedisResult<Vec<RedisSlowlogEntry>> {
     let mut cmd = redis::cmd("SLOWLOG");
     cmd.arg("GET").arg(count.max(1));
     let raw: Vec<Vec<Value>> = conn
         .query(cmd)
         .await
-        .map_err(|e| error::to_command_string(e))?;
+        .map_err(|e| error::to_command_error(e))?;
 
     let mut entries = Vec::new();
     for item in raw {

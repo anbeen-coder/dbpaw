@@ -1,6 +1,7 @@
 use crate::db::drivers::conn_failed_error;
 use crate::models::ConnectionForm;
 use base64::Engine;
+use redis::AsyncConnectionConfig;
 use redis::aio::ConnectionLike;
 use redis::aio::MultiplexedConnection;
 use redis::cluster::ClusterClient;
@@ -9,10 +10,9 @@ use redis::cluster_routing::{
     MultipleNodeRoutingInfo, ResponsePolicy, RoutingInfo, SingleNodeRoutingInfo,
 };
 use redis::sentinel::{Sentinel, SentinelNodeConnectionInfo};
-use redis::AsyncConnectionConfig;
 use redis::{
-    from_redis_value, Cmd, ConnectionAddr, ConnectionInfo, FromRedisValue, ProtocolVersion,
-    RedisConnectionInfo, TlsMode, Value,
+    Cmd, ConnectionAddr, ConnectionInfo, FromRedisValue, ProtocolVersion, RedisConnectionInfo,
+    TlsMode, Value, from_redis_value,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex as TokioMutex;
 
-mod error;
+pub(crate) mod error;
 
 const DEFAULT_REDIS_PORT: i64 = 6379;
 const DEFAULT_CONNECT_TIMEOUT_MS: i64 = 5000;
@@ -73,7 +73,7 @@ impl RedisConnection {
         matches!(self, RedisConnection::Cluster(_))
     }
 
-    pub async fn query<T: FromRedisValue>(&mut self, cmd: Cmd) -> Result<T, String> {
+    pub async fn query<T: FromRedisValue>(&mut self, cmd: Cmd) -> error::RedisResult<T> {
         match self {
             RedisConnection::Standalone(inner) => query_on(inner, cmd).await,
             RedisConnection::Cluster(arc) => {
@@ -86,9 +86,9 @@ impl RedisConnection {
     pub async fn route_all_masters_combine_arrays<T: FromRedisValue>(
         &mut self,
         cmd: &Cmd,
-    ) -> Result<T, String> {
+    ) -> error::RedisResult<T> {
         let RedisConnection::Cluster(arc) = self else {
-            return Err("[REDIS_ERROR] all-master routing requires Redis Cluster".to_string());
+            return Err(error::command("all-master routing requires Redis Cluster"));
         };
         let mut cluster = arc.lock().await;
         let value = cluster
@@ -100,24 +100,24 @@ impl RedisConnection {
                 )),
             )
             .await
-            .map_err(|e| error::to_command_string(e))?;
-        from_redis_value(&value).map_err(|e| error::to_command_string(e))
+            .map_err(|e| error::to_command_error(e))?;
+        from_redis_value(&value).map_err(|e| error::to_command_error(e))
     }
 
     pub async fn pipe_query<T: FromRedisValue>(
         &mut self,
         pipe: &mut redis::Pipeline,
-    ) -> Result<T, String> {
+    ) -> error::RedisResult<T> {
         match self {
             RedisConnection::Standalone(inner) => pipe
                 .query_async(inner)
                 .await
-                .map_err(|e| error::to_command_string(e)),
+                .map_err(|e| error::to_command_error(e)),
             RedisConnection::Cluster(arc) => {
                 let mut conn = arc.lock().await;
                 pipe.query_async(&mut *conn)
                     .await
-                    .map_err(|e| error::to_command_string(e))
+                    .map_err(|e| error::to_command_error(e))
             }
         }
     }
@@ -127,7 +127,7 @@ impl RedisConnection {
         host: &str,
         port: u16,
         cmd: Cmd,
-    ) -> Result<T, String> {
+    ) -> error::RedisResult<T> {
         let RedisConnection::Cluster(arc) = self else {
             return self.query(cmd).await;
         };
@@ -139,8 +139,8 @@ impl RedisConnection {
         let value = cluster
             .route_command(&cmd, routing)
             .await
-            .map_err(|e| error::to_command_string(e))?;
-        from_redis_value(&value).map_err(|e| error::to_command_string(e))
+            .map_err(|e| error::to_command_error(e))?;
+        from_redis_value(&value).map_err(|e| error::to_command_error(e))
     }
 }
 
@@ -466,7 +466,7 @@ pub struct RedisClusterInfo {
     pub nodes: Vec<RedisClusterNode>,
 }
 
-fn parse_database(database: Option<&str>) -> Result<i64, String> {
+fn parse_database(database: Option<&str>) -> error::RedisResult<i64> {
     let Some(raw) = database else {
         return Ok(0);
     };
@@ -477,14 +477,16 @@ fn parse_database(database: Option<&str>) -> Result<i64, String> {
     let normalized = trimmed.strip_prefix("db").unwrap_or(trimmed);
     let db = normalized
         .parse::<i64>()
-        .map_err(|_| "[VALIDATION_ERROR] Redis database must be a numeric index".to_string())?;
+        .map_err(|_| error::validation("Redis database must be a numeric index"))?;
     if !(0..=255).contains(&db) {
-        return Err("[VALIDATION_ERROR] Redis database must be between 0 and 255".to_string());
+        return Err(error::validation(
+            "Redis database must be between 0 and 255",
+        ));
     }
     Ok(db)
 }
 
-fn selected_database(form: &ConnectionForm, database: Option<&str>) -> Result<i64, String> {
+fn selected_database(form: &ConnectionForm, database: Option<&str>) -> error::RedisResult<i64> {
     match database {
         Some(db) => parse_database(Some(db)),
         None => parse_database(form.database.as_deref()),
@@ -528,37 +530,37 @@ fn connect_timeout(form: &ConnectionForm) -> Duration {
     )
 }
 
-fn validate_key(key: &str) -> Result<(), String> {
+fn validate_key(key: &str) -> error::RedisResult<()> {
     if key.trim().is_empty() {
-        return Err("[VALIDATION_ERROR] Redis key cannot be empty".to_string());
+        return Err(error::validation("Redis key cannot be empty"));
     }
     Ok(())
 }
 
-fn validate_value_for_write(value: &RedisValue) -> Result<(), String> {
+fn validate_value_for_write(value: &RedisValue) -> error::RedisResult<()> {
     match value {
-        RedisValue::Hash(fields) if fields.is_empty() => {
-            Err("[VALIDATION_ERROR] Redis hash must contain at least one field".into())
-        }
-        RedisValue::List(items) if items.is_empty() => {
-            Err("[VALIDATION_ERROR] Redis list must contain at least one item".into())
-        }
-        RedisValue::Set(items) if items.is_empty() => {
-            Err("[VALIDATION_ERROR] Redis set must contain at least one member".into())
-        }
-        RedisValue::ZSet(items) if items.is_empty() => {
-            Err("[VALIDATION_ERROR] Redis zset must contain at least one member".into())
-        }
-        RedisValue::Stream(entries) if entries.is_empty() => {
-            Err("[VALIDATION_ERROR] Redis stream must contain at least one entry".into())
-        }
+        RedisValue::Hash(fields) if fields.is_empty() => Err(error::validation(
+            "Redis hash must contain at least one field",
+        )),
+        RedisValue::List(items) if items.is_empty() => Err(error::validation(
+            "Redis list must contain at least one item",
+        )),
+        RedisValue::Set(items) if items.is_empty() => Err(error::validation(
+            "Redis set must contain at least one member",
+        )),
+        RedisValue::ZSet(items) if items.is_empty() => Err(error::validation(
+            "Redis zset must contain at least one member",
+        )),
+        RedisValue::Stream(entries) if entries.is_empty() => Err(error::validation(
+            "Redis stream must contain at least one entry",
+        )),
         RedisValue::Json(s) => {
             if serde_json::from_str::<serde_json::Value>(s).is_err() {
-                return Err("[VALIDATION_ERROR] Invalid JSON".into());
+                return Err(error::validation("Invalid JSON"));
             }
             Ok(())
         }
-        RedisValue::None => Err("[VALIDATION_ERROR] Redis value is required".into()),
+        RedisValue::None => Err(error::validation("Redis value is required")),
         _ => Ok(()),
     }
 }

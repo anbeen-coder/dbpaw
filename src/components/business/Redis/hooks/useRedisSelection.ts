@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { RedisKeyInfo } from "@/services/api";
 
 type DetailState =
@@ -16,67 +16,80 @@ export function useRedisSelection({ keys, onScanRefresh }: UseRedisSelectionPara
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const [detail, setDetail] = useState<DetailState>({ mode: "none" });
 
-  const handleSelectKey = (key: string, index: number, e: React.MouseEvent) => {
-    if (selectedKeys.size > 0) {
-      // Shift-click range selection
-      if (e.shiftKey && lastClickedIndex !== null) {
-        const start = Math.min(lastClickedIndex, index);
-        const end = Math.max(lastClickedIndex, index);
-        const rangeKeys = keys.slice(start, end + 1).map((k) => k.key);
+  // Prune selectedKeys when keys change (new scan, load more, external delete).
+  useEffect(() => {
+    setSelectedKeys((prev) => {
+      if (prev.size === 0) return prev;
+      const valid = new Set(keys.map((k) => k.key));
+      const next = new Set([...prev].filter((k) => valid.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [keys]);
+
+  const handleSelectKey = useCallback(
+    (key: string, index: number, e: React.MouseEvent) => {
+      if (selectedKeys.size > 0) {
+        if (e.shiftKey && lastClickedIndex !== null) {
+          const start = Math.min(lastClickedIndex, index);
+          const end = Math.max(lastClickedIndex, index);
+          const rangeKeys = keys.slice(start, end + 1).map((k) => k.key);
+          setSelectedKeys((prev) => {
+            const next = new Set(prev);
+            for (const k of rangeKeys) next.add(k);
+            return next;
+          });
+          setLastClickedIndex(index);
+          return;
+        }
         setSelectedKeys((prev) => {
           const next = new Set(prev);
-          for (const k of rangeKeys) next.add(k);
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
           return next;
         });
         setLastClickedIndex(index);
         return;
       }
-      // Normal click in multi-select mode — toggle
-      setSelectedKeys((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-      setLastClickedIndex(index);
-      return;
-    }
-    setDetail({ mode: "view", key });
-  };
+      setDetail({ mode: "view", key });
+    },
+    [selectedKeys.size, lastClickedIndex, keys],
+  );
 
-  const handleNewKey = () => setDetail({ mode: "new" });
+  const handleNewKey = useCallback(() => setDetail({ mode: "new" }), []);
 
-  const handleKeyDeleted = () => {
-    if (detail.mode === "view") {
-      // Note: setKeys is not available here, parent will handle via onScanRefresh
-    }
+  const handleKeyDeleted = useCallback(() => {
     setDetail({ mode: "none" });
     onScanRefresh();
-  };
+  }, [onScanRefresh]);
 
-  const handleKeySaved = (newKey: string) => {
-    if (detail.mode === "new") {
-      setDetail({ mode: "view", key: newKey });
-    } else if (detail.mode === "view" && newKey !== detail.key) {
-      setDetail({ mode: "view", key: newKey });
-    }
-    onScanRefresh();
-  };
+  const handleKeySaved = useCallback(
+    (newKey: string) => {
+      if (detail.mode === "new") {
+        setDetail({ mode: "view", key: newKey });
+      } else if (detail.mode === "view" && newKey !== detail.key) {
+        setDetail({ mode: "view", key: newKey });
+      }
+      onScanRefresh();
+    },
+    [detail, onScanRefresh],
+  );
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setSelectedKeys(new Set());
     setLastClickedIndex(null);
-  };
+  }, []);
 
-  const selectAll = () => {
+  const selectAll = useCallback(() => {
     setSelectedKeys(new Set(keys.map((k) => k.key)));
-  };
+  }, [keys]);
 
   const selectedKey = detail.mode === "view" ? detail.key : null;
   const selectedCount = selectedKeys.size;
 
   return {
     selectedKeys,
+    // Exposed because Task 10 orchestrator calls selection.setDetail directly.
+    // Will be removed once the orchestrator is refactored to use handleNewKey/handleKeySaved.
     setSelectedKeys,
     lastClickedIndex,
     detail,

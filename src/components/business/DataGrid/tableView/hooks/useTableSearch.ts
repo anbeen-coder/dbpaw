@@ -1,16 +1,17 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { collectSearchMatches } from "../utils";
+import type { TableRow } from "../types";
 
 export interface UseTableSearchParams {
-  currentData: any[];
+  currentData: TableRow[];
   columns: string[];
   editingCell: { row: number; col: string } | null;
   commitEdit: () => void;
   getCellDisplayValue: (
     rowIndex: number,
     column: string,
-    originalValue: any,
-  ) => any;
+    originalValue: unknown,
+  ) => unknown;
   setSelectedCell: (cell: { row: number; col: string } | null) => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }

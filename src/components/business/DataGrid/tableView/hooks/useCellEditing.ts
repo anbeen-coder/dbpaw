@@ -1,15 +1,28 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/services/api";
 import type { ColumnInfo } from "@/services/api";
-import { cellValueToString, escapeSQL, formatSQLValue, formatInsertSQLValue, getQualifiedTableName, quoteIdent, isInsertColumnRequired, isClickHouseMergeTreeEngine, canMutateClickHouseTable, buildUpdateStatement, buildDeleteStatement } from "../utils";
+import {
+  cellValueToString,
+  escapeSQL,
+  formatSQLValue,
+  formatInsertSQLValue,
+  getQualifiedTableName,
+  quoteIdent,
+  isInsertColumnRequired,
+  isClickHouseMergeTreeEngine,
+  canMutateClickHouseTable,
+  buildUpdateStatement,
+  buildDeleteStatement,
+} from "../utils";
 import type { ColumnAutocompleteOption } from "../columnAutocomplete";
 import { errorMessage } from "@/lib/errors";
+import type { CellValue, TableContext, TableRow } from "../types";
 
 export interface PendingChange {
   rowIndex: number;
   sourceRowIndex: number;
   column: string;
-  originalValue: any;
+  originalValue: CellValue;
   newValue: string;
 }
 
@@ -19,16 +32,10 @@ export interface InsertDraftRow {
 }
 
 interface UseCellEditingParams {
-  data: any[];
-  currentData: any[];
+  data: TableRow[];
+  currentData: TableRow[];
   columns: string[];
-  tableContext?: {
-    connectionId: number;
-    database: string;
-    schema: string;
-    table: string;
-    driver: string;
-  };
+  tableContext?: TableContext;
   onDataRefresh?: (params?: {
     page?: number;
     limit?: number;
@@ -225,7 +232,7 @@ export function useCellEditing({
 
   // --- Cell interaction handlers ---
   const handleCellDoubleClick = useCallback(
-    (rowIndex: number, col: string, currentValue: any) => {
+    (rowIndex: number, col: string, currentValue: CellValue) => {
       if (!isEditableForUpdates) return;
       const key = `${rowIndex}_${col}`;
       const pending = pendingChangesRef.current.get(key);
@@ -539,9 +546,7 @@ export function useCellEditing({
       setEditingCell(null);
       await refreshAfterMutation();
     } catch (e) {
-      setSaveError(
-        `Delete failed:\n${sql}\n  -> ${errorMessage(e)}`,
-      );
+      setSaveError(`Delete failed:\n${sql}\n  -> ${errorMessage(e)}`);
     } finally {
       setIsDeleting(false);
     }
@@ -590,9 +595,7 @@ export function useCellEditing({
           "table_view_save",
         );
       } catch (e) {
-        errors.push(
-          `${sql}\n  -> ${errorMessage(e)}`,
-        );
+        errors.push(`${sql}\n  -> ${errorMessage(e)}`);
       }
     }
 
@@ -642,16 +645,11 @@ export function useCellEditing({
     } finally {
       setIsRefreshing(false);
     }
-  }, [
-    hasPendingChanges,
-    onDataRefresh,
-    isRefreshing,
-    buildRefreshParams,
-  ]);
+  }, [hasPendingChanges, onDataRefresh, isRefreshing, buildRefreshParams]);
 
   // Helper: get display value for a cell (considering pending changes)
   const getCellDisplayValue = useCallback(
-    (rowIndex: number, column: string, originalValue: any) => {
+    (rowIndex: number, column: string, originalValue: CellValue) => {
       const key = `${rowIndex}_${column}`;
       const pending = pendingChanges.get(key);
       if (pending) return pending.newValue;

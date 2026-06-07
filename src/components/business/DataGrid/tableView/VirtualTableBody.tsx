@@ -1,13 +1,6 @@
 import { memo, type Key } from "react";
-import {
-  ChevronUp,
-  ChevronDown,
-  ArrowUpDown,
-} from "lucide-react";
-import {
-  ContextMenu,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+import { ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
   createSingleAndDoubleClickHandler,
   formatCellValue,
@@ -18,10 +11,11 @@ import { TableContextMenuContent } from "./TableContextMenuContent";
 import type { InsertDraftRow } from "./hooks/useCellEditing";
 import type { ColumnInfo } from "@/services/api";
 import type { PendingChange } from "./hooks/useCellEditing";
+import type { TableContext, TableRow } from "./types";
 
 interface DataRowProps {
   rowIndex: number;
-  row: Record<string, any>;
+  row: TableRow;
   columns: string[];
   showRowNumbers: boolean;
   showZebraStripes: boolean;
@@ -44,14 +38,14 @@ interface DataRowProps {
   getCellDisplayValue: (
     rowIndex: number,
     column: string,
-    originalValue: any,
-  ) => any;
+    originalValue: unknown,
+  ) => unknown;
   isCellModified: (rowIndex: number, column: string) => boolean;
   handleCellClick: (rowIndex: number, col: string) => void;
   handleCellDoubleClick: (
     rowIndex: number,
     col: string,
-    currentValue: any,
+    currentValue: unknown,
   ) => void;
   handleCellMouseDownForRange: (
     e: React.MouseEvent,
@@ -65,7 +59,7 @@ interface DataRowProps {
   setEditValue: (value: string) => void;
   commitEdit: () => void;
   setComplexViewer: (
-    viewer: { value: any; columnName: string } | null,
+    viewer: { value: unknown; columnName: string } | null,
   ) => void;
   setContextMenuRow: (row: number | null) => void;
 }
@@ -160,11 +154,7 @@ const DataRow = memo(function DataRow({
       )}
       {columns.map((column, colIndex) => {
         const modified = isCellModified(rowIndex, column);
-        const displayValue = getCellDisplayValue(
-          rowIndex,
-          column,
-          row[column],
-        );
+        const displayValue = getCellDisplayValue(rowIndex, column, row[column]);
         const editing = isEditing(column);
         const selected = isSelected(column);
         const inRange = isCellInRange(rowIndex, colIndex, cellSelectionRange);
@@ -188,9 +178,7 @@ const DataRow = memo(function DataRow({
               isRowSelected && !selected && !editing && !inRange
                 ? "bg-accent/60"
                 : "",
-              matched && !editing
-                ? "bg-amber-100/60 dark:bg-amber-900/20"
-                : "",
+              matched && !editing ? "bg-amber-100/60 dark:bg-amber-900/20" : "",
               activeSearchMatch && !editing
                 ? "border-b-2 border-b-amber-500/70"
                 : "",
@@ -206,9 +194,7 @@ const DataRow = memo(function DataRow({
             onMouseDown={(e) =>
               handleCellMouseDownForRange(e, rowIndex, colIndex)
             }
-            onMouseEnter={() =>
-              handleCellMouseMoveForRange(rowIndex, colIndex)
-            }
+            onMouseEnter={() => handleCellMouseMoveForRange(rowIndex, colIndex)}
             onClick={() => handleCellClick(rowIndex, column)}
             onContextMenu={() => {
               if (isMultiRowSelection) {
@@ -283,7 +269,7 @@ const DataRow = memo(function DataRow({
 
 interface VirtualTableBodyProps {
   columns: string[];
-  currentData: any[];
+  currentData: TableRow[];
   virtualizer: {
     getTotalSize: () => number;
     getVirtualItems: () => Array<{
@@ -320,14 +306,14 @@ interface VirtualTableBodyProps {
   getCellDisplayValue: (
     rowIndex: number,
     column: string,
-    originalValue: any,
-  ) => any;
+    originalValue: unknown,
+  ) => unknown;
   isCellModified: (rowIndex: number, column: string) => boolean;
   handleCellClick: (rowIndex: number, col: string) => void;
   handleCellDoubleClick: (
     rowIndex: number,
     col: string,
-    currentValue: any,
+    currentValue: unknown,
   ) => void;
   handleCellMouseDownForRange: (
     e: React.MouseEvent,
@@ -341,23 +327,21 @@ interface VirtualTableBodyProps {
   setEditValue: (value: string) => void;
   commitEdit: () => void;
   setComplexViewer: (
-    viewer: { value: any; columnName: string } | null,
+    viewer: { value: unknown; columnName: string } | null,
   ) => void;
   setContextMenuRow: (row: number | null) => void;
   handleSortClick: (column: string) => void;
   handleHeaderCopy: (column: string) => void;
   handleMouseDown: (e: React.MouseEvent, column: string) => void;
   insertDraftRows: InsertDraftRow[];
-  handleDraftValueChange: (tempId: string, column: string, value: string) => void;
+  handleDraftValueChange: (
+    tempId: string,
+    column: string,
+    value: string,
+  ) => void;
   contextMenuRow: number | null;
   tableColumns: ColumnInfo[];
-  tableContext?: {
-    connectionId: number;
-    database: string;
-    schema: string;
-    table: string;
-    driver: string;
-  };
+  tableContext?: TableContext;
   canUpdateDelete: boolean;
   onFilterChange?: (filter: string, orderBy: string) => void;
   orderByInput: string;
@@ -455,222 +439,237 @@ export function VirtualTableBody({
 
   const virtualItems = virtualizer.getVirtualItems();
   const topSpacerHeight = virtualItems.length > 0 ? virtualItems[0].start : 0;
-  const bottomSpacerHeight = virtualItems.length > 0
-    ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
-    : virtualizer.getTotalSize();
+  const bottomSpacerHeight =
+    virtualItems.length > 0
+      ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+      : virtualizer.getTotalSize();
 
   return (
-    <ContextMenu onOpenChange={(open) => { if (!open) setContextMenuRow(null); }}>
-    <ContextMenuTrigger asChild>
-    <table
-      className="border-collapse table-fixed"
-      style={{
-        width: tableWidthPx,
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (!open) setContextMenuRow(null);
       }}
     >
-      <colgroup>
-        {showRowNumbers && <col className="w-12" style={{ width: INDEX_COL_WIDTH }} />}
-        {columns.map((column) => (
-          <col
-            key={column}
-            style={{
-              width: getColWidth(column),
-              minWidth: 50,
-            }}
-          />
-        ))}
-      </colgroup>
-      <thead className="bg-muted/90 sticky top-0 z-10">
-        <tr>
-          {showRowNumbers && (
-            <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border w-12">
-              #
-            </th>
-          )}
-          {columns.map((column) => {
-            const isSorted = activeSortColumn === column;
-            const direction = isSorted ? activeSortDirection : undefined;
-            const comment = columnComments[column]?.trim();
-            const headerTooltip = comment || column;
-            const headerActionLabel = t("tableView.header.actionHint", {
-              column,
-            });
-            const headerClickState =
-              headerClickStateRef.current[column] ??
-              (headerClickStateRef.current[column] = { timerId: null });
-            const headerInteraction = createSingleAndDoubleClickHandler(
-              headerClickState,
-              () => handleHeaderCopy(column),
-              () => handleSortClick(column),
-            );
-            return (
-              <th
+      <ContextMenuTrigger asChild>
+        <table
+          className="border-collapse table-fixed"
+          style={{
+            width: tableWidthPx,
+          }}
+        >
+          <colgroup>
+            {showRowNumbers && (
+              <col className="w-12" style={{ width: INDEX_COL_WIDTH }} />
+            )}
+            {columns.map((column) => (
+              <col
                 key={column}
-                ref={(el) => {
-                  thRefs.current[column] = el;
-                }}
-                className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border relative group select-none"
                 style={{
                   width: getColWidth(column),
                   minWidth: 50,
                 }}
-              >
-                <div className="flex items-center justify-between pr-2">
-                  <button
-                    type="button"
-                    className="flex flex-col items-start cursor-pointer hover:text-foreground transition-colors min-w-0 flex-1 overflow-hidden"
-                    title={`${headerTooltip}\n${headerActionLabel}`}
-                    aria-label={headerActionLabel}
-                    onClick={headerInteraction.handleClick}
-                    onDoubleClick={headerInteraction.handleDoubleClick}
-                  >
-                    <div className="flex items-center gap-1 w-full">
-                      <span className="truncate" title={headerTooltip}>
-                        {column}
-                      </span>
-                      <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                        {isSorted ? (
-                          direction === "asc" ? (
-                            <ChevronUp className="w-3.5 h-3.5 text-primary" />
-                          ) : (
-                            <ChevronDown className="w-3.5 h-3.5 text-primary" />
-                          )
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        )}
-                      </span>
-                    </div>
-                    {showColumnComments && comment && (
-                      <span className="block truncate text-[10px] text-muted-foreground/60 leading-tight font-normal">
-                        {comment}
-                      </span>
-                    )}
-                  </button>
-                  <div
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20 select-none touch-none"
-                    onMouseDown={(e) => handleMouseDown(e, column)}
-                  />
-                </div>
-              </th>
-            );
-          })}
-        </tr>
-      </thead>
-      <tbody>
-        {/* Top spacer */}
-        {topSpacerHeight > 0 && (
-          <tr key="top-spacer">
-            <td
-              colSpan={colSpan}
-              style={{ height: topSpacerHeight, padding: 0, border: 'none' }}
-            />
-          </tr>
-        )}
-
-        {/* Virtual items (data rows + draft rows) */}
-        {virtualItems.map((virtualRow) => {
-          const virtualIndex = virtualRow.index;
-
-          // Draft rows: indices >= dataRowCount
-          if (virtualIndex >= dataRowCount) {
-            const draftIndex = virtualIndex - dataRowCount;
-            const draft = insertDraftRows[draftIndex];
-            if (!draft) return null;
-
-            return (
-              <DraftRow
-                key={`draft-${draft.tempId}`}
-                draft={draft}
-                columns={columns}
-                showRowNumbers={showRowNumbers}
-                getColWidth={getColWidth}
-                handleDraftValueChange={handleDraftValueChange}
               />
-            );
-          }
+            ))}
+          </colgroup>
+          <thead className="bg-muted/90 sticky top-0 z-10">
+            <tr>
+              {showRowNumbers && (
+                <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border w-12">
+                  #
+                </th>
+              )}
+              {columns.map((column) => {
+                const isSorted = activeSortColumn === column;
+                const direction = isSorted ? activeSortDirection : undefined;
+                const comment = columnComments[column]?.trim();
+                const headerTooltip = comment || column;
+                const headerActionLabel = t("tableView.header.actionHint", {
+                  column,
+                });
+                const headerClickState =
+                  headerClickStateRef.current[column] ??
+                  (headerClickStateRef.current[column] = { timerId: null });
+                const headerInteraction = createSingleAndDoubleClickHandler(
+                  headerClickState,
+                  () => handleHeaderCopy(column),
+                  () => handleSortClick(column),
+                );
+                return (
+                  <th
+                    key={column}
+                    ref={(el) => {
+                      thRefs.current[column] = el;
+                    }}
+                    className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground border-b border-r border-border relative group select-none"
+                    style={{
+                      width: getColWidth(column),
+                      minWidth: 50,
+                    }}
+                  >
+                    <div className="flex items-center justify-between pr-2">
+                      <button
+                        type="button"
+                        className="flex flex-col items-start cursor-pointer hover:text-foreground transition-colors min-w-0 flex-1 overflow-hidden"
+                        title={`${headerTooltip}\n${headerActionLabel}`}
+                        aria-label={headerActionLabel}
+                        onClick={headerInteraction.handleClick}
+                        onDoubleClick={headerInteraction.handleDoubleClick}
+                      >
+                        <div className="flex items-center gap-1 w-full">
+                          <span className="truncate" title={headerTooltip}>
+                            {column}
+                          </span>
+                          <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                            {isSorted ? (
+                              direction === "asc" ? (
+                                <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5 text-primary" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </span>
+                        </div>
+                        {showColumnComments && comment && (
+                          <span className="block truncate text-[10px] text-muted-foreground/60 leading-tight font-normal">
+                            {comment}
+                          </span>
+                        )}
+                      </button>
+                      <div
+                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-muted-foreground/20 select-none touch-none"
+                        onMouseDown={(e) => handleMouseDown(e, column)}
+                      />
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {/* Top spacer */}
+            {topSpacerHeight > 0 && (
+              <tr key="top-spacer">
+                <td
+                  colSpan={colSpan}
+                  style={{
+                    height: topSpacerHeight,
+                    padding: 0,
+                    border: "none",
+                  }}
+                />
+              </tr>
+            )}
 
-          // Data rows
-          const rowIndex = virtualIndex;
-          const row = currentData[rowIndex];
-          if (!row || typeof row !== "object") return null;
-          const isRowSelected = selectedRows.has(rowIndex);
+            {/* Virtual items (data rows + draft rows) */}
+            {virtualItems.map((virtualRow) => {
+              const virtualIndex = virtualRow.index;
 
-          return (
-            <DataRow
-              key={rowIndex}
-              rowIndex={rowIndex}
-              row={row}
-              columns={columns}
-              showRowNumbers={showRowNumbers}
-              showZebraStripes={showZebraStripes}
-              startIndex={startIndex}
-              isRowSelected={isRowSelected}
-              isMultiRowSelection={isRowSelected && selectedRows.size > 1}
-              editingCell={editingCell}
-              selectedCell={selectedCell}
-              cellSelectionRange={cellSelectionRange}
-              normalizedSearchKeyword={normalizedSearchKeyword}
-              matchedCellKeys={matchedCellKeys}
-              currentSearchMatch={currentSearchMatch}
-              isEditableForUpdates={isEditableForUpdates}
-              editValue={editValue}
-              editInputRef={editInputRef}
-              getColWidth={getColWidth}
-              getCellDisplayValue={getCellDisplayValue}
-              isCellModified={isCellModified}
-              handleCellClick={handleCellClick}
-              handleCellDoubleClick={handleCellDoubleClick}
-              handleCellMouseDownForRange={handleCellMouseDownForRange}
-              handleCellMouseMoveForRange={handleCellMouseMoveForRange}
-              handleIndexMouseDown={handleIndexMouseDown}
-              handleIndexMouseEnter={handleIndexMouseEnter}
-              handleEditKeyDown={handleEditKeyDown}
-              setEditValue={setEditValue}
-              commitEdit={commitEdit}
-              setComplexViewer={setComplexViewer}
-              setContextMenuRow={setContextMenuRow}
-            />
-          );
-        })}
+              // Draft rows: indices >= dataRowCount
+              if (virtualIndex >= dataRowCount) {
+                const draftIndex = virtualIndex - dataRowCount;
+                const draft = insertDraftRows[draftIndex];
+                if (!draft) return null;
 
-        {/* Bottom spacer */}
-        {bottomSpacerHeight > 0 && (
-          <tr key="bottom-spacer">
-            <td
-              colSpan={colSpan}
-              style={{ height: bottomSpacerHeight, padding: 0, border: 'none' }}
-            />
-          </tr>
-        )}
-      </tbody>
-    </table>
-    </ContextMenuTrigger>
-    <TableContextMenuContent
-      contextMenuRow={contextMenuRow}
-      currentData={currentData}
-      selectedRows={selectedRows}
-      selectedCell={selectedCell}
-      columns={columns}
-      tableColumns={tableColumns}
-      tableContext={tableContext}
-      canUpdateDelete={canUpdateDelete}
-      onFilterChange={onFilterChange}
-      orderByInput={orderByInput}
-      getNormalizedCellRange={getNormalizedCellRange}
-      handleCopy={handleCopy}
-      handleCopySelection={handleCopySelection}
-      buildSelectionCSV={buildSelectionCSV}
-      buildSelectionInsertSQL={buildSelectionInsertSQL}
-      buildSelectionUpdateSQL={buildSelectionUpdateSQL}
-      buildRowsTSV={buildRowsTSV}
-      buildRowsCSV={buildRowsCSV}
-      buildRowsInsertSQL={buildRowsInsertSQL}
-      buildRowsUpdateSQL={buildRowsUpdateSQL}
-      getCellDisplayValue={getCellDisplayValue}
-      isCellModified={isCellModified}
-      applyFilter={applyFilter}
-      setPendingChanges={setPendingChanges}
-    />
+                return (
+                  <DraftRow
+                    key={`draft-${draft.tempId}`}
+                    draft={draft}
+                    columns={columns}
+                    showRowNumbers={showRowNumbers}
+                    getColWidth={getColWidth}
+                    handleDraftValueChange={handleDraftValueChange}
+                  />
+                );
+              }
+
+              // Data rows
+              const rowIndex = virtualIndex;
+              const row = currentData[rowIndex];
+              if (!row || typeof row !== "object") return null;
+              const isRowSelected = selectedRows.has(rowIndex);
+
+              return (
+                <DataRow
+                  key={rowIndex}
+                  rowIndex={rowIndex}
+                  row={row}
+                  columns={columns}
+                  showRowNumbers={showRowNumbers}
+                  showZebraStripes={showZebraStripes}
+                  startIndex={startIndex}
+                  isRowSelected={isRowSelected}
+                  isMultiRowSelection={isRowSelected && selectedRows.size > 1}
+                  editingCell={editingCell}
+                  selectedCell={selectedCell}
+                  cellSelectionRange={cellSelectionRange}
+                  normalizedSearchKeyword={normalizedSearchKeyword}
+                  matchedCellKeys={matchedCellKeys}
+                  currentSearchMatch={currentSearchMatch}
+                  isEditableForUpdates={isEditableForUpdates}
+                  editValue={editValue}
+                  editInputRef={editInputRef}
+                  getColWidth={getColWidth}
+                  getCellDisplayValue={getCellDisplayValue}
+                  isCellModified={isCellModified}
+                  handleCellClick={handleCellClick}
+                  handleCellDoubleClick={handleCellDoubleClick}
+                  handleCellMouseDownForRange={handleCellMouseDownForRange}
+                  handleCellMouseMoveForRange={handleCellMouseMoveForRange}
+                  handleIndexMouseDown={handleIndexMouseDown}
+                  handleIndexMouseEnter={handleIndexMouseEnter}
+                  handleEditKeyDown={handleEditKeyDown}
+                  setEditValue={setEditValue}
+                  commitEdit={commitEdit}
+                  setComplexViewer={setComplexViewer}
+                  setContextMenuRow={setContextMenuRow}
+                />
+              );
+            })}
+
+            {/* Bottom spacer */}
+            {bottomSpacerHeight > 0 && (
+              <tr key="bottom-spacer">
+                <td
+                  colSpan={colSpan}
+                  style={{
+                    height: bottomSpacerHeight,
+                    padding: 0,
+                    border: "none",
+                  }}
+                />
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </ContextMenuTrigger>
+      <TableContextMenuContent
+        contextMenuRow={contextMenuRow}
+        currentData={currentData}
+        selectedRows={selectedRows}
+        selectedCell={selectedCell}
+        columns={columns}
+        tableColumns={tableColumns}
+        tableContext={tableContext}
+        canUpdateDelete={canUpdateDelete}
+        onFilterChange={onFilterChange}
+        orderByInput={orderByInput}
+        getNormalizedCellRange={getNormalizedCellRange}
+        handleCopy={handleCopy}
+        handleCopySelection={handleCopySelection}
+        buildSelectionCSV={buildSelectionCSV}
+        buildSelectionInsertSQL={buildSelectionInsertSQL}
+        buildSelectionUpdateSQL={buildSelectionUpdateSQL}
+        buildRowsTSV={buildRowsTSV}
+        buildRowsCSV={buildRowsCSV}
+        buildRowsInsertSQL={buildRowsInsertSQL}
+        buildRowsUpdateSQL={buildRowsUpdateSQL}
+        getCellDisplayValue={getCellDisplayValue}
+        isCellModified={isCellModified}
+        applyFilter={applyFilter}
+        setPendingChanges={setPendingChanges}
+      />
     </ContextMenu>
   );
 }

@@ -1,9 +1,10 @@
 import React from "react";
 import { formatCellValue, isComplexValue } from "./utils";
+import type { TableRow } from "./types";
 
 interface ColumnViewBodyProps {
   columns: string[];
-  currentData: any[];
+  currentData: TableRow[];
   startIndex: number;
   showRowNumbers: boolean;
   showZebraStripes: boolean;
@@ -23,14 +24,14 @@ interface ColumnViewBodyProps {
   getCellDisplayValue: (
     rowIndex: number,
     column: string,
-    originalValue: any,
-  ) => any;
+    originalValue: unknown,
+  ) => unknown;
   isCellModified: (rowIndex: number, column: string) => boolean;
   handleCellClick: (rowIndex: number, col: string) => void;
   handleCellDoubleClick: (
     rowIndex: number,
     col: string,
-    currentValue: any,
+    currentValue: unknown,
   ) => void;
   handleCellMouseDownForRange: (
     e: React.MouseEvent,
@@ -42,7 +43,7 @@ interface ColumnViewBodyProps {
   setEditValue: (value: string) => void;
   commitEdit: () => void;
   setComplexViewer: (
-    viewer: { value: any; columnName: string } | null,
+    viewer: { value: unknown; columnName: string } | null,
   ) => void;
 }
 
@@ -179,7 +180,9 @@ export const ColumnViewBody = React.memo(function ColumnViewBody({
                     matched && !editing
                       ? "bg-amber-100/60 dark:bg-amber-900/20"
                       : "",
-                    modified && !editing ? "border-l-2 border-l-orange-400" : "",
+                    modified && !editing
+                      ? "border-l-2 border-l-orange-400"
+                      : "",
                     isEditableForUpdates ? "cursor-pointer" : "",
                   ]
                     .filter(Boolean)

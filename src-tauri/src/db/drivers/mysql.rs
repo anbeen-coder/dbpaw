@@ -1,4 +1,5 @@
-use super::{strip_trailing_statement_terminator, DatabaseDriver, DriverResult};
+use super::{DatabaseDriver, DriverResult, strip_trailing_statement_terminator};
+use crate::error::AppError;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, EventInfo, ForeignKeyInfo, IndexInfo, QueryColumn,
     QueryResult, RoutineInfo, SchemaForeignKey, SchemaOverview, SingleResultSet,
@@ -6,8 +7,8 @@ use crate::models::{
 };
 use async_trait::async_trait;
 use sqlx::{
-    mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlQueryResult, MySqlRow},
     Column, Executor, Row, TypeInfo,
+    mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlQueryResult, MySqlRow},
 };
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -21,6 +22,18 @@ use tokio::sync::Mutex;
 use sqlx::ConnectOptions;
 
 use crate::ssh::SshTunnel;
+
+fn validation_error(message: impl Into<String>) -> AppError {
+    AppError::validation(message)
+}
+
+fn query_error(message: impl Into<String>) -> AppError {
+    AppError::query_failed(message)
+}
+
+fn conn_error(message: impl Into<String>) -> AppError {
+    AppError::conn_failed(message, "Check connection settings")
+}
 
 type MysqlQueryThreadRegistry = HashMap<String, u64>;
 
@@ -52,7 +65,7 @@ pub struct MysqlDriver {
     compatibility_mode: bool,
 }
 
-fn write_temp_cert_file(prefix: &str, pem: &str) -> Result<PathBuf, String> {
+fn write_temp_cert_file(prefix: &str, pem: &str) -> DriverResult<PathBuf> {
     let dir = std::env::temp_dir().join("dbpaw_certs");
     fs::create_dir_all(&dir).map_err(|e| format!("[SSL_CA_WRITE_ERROR] {e}"))?;
     let path = dir.join(format!("{prefix}_{}.pem", uuid::Uuid::new_v4()));
@@ -99,10 +112,10 @@ fn normalize_mysql_host_and_port(
     raw_driver: &str,
     raw_host: &str,
     raw_port: Option<i64>,
-) -> Result<(String, u16), String> {
+) -> DriverResult<(String, u16)> {
     let mut host = raw_host.trim().to_string();
     if host.is_empty() {
-        return Err("[VALIDATION_ERROR] host cannot be empty".to_string().into());
+        return Err(validation_error("host cannot be empty"));
     }
 
     let mut port = raw_port.unwrap_or(i64::from(mysql_family_default_port(raw_driver)));
@@ -120,30 +133,30 @@ fn normalize_mysql_host_and_port(
     }
 
     if host.is_empty() {
-        return Err("[VALIDATION_ERROR] host cannot be empty".to_string().into());
+        return Err(validation_error("host cannot be empty"));
     }
     if !(1..=65535).contains(&port) {
-        return Err("[VALIDATION_ERROR] port must be between 1 and 65535".to_string().into());
+        return Err(validation_error("port must be between 1 and 65535"));
     }
 
     Ok((host, port as u16))
 }
 
-fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBuf>), String> {
+fn build_dsn_and_ca_path(form: &ConnectionForm) -> DriverResult<(String, Option<PathBuf>)> {
     let raw_host = form
         .host
         .clone()
-        .ok_or("[VALIDATION_ERROR] host cannot be empty")?;
+        .ok_or_else(|| validation_error("host cannot be empty"))?;
     let (host, port) = normalize_mysql_host_and_port(&form.driver, &raw_host, form.port)?;
     // Allow database to be empty
     let username = form
         .username
         .clone()
-        .ok_or("[VALIDATION_ERROR] username cannot be empty")?;
+        .ok_or_else(|| validation_error("username cannot be empty"))?;
     let password = form
         .password
         .clone()
-        .ok_or("[VALIDATION_ERROR] password cannot be empty")?;
+        .ok_or_else(|| validation_error("password cannot be empty"))?;
     let username = percent_encode_query_value(&username);
     let password = percent_encode_query_value(&password);
     let mut dsn = format!("mysql://{}:{}@{}:{}", username, password, host, port);
@@ -168,7 +181,7 @@ fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBu
                 .as_deref()
                 .map(str::trim)
                 .filter(|v| !v.is_empty())
-                .ok_or("[VALIDATION_ERROR] sslCaCert cannot be empty in verify_ca mode")?;
+                .ok_or_else(|| validation_error("sslCaCert cannot be empty in verify_ca mode"))?;
             let ca_path = write_temp_cert_file("mysql_ca", ca_cert)?;
             dsn.push_str(&build_verify_ca_query_param(&ca_path));
             ca_cert_path = Some(ca_path);
@@ -185,22 +198,21 @@ fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBu
 }
 
 #[cfg(test)]
-fn build_dsn(form: &ConnectionForm) -> Result<String, String> {
+fn build_dsn(form: &ConnectionForm) -> DriverResult<String> {
     Ok(build_dsn_and_ca_path(form)?.0)
 }
 
 #[cfg(test)]
-pub(crate) fn build_test_dsn(form: &ConnectionForm) -> Result<String, String> {
+pub(crate) fn build_test_dsn(form: &ConnectionForm) -> DriverResult<String> {
     build_dsn(form)
 }
 
-fn build_dsn_with_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBuf>), String> {
+fn build_dsn_with_ca_path(form: &ConnectionForm) -> DriverResult<(String, Option<PathBuf>)> {
     build_dsn_and_ca_path(form)
 }
 
-fn build_connect_options(dsn: &str, driver: &str) -> Result<MySqlConnectOptions, String> {
-    let mut options =
-        MySqlConnectOptions::from_str(dsn).map_err(|e| format!("[CONN_FAILED] {e}"))?;
+fn build_connect_options(dsn: &str, driver: &str) -> DriverResult<MySqlConnectOptions> {
+    let mut options = MySqlConnectOptions::from_str(dsn).map_err(|e| conn_error(e.to_string()))?;
 
     if driver.eq_ignore_ascii_case("starrocks") || driver.eq_ignore_ascii_case("doris") {
         // sqlx initializes MySQL connections with:
@@ -330,7 +342,7 @@ impl MysqlDriver {
         cleanup_ca_file_opt(self.ca_cert_path.as_ref());
     }
 
-    pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
+    pub async fn connect(form: &ConnectionForm) -> DriverResult<Self> {
         let mut dsn_form = form.clone();
         let mut ssh_tunnel = None;
 
@@ -366,40 +378,40 @@ impl MysqlDriver {
         })
     }
 
-    async fn fetch_all_sql(&self, sql: &str) -> Result<Vec<MySqlRow>, String> {
+    async fn fetch_all_sql(&self, sql: &str) -> DriverResult<Vec<MySqlRow>> {
         if self.is_compatibility_mode() {
             sqlx::raw_sql(sql)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", sql, e))
+                .map_err(|e| query_error(format!("SQL: {} | {}", sql, e)))
         } else {
             sqlx::query(sql)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", sql, e))
+                .map_err(|e| query_error(format!("SQL: {} | {}", sql, e)))
         }
     }
 
-    async fn fetch_one_sql(&self, sql: &str) -> Result<MySqlRow, String> {
+    async fn fetch_one_sql(&self, sql: &str) -> DriverResult<MySqlRow> {
         if self.is_compatibility_mode() {
             sqlx::raw_sql(sql)
                 .fetch_one(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", sql, e))
+                .map_err(|e| query_error(format!("SQL: {} | {}", sql, e)))
         } else {
             sqlx::query(sql)
                 .fetch_one(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", sql, e))
+                .map_err(|e| query_error(format!("SQL: {} | {}", sql, e)))
         }
     }
 
-    async fn execute_sql(&self, sql: &str) -> Result<MySqlQueryResult, String> {
+    async fn execute_sql(&self, sql: &str) -> DriverResult<MySqlQueryResult> {
         if self.is_compatibility_mode() {
             return sqlx::raw_sql(sql)
                 .execute(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", sql, e));
+                .map_err(|e| query_error(format!("SQL: {} | {}", sql, e)));
         }
 
         match sqlx::query(sql).execute(&self.pool).await {
@@ -410,9 +422,9 @@ impl MysqlDriver {
                     sqlx::raw_sql(sql)
                         .execute(&self.pool)
                         .await
-                        .map_err(|raw_err| format!("[QUERY_ERROR] SQL: {} | {}", sql, raw_err))
+                        .map_err(|raw_err| query_error(format!("SQL: {} | {}", sql, raw_err)))
                 } else {
-                    Err(format!("[QUERY_ERROR] SQL: {} | {}", sql, e))
+                    Err(query_error(format!("SQL: {} | {}", sql, e)))
                 }
             }
         }
@@ -422,7 +434,7 @@ impl MysqlDriver {
         &self,
         sql: &str,
         params: &[&str],
-    ) -> Result<Vec<MySqlRow>, String> {
+    ) -> DriverResult<Vec<MySqlRow>> {
         if self.is_compatibility_mode() {
             let rendered = render_mysql_query_with_str_params(sql, params)?;
             self.fetch_all_sql(&rendered).await
@@ -434,30 +446,30 @@ impl MysqlDriver {
             query
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", sql, e))
+                .map_err(|e| query_error(format!("SQL: {} | {}", sql, e)))
         }
     }
 
-    async fn current_database(&self) -> Result<Option<String>, String> {
+    async fn current_database(&self) -> DriverResult<Option<String>> {
         let row = self.fetch_one_sql("SELECT DATABASE()").await?;
         decode_mysql_optional_text_cell(&row, 0)
     }
 
-    async fn fetch_i64_scalar_sql(&self, sql: &str) -> Result<i64, String> {
+    async fn fetch_i64_scalar_sql(&self, sql: &str) -> DriverResult<i64> {
         if self.is_compatibility_mode() {
             let row = self.fetch_one_sql(sql).await?;
             row.try_get::<i64, _>(0)
                 .or_else(|_| row.try_get::<u64, _>(0).map(|v| v as i64))
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", sql, e))
+                .map_err(|e| query_error(format!("SQL: {} | {}", sql, e)))
         } else {
             sqlx::query_scalar(sql)
                 .fetch_one(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", sql, e))
+                .map_err(|e| query_error(format!("SQL: {} | {}", sql, e)))
         }
     }
 
-    async fn describe_query_columns(&self, sql: &str) -> Result<Vec<QueryColumn>, String> {
+    async fn describe_query_columns(&self, sql: &str) -> DriverResult<Vec<QueryColumn>> {
         if self.is_compatibility_mode() {
             let limited_sql = format!(
                 "SELECT * FROM ({}) AS {} LIMIT 0",
@@ -472,7 +484,7 @@ impl MysqlDriver {
             .pool
             .describe(sql)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            .map_err(|e| query_error(e.to_string()))?;
 
         Ok(describe
             .columns()
@@ -484,21 +496,21 @@ impl MysqlDriver {
             .collect())
     }
 
-    async fn resolve_schema_name(&self, schema: &str) -> Result<String, String> {
+    async fn resolve_schema_name(&self, schema: &str) -> DriverResult<String> {
         if !schema.trim().is_empty() {
             return Ok(schema.to_string());
         }
         self.current_database()
             .await
-            .map_err(|e| format!("[QUERY_ERROR] Failed to resolve current database: {e}"))?
-            .ok_or("[QUERY_ERROR] No active MySQL database selected".to_string())
+            .map_err(|e| query_error(format!("Failed to resolve current database: {e}")))?
+            .ok_or_else(|| query_error("No active MySQL database selected"))
     }
 
     async fn load_table_columns(
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<Vec<(String, String)>, String> {
+    ) -> DriverResult<Vec<(String, String)>> {
         let rows = self
             .fetch_all_with_str_params(
                 "SELECT column_name, data_type \
@@ -508,7 +520,7 @@ impl MysqlDriver {
                 &[schema, table],
             )
             .await
-            .map_err(|e| format!("[QUERY_ERROR] Failed to load MySQL column metadata: {e}"))?;
+            .map_err(|e| query_error(format!("Failed to load MySQL column metadata: {e}")))?;
 
         let mut columns = Vec::with_capacity(rows.len());
         for row in rows {
@@ -525,7 +537,7 @@ impl MysqlDriver {
         binds: &[i64],
         json_expr: &str,
         high_precision_cols: &HashSet<String>,
-    ) -> Result<Vec<serde_json::Value>, String> {
+    ) -> DriverResult<Vec<serde_json::Value>> {
         let query = build_mysql_json_projection_query(base_query, json_expr);
 
         let mut q = sqlx::query(&query);
@@ -545,7 +557,7 @@ impl MysqlDriver {
                         )
                         .await;
                 }
-                return Err(format!("[QUERY_ERROR] SQL: {} | {}", query, e));
+                return Err(query_error(format!("SQL: {} | {}", query, e)));
             }
         };
 
@@ -563,7 +575,7 @@ impl MysqlDriver {
         base_query: &str,
         binds: &[i64],
         high_precision_cols: &HashSet<String>,
-    ) -> Result<Vec<serde_json::Value>, String> {
+    ) -> DriverResult<Vec<serde_json::Value>> {
         let mut q = sqlx::query(base_query);
         for bind in binds {
             q = q.bind(*bind);
@@ -572,7 +584,7 @@ impl MysqlDriver {
         let rows = q
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", base_query, e))?;
+            .map_err(|e| query_error(format!("SQL: {} | {}", base_query, e)))?;
 
         Ok(decode_mysql_rows_without_projection(
             &rows,
@@ -595,22 +607,22 @@ fn build_mysql_json_projection_query(base_query: &str, json_expr: &str) -> Strin
     )
 }
 
-fn decode_mysql_text_cell(row: &sqlx::mysql::MySqlRow, idx: usize) -> Result<String, String> {
+fn decode_mysql_text_cell(row: &sqlx::mysql::MySqlRow, idx: usize) -> DriverResult<String> {
     if let Ok(v) = row.try_get::<String, _>(idx) {
         return Ok(v);
     }
     if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
         return Ok(String::from_utf8_lossy(&v).to_string());
     }
-    Err(format!(
-        "[QUERY_ERROR] Failed to decode MySQL text column at index {idx}"
-    ))
+    Err(query_error(format!(
+        "Failed to decode MySQL text column at index {idx}"
+    )))
 }
 
 fn decode_mysql_optional_text_cell(
     row: &sqlx::mysql::MySqlRow,
     idx: usize,
-) -> Result<Option<String>, String> {
+) -> DriverResult<Option<String>> {
     if let Ok(v) = row.try_get::<Option<String>, _>(idx) {
         return Ok(v);
     }
@@ -623,9 +635,9 @@ fn decode_mysql_optional_text_cell(
     if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
         return Ok(Some(String::from_utf8_lossy(&v).to_string()));
     }
-    Err(format!(
-        "[QUERY_ERROR] Failed to decode MySQL optional text column at index {idx}"
-    ))
+    Err(query_error(format!(
+        "Failed to decode MySQL optional text column at index {idx}"
+    )))
 }
 
 fn quote_mysql_ident(ident: &str) -> String {
@@ -640,7 +652,7 @@ fn quote_mysql_string_literal(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
 }
 
-fn render_mysql_query_with_str_params(sql: &str, params: &[&str]) -> Result<String, String> {
+fn render_mysql_query_with_str_params(sql: &str, params: &[&str]) -> DriverResult<String> {
     let mut rendered = String::with_capacity(sql.len() + params.len() * 16);
     let mut parts = sql.split('?');
     if let Some(first) = parts.next() {
@@ -650,10 +662,10 @@ fn render_mysql_query_with_str_params(sql: &str, params: &[&str]) -> Result<Stri
     let mut used = 0usize;
     for part in parts {
         let Some(param) = params.get(used) else {
-            return Err(format!(
-                "[QUERY_ERROR] Placeholder count does not match parameter count for SQL: {}",
+            return Err(query_error(format!(
+                "Placeholder count does not match parameter count for SQL: {}",
                 sql
-            ));
+            )));
         };
         rendered.push_str(&quote_mysql_string_literal(param));
         rendered.push_str(part);
@@ -661,10 +673,10 @@ fn render_mysql_query_with_str_params(sql: &str, params: &[&str]) -> Result<Stri
     }
 
     if used != params.len() {
-        return Err(format!(
-            "[QUERY_ERROR] Placeholder count does not match parameter count for SQL: {}",
+        return Err(query_error(format!(
+            "Placeholder count does not match parameter count for SQL: {}",
             sql
-        ));
+        )));
     }
 
     Ok(rendered)
@@ -693,10 +705,10 @@ fn is_high_precision_mysql_query_type(type_name: &str) -> bool {
 fn normalize_mysql_row_json(
     row_json: &mut serde_json::Value,
     high_precision_cols: &HashSet<String>,
-) -> Result<(), String> {
+) -> DriverResult<()> {
     let obj = row_json
         .as_object_mut()
-        .ok_or("[QUERY_ERROR] Expected JSON object row from JSON_OBJECT".to_string())?;
+        .ok_or_else(|| query_error("Expected JSON object row from JSON_OBJECT"))?;
 
     let mut lookup: HashMap<String, String> = HashMap::new();
     for key in obj.keys() {
@@ -847,19 +859,19 @@ fn query_columns_from_rows(rows: &[MySqlRow]) -> Vec<QueryColumn> {
 fn decode_mysql_json_cell(
     row: &sqlx::mysql::MySqlRow,
     column_name: &str,
-) -> Result<serde_json::Value, String> {
+) -> DriverResult<serde_json::Value> {
     if let Ok(v) = row.try_get::<sqlx::types::Json<serde_json::Value>, _>(column_name) {
         return Ok(v.0);
     }
     if let Ok(v) = row.try_get::<String, _>(column_name) {
         return serde_json::from_str(&v)
-            .map_err(|e| format!("[QUERY_ERROR] Failed to parse JSON cell: {e}"));
+            .map_err(|e| query_error(format!("Failed to parse JSON cell: {e}")));
     }
     if let Ok(v) = row.try_get::<Vec<u8>, _>(column_name) {
         return serde_json::from_slice(&v)
-            .map_err(|e| format!("[QUERY_ERROR] Failed to parse JSON bytes cell: {e}"));
+            .map_err(|e| query_error(format!("Failed to parse JSON bytes cell: {e}")));
     }
-    Err("[QUERY_ERROR] Failed to decode MySQL JSON cell".to_string().into())
+    Err(query_error("Failed to decode MySQL JSON cell"))
 }
 
 fn is_mysql_temporal_type(data_type: &str) -> bool {
@@ -918,7 +930,7 @@ impl MysqlDriver {
     async fn execute_single_statement(
         &self,
         sql: &str,
-    ) -> Result<(Vec<QueryColumn>, Vec<serde_json::Value>, i64), String> {
+    ) -> DriverResult<(Vec<QueryColumn>, Vec<serde_json::Value>, i64)> {
         if self.is_compatibility_mode() && is_json_projectable_statement(sql) {
             let rows = self.fetch_all_sql(sql).await?;
             let columns = query_columns_from_rows(&rows);
@@ -955,11 +967,11 @@ impl MysqlDriver {
                         sqlx::raw_sql(sql)
                             .execute(&self.pool)
                             .await
-                            .map_err(|raw_err| format!("[QUERY_ERROR] {raw_err}"))?;
+                            .map_err(|raw_err| query_error(raw_err.to_string()))?;
                         executed_with_raw_sql = true;
                         Vec::new()
                     } else {
-                        return Err(format!("[QUERY_ERROR] {e}"));
+                        return Err(query_error(e.to_string()));
                     }
                 }
             };
@@ -1004,7 +1016,7 @@ impl MysqlDriver {
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<HashSet<String>, String> {
+    ) -> DriverResult<HashSet<String>> {
         let rows = self
             .fetch_all_with_str_params(
                 "SELECT kcu.column_name \
@@ -1028,7 +1040,7 @@ impl MysqlDriver {
         Ok(pk_set)
     }
 
-    pub async fn kill_query(&self, thread_id: u64) -> Result<(), String> {
+    pub async fn kill_query(&self, thread_id: u64) -> DriverResult<()> {
         let sql = format!("KILL QUERY {}", thread_id);
         self.execute_sql(&sql).await.map(|_| ())
     }
@@ -1053,7 +1065,7 @@ impl DatabaseDriver for MysqlDriver {
         } else {
             self.current_database()
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] Failed to get current database: {e}"))?
+                .map_err(|e| query_error(format!("Failed to get current database: {e}")))?
                 .unwrap_or_default()
         };
 
@@ -1080,7 +1092,7 @@ impl DatabaseDriver for MysqlDriver {
             )
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+            .map_err(|e| query_error(e.to_string()))?
         } else {
             sqlx::query(
                 r#"
@@ -1106,7 +1118,7 @@ impl DatabaseDriver for MysqlDriver {
             .bind(&target_db)
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+            .map_err(|e| query_error(e.to_string()))?
         };
 
         let mut foreign_keys = Vec::new();
@@ -1145,9 +1157,9 @@ impl DatabaseDriver for MysqlDriver {
                 sqlx::raw_sql("SELECT 1")
                     .execute(&self.pool)
                     .await
-                    .map_err(|raw_err| format!("[QUERY_ERROR] {raw_err}"))?;
+                    .map_err(|raw_err| query_error(raw_err.to_string()))?;
             } else {
-                return Err(format!("[QUERY_ERROR] {e}").into());
+                return Err(query_error(e.to_string()).into());
             }
         }
         Ok(())
@@ -1156,7 +1168,7 @@ impl DatabaseDriver for MysqlDriver {
     async fn list_databases(&self) -> DriverResult<Vec<String>> {
         let rows = self.fetch_all_sql("SHOW DATABASES").await?;
         rows.into_iter()
-            .map(|row| decode_mysql_text_cell(&row, 0).map_err(crate::error::AppError::from))
+            .map(|row| decode_mysql_text_cell(&row, 0).map_err(AppError::from))
             .collect()
     }
 
@@ -1174,8 +1186,8 @@ impl DatabaseDriver for MysqlDriver {
         } else {
             self.current_database()
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] Failed to get current database: {e}"))?
-                .ok_or("[QUERY_ERROR] No database selected and no schema provided")?
+                .map_err(|e| query_error(format!("Failed to get current database: {e}")))?
+                .ok_or_else(|| query_error("No database selected and no schema provided"))?
         };
 
         let rows = self
@@ -1212,8 +1224,8 @@ impl DatabaseDriver for MysqlDriver {
         } else {
             self.current_database()
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] Failed to get current database: {e}"))?
-                .ok_or("[QUERY_ERROR] No database selected and no schema provided")?
+                .map_err(|e| query_error(format!("Failed to get current database: {e}")))?
+                .ok_or_else(|| query_error("No database selected and no schema provided"))?
         };
 
         let rows = self
@@ -1245,8 +1257,8 @@ impl DatabaseDriver for MysqlDriver {
         } else {
             self.current_database()
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] Failed to get current database: {e}"))?
-                .ok_or("[QUERY_ERROR] No database selected and no schema provided")?
+                .map_err(|e| query_error(format!("Failed to get current database: {e}")))?
+                .ok_or_else(|| query_error("No database selected and no schema provided"))?
         };
 
         let rows = self
@@ -1286,32 +1298,27 @@ impl DatabaseDriver for MysqlDriver {
             "procedure" => "PROCEDURE",
             "function" => "FUNCTION",
             _ => {
-                return Err(format!(
-                    "[QUERY_ERROR] Unknown routine type '{}'. Expected 'procedure' or 'function'",
+                return Err(query_error(format!(
+                    "Unknown routine type '{}'. Expected 'procedure' or 'function'",
                     routine_type
-                ).into())
+                )));
             }
         };
 
         let sql = format!("SHOW CREATE {} `{}`.`{}`", ddl_keyword, schema, name);
-        let row = self.fetch_one_sql(&sql).await.map_err(|e| {
-            if e.contains("QUERY_ERROR") {
-                e
-            } else {
-                format!("[QUERY_ERROR] {e}")
-            }
-        })?;
+        let row = self.fetch_one_sql(&sql).await?;
 
         // SHOW CREATE PROCEDURE/FUNCTION returns columns:
         // Procedure/Function, sql_mode, Create Procedure/Function, character_set_client, collation_connection, Database Collation
         // The DDL is in column index 2
-        let ddl = decode_mysql_text_cell(&row, 2).map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        let ddl = decode_mysql_text_cell(&row, 2).map_err(|e| query_error(e.to_string()))?;
 
         if ddl.trim().is_empty() {
             return Err(format!(
                 "[NOT_FOUND] Routine '{}.{}' does not exist or its definition is not visible",
                 schema, name
-            ).into());
+            )
+            .into());
         }
         Ok(ddl)
     }
@@ -1502,7 +1509,7 @@ impl DatabaseDriver for MysqlDriver {
         };
         let query = format!("SHOW CREATE TABLE {}", qualified);
         let row = self.fetch_one_sql(&query).await?;
-        decode_mysql_text_cell(&row, 1).map_err(crate::error::AppError::from)
+        decode_mysql_text_cell(&row, 1).map_err(AppError::from)
     }
 
     async fn get_table_data(
@@ -1540,7 +1547,7 @@ impl DatabaseDriver for MysqlDriver {
         } else if let Some(ref col) = sort_column {
             // Validate column name to prevent SQL injection
             if !col.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                return Err("[VALIDATION_ERROR] Invalid sort column name".to_string().into());
+                return Err(validation_error("Invalid sort column name"));
             }
             let dir = match sort_direction.as_deref() {
                 Some("desc") => "DESC",
@@ -1618,7 +1625,7 @@ impl DatabaseDriver for MysqlDriver {
         let start = std::time::Instant::now();
         let statements = super::split_sql_statements(&sql);
         if statements.is_empty() {
-            return Err("[QUERY_ERROR] Empty SQL statement".to_string().into());
+            return Err(query_error("Empty SQL statement"));
         }
 
         // Single statement: keep original behavior
@@ -1653,7 +1660,7 @@ impl DatabaseDriver for MysqlDriver {
                     });
                 }
                 Err(e) => {
-                    last_error = Some(e);
+                    last_error = Some(e.to_string());
                     break;
                 }
             }
@@ -1699,7 +1706,7 @@ impl DatabaseDriver for MysqlDriver {
         let thread_id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] Failed to get connection id: {e}"))?;
+            .map_err(|e| query_error(format!("Failed to get connection id: {e}")))?;
 
         register_mysql_query_thread(query_id, thread_id).await;
 
@@ -1753,8 +1760,8 @@ impl DatabaseDriver for MysqlDriver {
         };
 
         let rows = rows.map_err(|e| {
-            eprintln!("[QUERY_ERROR] Raw error: {}", e);
-            "[QUERY_ERROR] Failed to fetch schema overview".to_string()
+            eprintln!("MySQL schema overview query failed: {}", e);
+            query_error("Failed to fetch schema overview")
         })?;
 
         let mut tables_map: std::collections::HashMap<(String, String), Vec<ColumnSchema>> =
@@ -1762,13 +1769,13 @@ impl DatabaseDriver for MysqlDriver {
 
         for row in rows {
             let schema_name = decode_mysql_text_cell(&row, 0)
-                .map_err(|e| format!("[PARSE_ERROR] Failed to get table_schema: {}", e))?;
+                .map_err(|e| AppError::internal(format!("Failed to get table_schema: {}", e)))?;
             let table_name = decode_mysql_text_cell(&row, 1)
-                .map_err(|e| format!("[PARSE_ERROR] Failed to get table_name: {}", e))?;
+                .map_err(|e| AppError::internal(format!("Failed to get table_name: {}", e)))?;
             let col_name = decode_mysql_text_cell(&row, 2)
-                .map_err(|e| format!("[PARSE_ERROR] Failed to get column_name: {}", e))?;
+                .map_err(|e| AppError::internal(format!("Failed to get column_name: {}", e)))?;
             let data_type = decode_mysql_text_cell(&row, 3)
-                .map_err(|e| format!("[PARSE_ERROR] Failed to get data_type: {}", e))?;
+                .map_err(|e| AppError::internal(format!("Failed to get data_type: {}", e)))?;
 
             let key = (schema_name, table_name);
             tables_map.entry(key).or_default().push(ColumnSchema {

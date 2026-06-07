@@ -12,7 +12,7 @@
     "dev:mock": "VITE_USE_MOCK=true vite",
     "build": "bun run typecheck && vite build",
     "typecheck": "tsc -b",
-    "lint:web": "prettier --check \"package.json\" \"package-lock.json\" \"tsconfig*.json\" \"vite.config.ts\" \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/**/*.json\" \".github/workflows/*.{yml,yaml}\"",
+    "lint:web": "prettier --check \"package.json\" \"package-lock.json\" \"tsconfig*.json\" \"vite.config.ts\" \"eslint.config.js\" \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/**/*.json\" \".github/workflows/*.{yml,yaml}\" && eslint \"src/**/*.{ts,tsx}\" \"vite.config.ts\" \"test-setup.ts\"",
     "lint:rust": "bun run rust:check",
     "lint": "bun run lint:web",
     "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
@@ -92,6 +92,7 @@
     "tw-animate-css": "1.3.8"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "4.1.12",
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
@@ -101,11 +102,16 @@
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.6.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^16.5.0",
     "happy-dom": "^20.9.0",
     "prettier": "^3.8.1",
     "rollup-plugin-visualizer": "^7.0.1",
     "tailwindcss": "4.1.12",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.60.1",
     "vite": "^7.3.2"
   }
 }

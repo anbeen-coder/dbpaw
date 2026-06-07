@@ -85,7 +85,7 @@ export const isTauri = () => {
 };
 
 // Helper to check if Mock mode is enabled
-const useMockMode = () => {
+const isMockModeEnabled = () => {
   return import.meta.env.VITE_USE_MOCK === "true";
 };
 
@@ -97,7 +97,7 @@ const invoke = async <T>(cmd: string, args?: any): Promise<T> => {
   }
 
   // If not in Tauri, check if Mock mode is enabled
-  if (useMockMode()) {
+  if (isMockModeEnabled()) {
     return invokeMock<T>(cmd, args);
   }
 

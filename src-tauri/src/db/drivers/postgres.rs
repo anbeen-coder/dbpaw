@@ -1,4 +1,5 @@
-use super::{strip_trailing_statement_terminator, DatabaseDriver, DriverResult};
+use super::{DatabaseDriver, DriverResult, strip_trailing_statement_terminator};
+use crate::error::AppError;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
     RoutineInfo, SchemaForeignKey, SchemaOverview, SequenceInfo, SingleResultSet,
@@ -7,7 +8,7 @@ use crate::models::{
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
-use sqlx::{postgres::PgPoolOptions, Column, Executor, Row, TypeInfo as PgTypeInfo};
+use sqlx::{Column, Executor, Row, TypeInfo as PgTypeInfo, postgres::PgPoolOptions};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -15,13 +16,21 @@ use std::path::PathBuf;
 
 use crate::ssh::SshTunnel;
 
+fn validation_error(message: impl Into<String>) -> AppError {
+    AppError::validation(message)
+}
+
+fn query_error(message: impl Into<String>) -> AppError {
+    AppError::query_failed(message)
+}
+
 pub struct PostgresDriver {
     pub pool: sqlx::PgPool,
     pub ssh_tunnel: Option<SshTunnel>,
     pub ca_cert_path: Option<PathBuf>,
 }
 
-fn write_temp_cert_file(prefix: &str, pem: &str) -> Result<PathBuf, String> {
+fn write_temp_cert_file(prefix: &str, pem: &str) -> DriverResult<PathBuf> {
     let dir = std::env::temp_dir().join("dbpaw_certs");
     fs::create_dir_all(&dir).map_err(|e| format!("[SSL_CA_WRITE_ERROR] {e}"))?;
     let path = dir.join(format!("{prefix}_{}.pem", uuid::Uuid::new_v4()));
@@ -56,11 +65,11 @@ fn build_verify_ca_query_param(ca_path: &Path) -> String {
     )
 }
 
-fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBuf>), String> {
+fn build_dsn_and_ca_path(form: &ConnectionForm) -> DriverResult<(String, Option<PathBuf>)> {
     let host = form
         .host
         .clone()
-        .ok_or("[VALIDATION_ERROR] host cannot be empty")?;
+        .ok_or_else(|| validation_error("host cannot be empty"))?;
     let port = form.port.unwrap_or(5432);
     // Allow database to be empty, default to postgres
     let database = form
@@ -70,11 +79,11 @@ fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBu
     let username = form
         .username
         .clone()
-        .ok_or("[VALIDATION_ERROR] username cannot be empty")?;
+        .ok_or_else(|| validation_error("username cannot be empty"))?;
     let password = form
         .password
         .clone()
-        .ok_or("[VALIDATION_ERROR] password cannot be empty")?;
+        .ok_or_else(|| validation_error("password cannot be empty"))?;
     let username = percent_encode_query_value(&username);
     let password = percent_encode_query_value(&password);
     let mut dsn = format!(
@@ -95,7 +104,7 @@ fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBu
                 .as_deref()
                 .map(str::trim)
                 .filter(|v| !v.is_empty())
-                .ok_or("[VALIDATION_ERROR] sslCaCert cannot be empty in verify_ca mode")?;
+                .ok_or_else(|| validation_error("sslCaCert cannot be empty in verify_ca mode"))?;
             let ca_path = write_temp_cert_file("pg_ca", ca_cert)?;
             dsn.push_str(&build_verify_ca_query_param(&ca_path));
             ca_cert_path = Some(ca_path);
@@ -108,11 +117,11 @@ fn build_dsn_and_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBu
 }
 
 #[cfg(test)]
-fn build_dsn(form: &ConnectionForm) -> Result<String, String> {
+fn build_dsn(form: &ConnectionForm) -> DriverResult<String> {
     Ok(build_dsn_and_ca_path(form)?.0)
 }
 
-fn build_dsn_with_ca_path(form: &ConnectionForm) -> Result<(String, Option<PathBuf>), String> {
+fn build_dsn_with_ca_path(form: &ConnectionForm) -> DriverResult<(String, Option<PathBuf>)> {
     build_dsn_and_ca_path(form)
 }
 
@@ -148,7 +157,7 @@ impl PostgresDriver {
     async fn execute_single_statement(
         &self,
         sql: &str,
-    ) -> Result<(Vec<QueryColumn>, Vec<serde_json::Value>, i64), String> {
+    ) -> DriverResult<(Vec<QueryColumn>, Vec<serde_json::Value>, i64)> {
         if is_json_projectable_statement(sql) {
             let columns = self.describe_query_columns(sql).await?;
             let high_precision_cols = collect_high_precision_query_columns(&columns);
@@ -156,13 +165,13 @@ impl PostgresDriver {
             let rows = sqlx::query(&json_query)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", json_query, e))?;
+                .map_err(|e| query_error(format!("SQL: {} | {}", json_query, e)))?;
             let mut data = Vec::with_capacity(rows.len());
             for row in rows {
                 let mut row_json = row
                     .try_get::<sqlx::types::Json<serde_json::Value>, _>("__row_json")
                     .map(|v| v.0)
-                    .map_err(|e| format!("[QUERY_ERROR] Failed to decode __row_json: {e}"))?;
+                    .map_err(|e| query_error(format!("Failed to decode __row_json: {e}")))?;
                 normalize_postgres_row_json(&mut row_json, &high_precision_cols)?;
                 data.push(row_json);
             }
@@ -172,7 +181,7 @@ impl PostgresDriver {
             let rows = sqlx::query(sql)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                .map_err(|e| query_error(e.to_string()))?;
             let columns = if let Some(first_row) = rows.first() {
                 first_row
                     .columns()
@@ -433,7 +442,7 @@ impl PostgresDriver {
         }
     }
 
-    pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
+    pub async fn connect(form: &ConnectionForm) -> DriverResult<Self> {
         let mut dsn_form = form.clone();
         let mut ssh_tunnel = None;
 
@@ -459,12 +468,12 @@ impl PostgresDriver {
         })
     }
 
-    async fn describe_query_columns(&self, sql: &str) -> Result<Vec<QueryColumn>, String> {
+    async fn describe_query_columns(&self, sql: &str) -> DriverResult<Vec<QueryColumn>> {
         let describe = self
             .pool
             .describe(sql)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            .map_err(|e| query_error(e.to_string()))?;
 
         Ok(describe
             .columns()
@@ -480,7 +489,7 @@ impl PostgresDriver {
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<HashSet<String>, String> {
+    ) -> DriverResult<HashSet<String>> {
         let rows = sqlx::query(
             "SELECT column_name, data_type, udt_name \
             FROM information_schema.columns \
@@ -490,7 +499,7 @@ impl PostgresDriver {
         .bind(table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] Failed to load column types: {e}"))?;
+        .map_err(|e| query_error(format!("Failed to load column types: {e}")))?;
 
         let mut cols = HashSet::new();
         for row in rows {
@@ -513,7 +522,7 @@ impl PostgresDriver {
         limit: i64,
         offset: i64,
         high_precision_cols: &HashSet<String>,
-    ) -> Result<Vec<serde_json::Value>, String> {
+    ) -> DriverResult<Vec<serde_json::Value>> {
         let qt = pg_qualified_table(schema, table);
         let query = format!(
             "SELECT to_jsonb(t) AS __row_json FROM {} t{}{} LIMIT $1 OFFSET $2",
@@ -524,25 +533,21 @@ impl PostgresDriver {
             .bind(offset)
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", query, e))?;
+            .map_err(|e| query_error(format!("SQL: {} | {}", query, e)))?;
 
         let mut data = Vec::with_capacity(rows.len());
         for row in rows {
             let mut row_json = row
                 .try_get::<sqlx::types::Json<serde_json::Value>, _>("__row_json")
                 .map(|v| v.0)
-                .map_err(|e| format!("[QUERY_ERROR] Failed to decode __row_json: {e}"))?;
+                .map_err(|e| query_error(format!("Failed to decode __row_json: {e}")))?;
             normalize_postgres_row_json(&mut row_json, high_precision_cols)?;
             data.push(row_json);
         }
         Ok(data)
     }
 
-    async fn load_pg_columns(
-        &self,
-        schema: &str,
-        table: &str,
-    ) -> Result<Vec<PgColumnInfo>, String> {
+    async fn load_pg_columns(&self, schema: &str, table: &str) -> DriverResult<Vec<PgColumnInfo>> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -566,7 +571,7 @@ impl PostgresDriver {
         .bind(table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut cols = Vec::new();
         for row in rows {
@@ -652,7 +657,7 @@ impl PostgresDriver {
         .bind(table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut key_constraints = Vec::new();
         let mut foreign_keys = Vec::new();
@@ -709,7 +714,7 @@ impl PostgresDriver {
         Ok((key_constraints, foreign_keys, check_constraints))
     }
 
-    async fn load_pg_indexes(&self, schema: &str, table: &str) -> Result<Vec<PgIndexInfo>, String> {
+    async fn load_pg_indexes(&self, schema: &str, table: &str) -> DriverResult<Vec<PgIndexInfo>> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -739,7 +744,7 @@ impl PostgresDriver {
         .bind(table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut indexes = Vec::new();
         for row in rows {
@@ -767,7 +772,7 @@ impl PostgresDriver {
                         .bind(attnum as i32)
                         .fetch_optional(&self.pool)
                         .await
-                        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+                        .map_err(|e| query_error(e.to_string()))?;
                         if let Some(col) = col_rows {
                             cols.push(col);
                         }
@@ -794,7 +799,7 @@ impl PostgresDriver {
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<(Option<String>, HashMap<String, String>), String> {
+    ) -> DriverResult<(Option<String>, HashMap<String, String>)> {
         let table_comment: Option<String> = sqlx::query_scalar(
             r#"
             SELECT d.description
@@ -808,7 +813,7 @@ impl PostgresDriver {
         .bind(table)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+        .map_err(|e| query_error(e.to_string()))?
         .flatten();
 
         let comment_rows = sqlx::query(
@@ -828,7 +833,7 @@ impl PostgresDriver {
         .bind(table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut col_comments = HashMap::new();
         for row in comment_rows {
@@ -855,10 +860,10 @@ fn is_high_precision_pg_type(data_type: &str, udt_name: &str) -> bool {
 fn normalize_postgres_row_json(
     row_json: &mut serde_json::Value,
     high_precision_cols: &HashSet<String>,
-) -> Result<(), String> {
+) -> DriverResult<()> {
     let obj = row_json
         .as_object_mut()
-        .ok_or("[QUERY_ERROR] Expected JSON object row from to_jsonb".to_string())?;
+        .ok_or_else(|| query_error("Expected JSON object row from to_jsonb"))?;
 
     let mut lookup: HashMap<String, String> = HashMap::new();
     for key in obj.keys() {
@@ -880,22 +885,22 @@ fn normalize_postgres_row_json(
     Ok(())
 }
 
-fn decode_postgres_text_cell(row: &sqlx::postgres::PgRow, idx: usize) -> Result<String, String> {
+fn decode_postgres_text_cell(row: &sqlx::postgres::PgRow, idx: usize) -> DriverResult<String> {
     if let Ok(v) = row.try_get::<String, _>(idx) {
         return Ok(v);
     }
     if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
         return Ok(String::from_utf8_lossy(&v).to_string());
     }
-    Err(format!(
-        "[QUERY_ERROR] Failed to decode Postgres text column at index {idx}"
-    ))
+    Err(query_error(format!(
+        "Failed to decode Postgres text column at index {idx}"
+    )))
 }
 
 fn decode_postgres_optional_text_cell(
     row: &sqlx::postgres::PgRow,
     idx: usize,
-) -> Result<Option<String>, String> {
+) -> DriverResult<Option<String>> {
     if let Ok(v) = row.try_get::<Option<String>, _>(idx) {
         return Ok(v);
     }
@@ -908,9 +913,9 @@ fn decode_postgres_optional_text_cell(
     if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
         return Ok(Some(String::from_utf8_lossy(&v).to_string()));
     }
-    Err(format!(
-        "[QUERY_ERROR] Failed to decode Postgres optional text column at index {idx}"
-    ))
+    Err(query_error(format!(
+        "Failed to decode Postgres optional text column at index {idx}"
+    )))
 }
 
 struct PgColumnInfo {
@@ -968,11 +973,7 @@ fn extract_pg_index_columns(full_def: &str) -> Option<Vec<String>> {
         .map(|c| c.trim().trim_matches('"').to_string())
         .filter(|c| !c.is_empty())
         .collect();
-    if cols.is_empty() {
-        None
-    } else {
-        Some(cols)
-    }
+    if cols.is_empty() { None } else { Some(cols) }
 }
 
 fn render_pg_create_table_ddl(
@@ -1155,7 +1156,7 @@ impl DatabaseDriver for PostgresDriver {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut foreign_keys = Vec::new();
         for row in rows {
@@ -1193,7 +1194,7 @@ impl DatabaseDriver for PostgresDriver {
         sqlx::query("SELECT 1")
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+            .map_err(|e| query_error(e.to_string()))?;
         Ok(())
     }
 
@@ -1203,7 +1204,7 @@ impl DatabaseDriver for PostgresDriver {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
         Ok(rows.into_iter().map(|r| r.0).collect())
     }
 
@@ -1218,7 +1219,7 @@ impl DatabaseDriver for PostgresDriver {
             .bind(&schema)
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+            .map_err(|e| query_error(e.to_string()))?
         } else {
             sqlx::query(
                 "SELECT table_schema, table_name, table_type \
@@ -1230,7 +1231,7 @@ impl DatabaseDriver for PostgresDriver {
             )
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+            .map_err(|e| query_error(e.to_string()))?
         };
 
         let mut res = Vec::new();
@@ -1259,7 +1260,7 @@ impl DatabaseDriver for PostgresDriver {
             .bind(&schema)
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+            .map_err(|e| query_error(e.to_string()))?
         } else {
             sqlx::query(
                 "SELECT n.nspname AS schema_name, \
@@ -1274,7 +1275,7 @@ impl DatabaseDriver for PostgresDriver {
             )
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {e}"))?
+            .map_err(|e| query_error(e.to_string()))?
         };
 
         let mut res = Vec::new();
@@ -1305,14 +1306,15 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&name)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let ddl = row.0;
         if ddl.trim().is_empty() {
             return Err(format!(
                 "[NOT_FOUND] Routine '{}.{}' does not exist or its definition is not visible",
                 schema, name
-            ).into());
+            )
+            .into());
         }
         Ok(ddl)
     }
@@ -1340,7 +1342,7 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let pk_set: HashSet<String> = pk_rows.into_iter().map(|r| r.0).collect();
 
@@ -1368,7 +1370,7 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut columns = Vec::new();
         for row in rows {
@@ -1420,7 +1422,7 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let pk_set: HashSet<String> = pk_rows.into_iter().map(|r| r.0).collect();
 
@@ -1448,7 +1450,7 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut columns = Vec::new();
         for row in column_rows {
@@ -1499,7 +1501,7 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut indexes = Vec::new();
         for row in index_rows {
@@ -1562,7 +1564,7 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&table)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut foreign_keys = Vec::new();
         for row in fk_rows {
@@ -1642,7 +1644,7 @@ impl DatabaseDriver for PostgresDriver {
         let total: i64 = sqlx::query_scalar(&count_query)
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] SQL: {} | {}", count_query, e))?;
+            .map_err(|e| query_error(format!("SQL: {} | {}", count_query, e)))?;
 
         // Build ORDER BY clause: order_by (raw) takes priority over sort_column/sort_direction
         let order_clause = if let Some(ref ob) = order_by {
@@ -1654,7 +1656,7 @@ impl DatabaseDriver for PostgresDriver {
         } else if let Some(ref col) = sort_column {
             // Validate column name to prevent SQL injection
             if !col.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                return Err("[VALIDATION_ERROR] Invalid sort column name".to_string().into());
+                return Err(validation_error("Invalid sort column name"));
             }
             let dir = match sort_direction.as_deref() {
                 Some("desc") => "DESC",
@@ -1716,7 +1718,7 @@ impl DatabaseDriver for PostgresDriver {
         let start = std::time::Instant::now();
         let statements = super::split_sql_statements(&sql);
         if statements.is_empty() {
-            return Err("[QUERY_ERROR] Empty SQL statement".to_string().into());
+            return Err(query_error("Empty SQL statement"));
         }
 
         // Single statement: keep original behavior
@@ -1751,7 +1753,7 @@ impl DatabaseDriver for PostgresDriver {
                     });
                 }
                 Err(e) => {
-                    last_error = Some(e);
+                    last_error = Some(e.to_string());
                     break;
                 }
             }
@@ -1796,7 +1798,7 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&target_schema)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut res = Vec::new();
         for row in rows {
@@ -1834,7 +1836,7 @@ impl DatabaseDriver for PostgresDriver {
         .bind(&target_schema)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| query_error(e.to_string()))?;
 
         let mut res = Vec::new();
         for row in rows {
@@ -1873,8 +1875,8 @@ impl DatabaseDriver for PostgresDriver {
         };
 
         let rows = rows.map_err(|e| {
-            eprintln!("[QUERY_ERROR] Raw error: {}", e);
-            "[QUERY_ERROR] Failed to fetch schema overview".to_string()
+            eprintln!("Postgres schema overview query failed: {}", e);
+            query_error("Failed to fetch schema overview")
         })?;
 
         let mut tables_map: std::collections::HashMap<(String, String), Vec<ColumnSchema>> =
@@ -1882,13 +1884,13 @@ impl DatabaseDriver for PostgresDriver {
 
         for row in rows {
             let schema_name = decode_postgres_text_cell(&row, 0)
-                .map_err(|e| format!("[PARSE_ERROR] Postgres table_schema: {}", e))?;
+                .map_err(|e| AppError::internal(format!("Postgres table_schema: {}", e)))?;
             let table_name = decode_postgres_text_cell(&row, 1)
-                .map_err(|e| format!("[PARSE_ERROR] Postgres table_name: {}", e))?;
+                .map_err(|e| AppError::internal(format!("Postgres table_name: {}", e)))?;
             let col_name = decode_postgres_text_cell(&row, 2)
-                .map_err(|e| format!("[PARSE_ERROR] Postgres column_name: {}", e))?;
+                .map_err(|e| AppError::internal(format!("Postgres column_name: {}", e)))?;
             let data_type = decode_postgres_text_cell(&row, 3)
-                .map_err(|e| format!("[PARSE_ERROR] Postgres data_type: {}", e))?;
+                .map_err(|e| AppError::internal(format!("Postgres data_type: {}", e)))?;
 
             let key = (schema_name, table_name);
             tables_map.entry(key).or_default().push(ColumnSchema {

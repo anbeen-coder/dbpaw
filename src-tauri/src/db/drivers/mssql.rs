@@ -1,4 +1,5 @@
 use super::{DatabaseDriver, DriverResult};
+use crate::error::AppError;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
     RoutineInfo, SchemaForeignKey, SchemaOverview, SingleResultSet, SynonymInfo, TableDataResponse,
@@ -14,6 +15,18 @@ use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use crate::ssh::SshTunnel;
+
+fn validation_error(message: impl Into<String>) -> AppError {
+    AppError::validation(message)
+}
+
+fn query_error(message: impl Into<String>) -> AppError {
+    AppError::query_failed(message)
+}
+
+fn conn_error(message: impl Into<String>) -> AppError {
+    AppError::conn_failed(message, "Check connection settings")
+}
 
 pub struct MssqlDriver {
     pub pool: Pool<MssqlConnectionManager>,
@@ -39,20 +52,20 @@ struct MssqlConfig {
     instance_name: Option<String>,
 }
 
-fn build_config(form: &ConnectionForm) -> Result<MssqlConfig, String> {
+fn build_config(form: &ConnectionForm) -> DriverResult<MssqlConfig> {
     let raw_host = form
         .host
         .clone()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.trim().is_empty())
-        .ok_or("[VALIDATION_ERROR] host cannot be empty")?;
+        .ok_or_else(|| validation_error("host cannot be empty"))?;
 
     // Parse SQL Server named instance format: HOST\INSTANCE_NAME
     let (host, instance_name) = if let Some((h, inst)) = raw_host.rsplit_once('\\') {
         let h = h.trim().to_string();
         let inst = inst.trim().to_string();
         if h.is_empty() || inst.is_empty() {
-            return Err("[VALIDATION_ERROR] invalid host\\instance format".to_string().into());
+            return Err(validation_error("invalid host\\instance format"));
         }
         (h, Some(inst))
     } else {
@@ -61,7 +74,7 @@ fn build_config(form: &ConnectionForm) -> Result<MssqlConfig, String> {
 
     let port = form.port.unwrap_or(1433);
     if !(0..=65535).contains(&port) {
-        return Err("[VALIDATION_ERROR] port out of range".to_string().into());
+        return Err(validation_error("port out of range"));
     }
     let database = form
         .database
@@ -74,11 +87,9 @@ fn build_config(form: &ConnectionForm) -> Result<MssqlConfig, String> {
     // Platform compatibility check for Windows-specific auth modes.
     if let Some(ref mode) = auth_mode {
         if mode.eq_ignore_ascii_case("windows") && !cfg!(target_os = "windows") {
-            return Err(
-                "[VALIDATION_ERROR] Windows authentication is only available on Windows. \
-                 Please use SQL Server authentication or Integrated authentication instead."
-                    .to_string(),
-            );
+            return Err(validation_error(
+                "Windows authentication is only available on Windows. Please use SQL Server authentication or Integrated authentication instead.",
+            ));
         }
     }
 
@@ -164,9 +175,11 @@ fn column_data_to_json(col: &ColumnData<'static>) -> serde_json::Value {
             let ns = (v.seconds_fragments() as i64) * (1e9 as i64) / 300;
             let time = chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap()
                 + chrono::Duration::nanoseconds(ns);
-            serde_json::json!(chrono::NaiveDateTime::new(date, time)
-                .format("%Y-%m-%dT%H:%M:%S%.3f")
-                .to_string())
+            serde_json::json!(
+                chrono::NaiveDateTime::new(date, time)
+                    .format("%Y-%m-%dT%H:%M:%S%.3f")
+                    .to_string()
+            )
         }
         ColumnData::SmallDateTime(Some(v)) => {
             let base = chrono::NaiveDate::from_ymd_opt(1900, 1, 1).unwrap();
@@ -176,9 +189,11 @@ fn column_data_to_json(col: &ColumnData<'static>) -> serde_json::Value {
                 0,
             )
             .unwrap_or_default();
-            serde_json::json!(chrono::NaiveDateTime::new(date, time)
-                .format("%Y-%m-%dT%H:%M:%S")
-                .to_string())
+            serde_json::json!(
+                chrono::NaiveDateTime::new(date, time)
+                    .format("%Y-%m-%dT%H:%M:%S")
+                    .to_string()
+            )
         }
         ColumnData::Time(Some(v)) => {
             let ns = v.increments() as i64 * 10i64.pow(9 - v.scale() as u32);
@@ -198,9 +213,11 @@ fn column_data_to_json(col: &ColumnData<'static>) -> serde_json::Value {
             let ns = t.increments() as i64 * 10i64.pow(9 - t.scale() as u32);
             let time = chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap()
                 + chrono::Duration::nanoseconds(ns);
-            serde_json::json!(chrono::NaiveDateTime::new(date, time)
-                .format("%Y-%m-%dT%H:%M:%S%.f")
-                .to_string())
+            serde_json::json!(
+                chrono::NaiveDateTime::new(date, time)
+                    .format("%Y-%m-%dT%H:%M:%S%.f")
+                    .to_string()
+            )
         }
         ColumnData::DateTimeOffset(Some(v)) => {
             let base = chrono::NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
@@ -234,38 +251,38 @@ fn escape_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
 
-fn routine_type_sql_filter(routine_type: &str) -> Result<&'static str, String> {
+fn routine_type_sql_filter(routine_type: &str) -> DriverResult<&'static str> {
     if routine_type.eq_ignore_ascii_case("procedure") {
         Ok("('P')")
     } else if routine_type.eq_ignore_ascii_case("function") {
         Ok("('FN','IF','TF','FS','FT')")
     } else {
-        Err(format!(
-            "[VALIDATION_ERROR] Unsupported routine type '{}'",
+        Err(validation_error(format!(
+            "Unsupported routine type '{}'",
             routine_type
-        ))
+        )))
     }
 }
 
-fn map_pool_error(err: RunError<String>) -> String {
+fn map_pool_error(err: RunError<AppError>) -> AppError {
     match err {
         RunError::User(inner) => inner,
-        RunError::TimedOut => "[CONN_FAILED] Timed out acquiring MSSQL connection".to_string(),
+        RunError::TimedOut => conn_error("Timed out acquiring MSSQL connection"),
     }
 }
 
-fn quote_ident(ident: &str) -> Result<String, String> {
+fn quote_ident(ident: &str) -> DriverResult<String> {
     let trimmed = ident.trim();
     if trimmed.is_empty() {
-        return Err("[VALIDATION_ERROR] identifier cannot be empty".to_string().into());
+        return Err(validation_error("identifier cannot be empty"));
     }
     if trimmed.chars().any(|c| c == '\0') {
-        return Err("[VALIDATION_ERROR] identifier contains null byte".to_string().into());
+        return Err(validation_error("identifier contains null byte"));
     }
     Ok(format!("[{}]", trimmed.replace(']', "]]")))
 }
 
-fn table_ref(schema: &str, table: &str) -> Result<String, String> {
+fn table_ref(schema: &str, table: &str) -> DriverResult<String> {
     Ok(format!("{}.{}", quote_ident(schema)?, quote_ident(table)?))
 }
 
@@ -470,7 +487,7 @@ impl MssqlConnectionManager {
         }
     }
 
-    async fn connect_single(&self) -> Result<Client<Compat<TcpStream>>, String> {
+    async fn connect_single(&self) -> DriverResult<Client<Compat<TcpStream>>> {
         let attempts = if self.config.ssl {
             vec![
                 (
@@ -506,38 +523,38 @@ impl MssqlConnectionManager {
             }
         }
 
-        Err(format!(
-            "[CONN_FAILED] SQL Server handshake failed after retries: {}",
+        Err(conn_error(format!(
+            "SQL Server handshake failed after retries: {}",
             errors.join(" | ")
-        ))
+        )))
     }
 
-    async fn connect_with_config(config: Config) -> Result<Client<Compat<TcpStream>>, String> {
+    async fn connect_with_config(config: Config) -> DriverResult<Client<Compat<TcpStream>>> {
         let connect_future = async {
             // Use SqlBrowser to resolve named instance port when instance_name is set.
             // If no instance_name is configured, connect_named falls back to direct TCP.
             let tcp = TcpStream::connect_named(&config)
                 .await
-                .map_err(|e| format!("{}", e))?;
-            tcp.set_nodelay(true).map_err(|e| format!("{}", e))?;
-            Ok::<TcpStream, String>(tcp)
+                .map_err(|e| conn_error(e.to_string()))?;
+            tcp.set_nodelay(true)
+                .map_err(|e| conn_error(e.to_string()))?;
+            Ok::<TcpStream, AppError>(tcp)
         };
 
         let tcp = tokio::time::timeout(std::time::Duration::from_secs(10), connect_future)
             .await
-            .map_err(|_| "Connection timed out".to_string())?
-            .map_err(|e| format!("{}", e))?;
+            .map_err(|_| conn_error("Connection timed out"))??;
 
         Client::connect(config, tcp.compat_write())
             .await
-            .map_err(|e| format!("{}", e))
+            .map_err(|e| conn_error(e.to_string()))
     }
 }
 
 #[async_trait]
 impl bb8::ManageConnection for MssqlConnectionManager {
     type Connection = Client<Compat<TcpStream>>;
-    type Error = String;
+    type Error = AppError;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
         self.connect_single().await
@@ -616,7 +633,7 @@ fn mssql_full_type_string(data_type: &str, max_length: i64, precision: i64, scal
 /// Build a SELECT column list for SQL Server, automatically casting unsupported
 /// types (sql_variant, geometry, geography, hierarchyid) to NVARCHAR(MAX)
 /// so that tiberius can read them without panicking on `todo!()` for Udt/SSVariant.
-fn build_mssql_select_list(columns: &[(String, String)]) -> Result<String, String> {
+fn build_mssql_select_list(columns: &[(String, String)]) -> DriverResult<String> {
     let mut parts = Vec::new();
     for (name, data_type) in columns {
         let ident = quote_ident(name)?;
@@ -633,7 +650,7 @@ fn build_mssql_select_list(columns: &[(String, String)]) -> Result<String, Strin
 }
 
 impl MssqlDriver {
-    pub async fn connect(form: &ConnectionForm) -> Result<Self, String> {
+    pub async fn connect(form: &ConnectionForm) -> DriverResult<Self> {
         let mut cfg_form = form.clone();
         let mut ssh_tunnel = None;
 
@@ -650,7 +667,7 @@ impl MssqlDriver {
             .max_size(10)
             .build(manager)
             .await
-            .map_err(|e| format!("[CONN_FAILED] Failed to create connection pool: {}", e))?;
+            .map_err(|e| conn_error(format!("Failed to create connection pool: {}", e)))?;
 
         let supports_for_json = {
             let mut client = pool.get().await.map_err(map_pool_error)?;
@@ -665,26 +682,26 @@ impl MssqlDriver {
         Ok(driver)
     }
 
-    async fn fetch_rows(&self, sql: &str) -> Result<Vec<Row>, String> {
+    async fn fetch_rows(&self, sql: &str) -> DriverResult<Vec<Row>> {
         Ok(self.fetch_rows_with_columns(sql).await?.0)
     }
 
     async fn fetch_rows_with_columns(
         &self,
         sql: &str,
-    ) -> Result<(Vec<Row>, Vec<QueryColumn>), String> {
+    ) -> DriverResult<(Vec<Row>, Vec<QueryColumn>)> {
         let mut client = self.pool.get().await.map_err(map_pool_error)?;
         let mut stream = client
             .simple_query(sql)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+            .map_err(|e| query_error(e.to_string()))?;
         let mut rows = Vec::new();
         let mut columns = Vec::new();
 
         while let Some(item) = stream
             .try_next()
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {}", e))?
+            .map_err(|e| query_error(e.to_string()))?
         {
             match item {
                 QueryItem::Metadata(meta) if columns.is_empty() => {
@@ -712,7 +729,7 @@ impl MssqlDriver {
     async fn fetch_query_result_json(
         &self,
         sql: &str,
-    ) -> Result<(Vec<serde_json::Value>, Vec<QueryColumn>), String> {
+    ) -> DriverResult<(Vec<serde_json::Value>, Vec<QueryColumn>)> {
         if self.supports_for_json && is_for_json_safe(sql) {
             self.fetch_query_result_for_json(sql).await
         } else {
@@ -724,12 +741,12 @@ impl MssqlDriver {
     async fn fetch_query_result_direct(
         &self,
         sql: &str,
-    ) -> Result<(Vec<serde_json::Value>, Vec<QueryColumn>), String> {
+    ) -> DriverResult<(Vec<serde_json::Value>, Vec<QueryColumn>)> {
         let mut client = self.pool.get().await.map_err(map_pool_error)?;
         let mut stream = client
             .simple_query(sql)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+            .map_err(|e| query_error(e.to_string()))?;
 
         let mut columns: Vec<QueryColumn> = Vec::new();
         let mut high_precision_cols = HashSet::new();
@@ -738,7 +755,7 @@ impl MssqlDriver {
         while let Some(item) = stream
             .try_next()
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {}", e))?
+            .map_err(|e| query_error(e.to_string()))?
         {
             match item {
                 QueryItem::Metadata(meta) if columns.is_empty() => {
@@ -778,7 +795,7 @@ impl MssqlDriver {
     async fn fetch_query_result_for_json(
         &self,
         sql: &str,
-    ) -> Result<(Vec<serde_json::Value>, Vec<QueryColumn>), String> {
+    ) -> DriverResult<(Vec<serde_json::Value>, Vec<QueryColumn>)> {
         let json_sql = Self::build_for_json_query(sql);
         let mut columns = self
             .describe_query_result_columns(sql)
@@ -793,14 +810,14 @@ impl MssqlDriver {
         let mut stream = client
             .simple_query(&json_sql)
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+            .map_err(|e| query_error(e.to_string()))?;
 
         let mut json_text = String::new();
 
         while let Some(item) = stream
             .try_next()
             .await
-            .map_err(|e| format!("[QUERY_ERROR] {}", e))?
+            .map_err(|e| query_error(e.to_string()))?
         {
             match item {
                 QueryItem::Row(row) => {
@@ -815,12 +832,12 @@ impl MssqlDriver {
         }
 
         let parsed: serde_json::Value = serde_json::from_str(&json_text)
-            .map_err(|e| format!("[QUERY_ERROR] Failed to parse MSSQL JSON result: {e}"))?;
+            .map_err(|e| query_error(format!("Failed to parse MSSQL JSON result: {e}")))?;
         let mut data = match parsed {
             serde_json::Value::Array(arr) => arr,
             serde_json::Value::Object(obj) => vec![serde_json::Value::Object(obj)],
             _ => {
-                return Err("[QUERY_ERROR] MSSQL FOR JSON result is not array/object".to_string().into());
+                return Err(query_error("MSSQL FOR JSON result is not array/object"));
             }
         };
         for row in &mut data {
@@ -831,7 +848,7 @@ impl MssqlDriver {
         Ok((data, columns))
     }
 
-    async fn describe_query_result_columns(&self, sql: &str) -> Result<Vec<QueryColumn>, String> {
+    async fn describe_query_result_columns(&self, sql: &str) -> DriverResult<Vec<QueryColumn>> {
         let describe_sql = format!(
             "EXEC sys.sp_describe_first_result_set @tsql = N'{}'",
             escape_literal(sql)
@@ -921,7 +938,7 @@ impl MssqlDriver {
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<Vec<MssqlColumnInfo>, String> {
+    ) -> DriverResult<Vec<MssqlColumnInfo>> {
         let sql = format!(
             "SELECT c.name, t.name AS data_type, c.is_nullable, \
                     c.max_length, c.precision, c.scale, \
@@ -1025,7 +1042,7 @@ impl MssqlDriver {
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<Vec<MssqlKeyConstraint>, String> {
+    ) -> DriverResult<Vec<MssqlKeyConstraint>> {
         let sql = format!(
             "SELECT kc.name, kc.type_desc, c.name AS col_name, ic.key_ordinal \
              FROM sys.key_constraints kc \
@@ -1074,7 +1091,7 @@ impl MssqlDriver {
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<Vec<(String, String)>, String> {
+    ) -> DriverResult<Vec<(String, String)>> {
         let sql = format!(
             "SELECT cc.name, cc.definition \
              FROM sys.check_constraints cc \
@@ -1097,7 +1114,7 @@ impl MssqlDriver {
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<Vec<ForeignKeyInfo>, String> {
+    ) -> DriverResult<Vec<ForeignKeyInfo>> {
         let sql = format!(
             "SELECT fk.name, pc.name, rs.name, rt.name, rc.name, \
                     fk.update_referential_action_desc, fk.delete_referential_action_desc \
@@ -1137,7 +1154,7 @@ impl MssqlDriver {
         schema: &str,
         table: &str,
         include_constraints: bool,
-    ) -> Result<Vec<IndexInfo>, String> {
+    ) -> DriverResult<Vec<IndexInfo>> {
         let constraint_filter = if include_constraints {
             ""
         } else {
@@ -1193,7 +1210,7 @@ impl MssqlDriver {
     async fn execute_single_statement(
         &self,
         sql: &str,
-    ) -> Result<(Vec<QueryColumn>, Vec<serde_json::Value>, i64), String> {
+    ) -> DriverResult<(Vec<QueryColumn>, Vec<serde_json::Value>, i64)> {
         match Self::classify_mssql_statement(sql) {
             MssqlStatementKind::Read => {
                 let (data, columns) = self.fetch_query_result_json(sql).await?;
@@ -1205,7 +1222,7 @@ impl MssqlDriver {
                 let result = client
                     .execute(sql, &[])
                     .await
-                    .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+                    .map_err(|e| query_error(e.to_string()))?;
                 Ok((Vec::new(), Vec::new(), result.total() as i64))
             }
             MssqlStatementKind::Other => {
@@ -1213,11 +1230,11 @@ impl MssqlDriver {
                 let stream = client
                     .simple_query(sql)
                     .await
-                    .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+                    .map_err(|e| query_error(e.to_string()))?;
                 let _ = stream
                     .into_results()
                     .await
-                    .map_err(|e| format!("[QUERY_ERROR] {}", e))?;
+                    .map_err(|e| query_error(e.to_string()))?;
                 Ok((Vec::new(), Vec::new(), 0))
             }
         }
@@ -1244,10 +1261,10 @@ fn is_high_precision_mssql_query_type(type_name: &str) -> bool {
 fn normalize_mssql_row_json(
     row_json: &mut serde_json::Value,
     high_precision_cols: &HashSet<String>,
-) -> Result<(), String> {
+) -> DriverResult<()> {
     let obj = row_json
         .as_object_mut()
-        .ok_or("[QUERY_ERROR] Expected JSON object row from MSSQL FOR JSON".to_string())?;
+        .ok_or_else(|| query_error("Expected JSON object row from MSSQL FOR JSON"))?;
 
     let mut lookup: HashMap<String, String> = HashMap::new();
     for key in obj.keys() {
@@ -1336,9 +1353,9 @@ fn parse_mssql_unicode_string_literal(sql: &str, quote_idx: usize) -> Option<Str
 #[cfg(test)]
 mod tests {
     use super::{
-        already_has_for_json, has_top_level_union, is_for_json_safe,
+        MssqlDriver, already_has_for_json, has_top_level_union, is_for_json_safe,
         is_high_precision_mssql_data_type, is_high_precision_mssql_query_type, quote_ident,
-        routine_type_sql_filter, MssqlDriver,
+        routine_type_sql_filter,
     };
     use std::collections::HashSet;
 
@@ -1867,7 +1884,7 @@ impl DatabaseDriver for MssqlDriver {
     async fn test_connection(&self) -> DriverResult<()> {
         let rows = self.fetch_rows("SELECT 1").await?;
         if rows.is_empty() {
-            return Err("[CONN_FAILED] Empty response".to_string().into());
+            return Err(conn_error("Empty response"));
         }
         Ok(())
     }
@@ -1994,7 +2011,8 @@ impl DatabaseDriver for MssqlDriver {
             return Err(format!(
                 "[NOT_FOUND] Routine '{}.{}' does not exist or its definition is not visible",
                 schema, name
-            ).into());
+            )
+            .into());
         }
 
         Ok(ddl)
@@ -2244,7 +2262,7 @@ impl DatabaseDriver for MssqlDriver {
         let start = std::time::Instant::now();
         let statements = super::split_sql_statements(&sql);
         if statements.is_empty() {
-            return Err("[QUERY_ERROR] Empty SQL statement".to_string().into());
+            return Err(query_error("Empty SQL statement"));
         }
 
         // Single statement: keep original behavior
@@ -2279,7 +2297,7 @@ impl DatabaseDriver for MssqlDriver {
                     });
                 }
                 Err(e) => {
-                    last_error = Some(e);
+                    last_error = Some(e.to_string());
                     break;
                 }
             }

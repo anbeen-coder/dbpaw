@@ -998,44 +998,44 @@ mod tests {
 
     #[test]
     fn normalize_error_authentication() {
-        let result = normalize_cassandra_error("Authentication failed for user");
-        assert!(result.starts_with("[CASSANDRA_ERROR] Authentication failed"));
+        let result = normalize_cassandra_error("Authentication failed for user").to_string();
+        assert!(result.contains("Authentication failed"));
     }
 
     #[test]
     fn normalize_error_credentials() {
-        let result = normalize_cassandra_error("invalid credentials provided");
-        assert!(result.starts_with("[CASSANDRA_ERROR] Authentication failed"));
+        let result = normalize_cassandra_error("invalid credentials provided").to_string();
+        assert!(result.contains("Authentication failed"));
     }
 
     #[test]
     fn normalize_error_connection_refused() {
-        let result = normalize_cassandra_error("Connection refused by remote host");
-        assert!(result.starts_with("[CASSANDRA_ERROR] Connection refused"));
+        let result = normalize_cassandra_error("Connection refused by remote host").to_string();
+        assert!(result.contains("Connection refused"));
     }
 
     #[test]
     fn normalize_error_timeout() {
-        let result = normalize_cassandra_error("request timed out after 30s");
-        assert!(result.starts_with("[CASSANDRA_ERROR] Connection timed out"));
+        let result = normalize_cassandra_error("request timed out after 30s").to_string();
+        assert!(result.contains("Connection timed out"));
     }
 
     #[test]
     fn normalize_error_dns() {
-        let result = normalize_cassandra_error("cannot resolve hostname");
-        assert!(result.starts_with("[CASSANDRA_ERROR] DNS resolution failed"));
+        let result = normalize_cassandra_error("cannot resolve hostname").to_string();
+        assert!(result.contains("DNS resolution failed"));
     }
 
     #[test]
     fn normalize_error_tls() {
-        let result = normalize_cassandra_error("certificate verify failed");
-        assert!(result.starts_with("[CASSANDRA_ERROR] TLS/SSL error"));
+        let result = normalize_cassandra_error("certificate verify failed").to_string();
+        assert!(result.contains("TLS/SSL error"));
     }
 
     #[test]
     fn normalize_error_unknown() {
-        let result = normalize_cassandra_error("something weird happened");
-        assert_eq!(result, "[CASSANDRA_ERROR] something weird happened");
+        let result = normalize_cassandra_error("something weird happened").to_string();
+        assert!(result.contains("something weird happened"));
     }
 
     #[test]

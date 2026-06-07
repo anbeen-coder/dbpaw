@@ -1,7 +1,7 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/utils";
-import type { RedisKeyInfo } from "@/services/api";
+import type { RedisKeyInfo } from "@/services/types/redis";
 import { TYPE_COLORS, TYPE_DISPLAY_LABEL } from "../redis-type-colors";
 
 function formatTtlShort(ttl: number): string {

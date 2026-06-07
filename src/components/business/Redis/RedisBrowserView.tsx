@@ -64,7 +64,7 @@ export function RedisBrowserView({
     dialogs.closeExpireDialog();
   };
 
-  const handleCheckboxToggle = (key: string, _index: number) => {
+  const handleCheckboxToggle = (key: string) => {
     selection.setSelectedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -75,6 +75,7 @@ export function RedisBrowserView({
 
   return (
     <ResizablePanelGroup direction="horizontal" className="h-full">
+      {/* Left: key browser */}
       <ResizablePanel defaultSize={30} minSize={18} maxSize={50}>
         <div className="h-full flex flex-col border-r">
           <KeySearchPanel
@@ -119,6 +120,7 @@ export function RedisBrowserView({
 
       <ResizableHandle />
 
+      {/* Right: key detail */}
       <ResizablePanel defaultSize={70} minSize={50}>
         <DetailPanel
           detail={selection.detail}
@@ -130,6 +132,7 @@ export function RedisBrowserView({
         />
       </ResizablePanel>
 
+      {/* Dialogs */}
       <RedisBrowserDialogs
         expireDialogOpen={dialogs.expireDialogOpen}
         expireTtl={dialogs.expireTtl}

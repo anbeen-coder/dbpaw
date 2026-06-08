@@ -46,10 +46,10 @@ pub async fn get_connection_form_by_id_with_driver_check(
 ) -> Result<ConnectionForm, String> {
     let form = get_connection_form_by_id(state, id).await?;
     if form.driver != expected_driver {
-        return Err(format!(
-            "[UNSUPPORTED] Connection {} is not a {} connection",
+        return Err(AppError::unsupported(format!(
+            "Connection {} is not a {} connection",
             id, expected_driver
-        ));
+        )).to_string());
     }
     Ok(form)
 }
@@ -101,7 +101,7 @@ async fn ensure_connection_with_db_inner(
     };
 
     let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
-    let mut form = db.get_connection_form_by_id(id).await.map_err(AppError::from)?;
+    let mut form = db.get_connection_form_by_id(id).await.map_err(AppError::internal)?;
 
     if let Some(db_name) = database {
         if !db_name.is_empty() {
@@ -237,17 +237,17 @@ mod tests {
             _schema: String,
             _table: String,
         ) -> DriverResult<TableStructure> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_metadata(
             &self,
             _schema: String,
             _table: String,
         ) -> DriverResult<TableMetadata> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_ddl(&self, _schema: String, _table: String) -> DriverResult<String> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_data(
             &self,
@@ -260,7 +260,7 @@ mod tests {
             _filter: Option<String>,
             _order_by: Option<String>,
         ) -> DriverResult<TableDataResponse> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_data_chunk(
             &self,
@@ -273,16 +273,16 @@ mod tests {
             _filter: Option<String>,
             _order_by: Option<String>,
         ) -> DriverResult<TableDataResponse> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn execute_query(&self, _sql: String) -> DriverResult<QueryResult> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_schema_overview(
             &self,
             _schema: Option<String>,
         ) -> DriverResult<SchemaOverview> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
     }
 
@@ -318,8 +318,8 @@ mod tests {
                 async move {
                     let n = task_calls_c.fetch_add(1, Ordering::SeqCst);
                     if n == 0 {
-                        Err(crate::error::AppError::from(
-                            "[QUERY_ERROR] connection reset by peer",
+                        Err(crate::error::AppError::query_failed(
+                            "connection reset by peer",
                         ))
                     } else {
                         Ok("ok".to_string())
@@ -366,8 +366,8 @@ mod tests {
                 let task_calls_c = task_calls_c.clone();
                 async move {
                     task_calls_c.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, crate::error::AppError>(crate::error::AppError::from(
-                        "[QUERY_ERROR] pool closed",
+                    Err::<String, crate::error::AppError>(crate::error::AppError::query_failed(
+                        "pool closed",
                     ))
                 }
             },

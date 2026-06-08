@@ -5,6 +5,7 @@ use super::import_plan::{
 };
 use super::ImportSqlResult;
 use crate::db::drivers::DatabaseDriver;
+use crate::error::AppError;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,7 +32,7 @@ pub(super) fn prepare_sql_import(
     validate_import_file_size(&import_path)?;
 
     let source = fs::read_to_string(&import_path)
-        .map_err(|e| format!("[IMPORT_ERROR] failed to read sql file: {e}"))?;
+        .map_err(|e| AppError::internal(format!("failed to read sql file: {e}")).to_string())?;
     let source = source
         .strip_prefix('\u{feff}')
         .unwrap_or(&source)
@@ -39,14 +40,14 @@ pub(super) fn prepare_sql_import(
 
     let import_plan = prepare_import_plan(&source, &normalized_driver)?;
     if import_plan.units.is_empty() {
-        return Err("[IMPORT_ERROR] SQL file does not contain executable statements".to_string());
+        return Err(AppError::internal("SQL file does not contain executable statements").to_string());
     }
     if import_plan.units.len() > MAX_IMPORT_STATEMENTS {
-        return Err(format!(
-            "[IMPORT_ERROR] statement count exceeds limit ({} > {})",
+        return Err(AppError::internal(format!(
+            "statement count exceeds limit ({} > {})",
             import_plan.units.len(),
             MAX_IMPORT_STATEMENTS
-        ));
+        )).to_string());
     }
 
     let use_outer_transaction =
@@ -72,7 +73,7 @@ pub(super) async fn execute_sql_import(
         db_driver
             .execute_query(prepared.begin_sql.clone())
             .await
-            .map_err(|e| format!("[IMPORT_ERROR] failed to start transaction: {e}"))?;
+            .map_err(|e| AppError::internal(format!("failed to start transaction: {e}")).to_string())?;
     }
 
     let mut success_statements = 0i64;
@@ -106,10 +107,10 @@ pub(super) async fn execute_sql_import(
                 failed_at: None,
                 failed_batch: None,
                 failed_statement_preview: None,
-                error: Some(format!(
-                    "[IMPORT_ERROR] failed to commit transaction: {}",
+                error: Some(AppError::internal(format!(
+                    "failed to commit transaction: {}",
                     truncate_error_message(&e.to_string())
-                )),
+                )).to_string()),
                 time_taken_ms: started_at.elapsed().as_millis() as i64,
                 rolled_back: true,
             });

@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use std::fs;
 use std::path::Path;
 
@@ -38,10 +39,10 @@ pub(super) fn import_transaction_sql<'a>(
 ) -> Result<(&'a str, &'a str, &'a str), String> {
     match normalized_driver {
         "mysql" | "mariadb" | "tidb" => Ok(("START TRANSACTION", "COMMIT", "ROLLBACK")),
-        "starrocks" | "doris" => Err(format!(
-            "[UNSUPPORTED] Driver {} does not support transactional SQL import in this flow",
+        "starrocks" | "doris" => Err(AppError::unsupported(format!(
+            "Driver {} does not support transactional SQL import in this flow",
             original_driver
-        )),
+        )).to_string()),
         "postgres" | "sqlite" | "duckdb" => Ok(("BEGIN", "COMMIT", "ROLLBACK")),
         "mssql" => Ok((
             "BEGIN TRANSACTION",
@@ -51,12 +52,12 @@ pub(super) fn import_transaction_sql<'a>(
         "oracle" => Ok(("SELECT 1 FROM DUAL", "COMMIT", "ROLLBACK")),
         "db2" => Ok(("BEGIN", "COMMIT", "ROLLBACK")),
         "clickhouse" => {
-            Err("[UNSUPPORTED] Driver clickhouse is read-only in this import flow".to_string())
+            Err(AppError::unsupported("Driver clickhouse is read-only in this import flow").to_string())
         }
-        _ => Err(format!(
-            "[UNSUPPORTED] Driver {} is not supported for SQL import",
+        _ => Err(AppError::unsupported(format!(
+            "Driver {} is not supported for SQL import",
             original_driver
-        )),
+        )).to_string()),
     }
 }
 
@@ -317,13 +318,13 @@ pub(super) fn parse_mssql_batches(sql: &str) -> Result<Vec<String>, String> {
     match state {
         SqlScanState::Normal | SqlScanState::LineComment => {}
         SqlScanState::BlockComment => {
-            return Err("[IMPORT_ERROR] Unterminated block comment in SQL file".to_string());
+            return Err(AppError::internal("Unterminated block comment in SQL file").to_string());
         }
         SqlScanState::SingleQuoted
         | SqlScanState::DoubleQuoted
         | SqlScanState::BacktickQuoted
         | SqlScanState::DollarQuoted(_) => {
-            return Err("[IMPORT_ERROR] Unterminated string literal in SQL file".to_string());
+            return Err(AppError::internal("Unterminated string literal in SQL file").to_string());
         }
     }
 
@@ -334,33 +335,33 @@ pub(super) fn parse_mssql_batches(sql: &str) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-pub(super) fn validate_import_path(path: &Path) -> Result<(), String> {
+pub(super) fn validate_import_path(path: &Path) -> Result<(), AppError> {
     if path.as_os_str().is_empty() {
-        return Err("[IMPORT_ERROR] Invalid import path".to_string());
+        return Err(AppError::validation("Invalid import path"));
     }
     if path.is_dir() {
-        return Err("[IMPORT_ERROR] Import path points to a directory".to_string());
+        return Err(AppError::validation("Import path points to a directory"));
     }
     if !path.exists() {
-        return Err("[IMPORT_ERROR] Import file does not exist".to_string());
+        return Err(AppError::validation("Import file does not exist"));
     }
     let Some(ext) = path.extension().and_then(|v| v.to_str()) else {
-        return Err("[IMPORT_ERROR] Import file must use .sql extension".to_string());
+        return Err(AppError::validation("Import file must use .sql extension"));
     };
     if !ext.eq_ignore_ascii_case("sql") {
-        return Err("[IMPORT_ERROR] Import file must use .sql extension".to_string());
+        return Err(AppError::validation("Import file must use .sql extension"));
     }
     Ok(())
 }
 
-pub(super) fn validate_import_file_size(path: &Path) -> Result<(), String> {
+pub(super) fn validate_import_file_size(path: &Path) -> Result<(), AppError> {
     let metadata = fs::metadata(path)
-        .map_err(|e| format!("[IMPORT_ERROR] failed to read file metadata: {e}"))?;
+        .map_err(|e| AppError::internal(format!("failed to read file metadata: {e}")))?;
     if metadata.len() > MAX_IMPORT_FILE_SIZE_BYTES {
-        return Err(format!(
-            "[IMPORT_ERROR] file is too large (max {} bytes)",
+        return Err(AppError::validation(format!(
+            "file is too large (max {} bytes)",
             MAX_IMPORT_FILE_SIZE_BYTES
-        ));
+        )));
     }
     Ok(())
 }
@@ -984,13 +985,13 @@ pub(super) fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String
     match state {
         SqlScanState::Normal | SqlScanState::LineComment => {}
         SqlScanState::BlockComment => {
-            return Err("[IMPORT_ERROR] Unterminated block comment in SQL file".to_string());
+            return Err(AppError::internal("Unterminated block comment in SQL file").to_string());
         }
         SqlScanState::SingleQuoted
         | SqlScanState::DoubleQuoted
         | SqlScanState::BacktickQuoted
         | SqlScanState::DollarQuoted(_) => {
-            return Err("[IMPORT_ERROR] Unterminated string literal in SQL file".to_string());
+            return Err(AppError::internal("Unterminated string literal in SQL file").to_string());
         }
     }
 

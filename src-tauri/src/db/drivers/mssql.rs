@@ -563,7 +563,7 @@ impl bb8::ManageConnection for MssqlConnectionManager {
     async fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
         conn.simple_query("SELECT 1")
             .await
-            .map_err(|e| format!("{}", e))?;
+            .map_err(|e| AppError::internal(format!("{}", e)))?;
         Ok(())
     }
 

@@ -555,7 +555,6 @@ impl DatabaseDriver for ClickHouseDriver {
         self.execute_raw("SELECT 1", None)
             .await
             .map(|_| ())
-            .map_err(crate::error::AppError::from)
     }
 
     async fn list_databases(&self) -> DriverResult<Vec<String>> {

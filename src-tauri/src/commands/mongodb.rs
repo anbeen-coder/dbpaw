@@ -1,6 +1,7 @@
 use crate::db::drivers::mongodb::{
     MongoDBDriver, MongodbCollectionInfo, MongodbConnectionInfo, MongodbDatabaseInfo,
 };
+use crate::error::AppError;
 use crate::models::TestConnectionResult;
 use crate::state::AppState;
 use std::time::Instant;
@@ -17,10 +18,10 @@ async fn connection_form(
     let db = local_db.ok_or("Local DB not initialized")?;
     let form = db.get_connection_form_by_id(id).await?;
     if form.driver != "mongodb" {
-        return Err(format!(
-            "[UNSUPPORTED] Connection {} is not a MongoDB connection",
+        return Err(AppError::unsupported(format!(
+            "Connection {} is not a MongoDB connection",
             id
-        ));
+        )).to_string());
     }
     Ok(form)
 }

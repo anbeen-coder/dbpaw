@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::models::{
     AiConversation, AiMessage, AiProvider, AiProviderForm, AiProviderPublic, Connection,
     ConnectionForm, RedisCommandLog, SavedQuery, SqlExecutionLog,
@@ -493,7 +494,7 @@ impl LocalDb {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| AppError::query_failed(format!("{e}")).to_string())?;
         Ok(rows
             .into_iter()
             .map(|row| Connection {
@@ -547,7 +548,7 @@ impl LocalDb {
         .bind(id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| AppError::query_failed(format!("{e}")).to_string())?;
 
         Ok(Connection {
             id: row.try_get("id").unwrap_or_default(),
@@ -592,7 +593,7 @@ impl LocalDb {
         .bind(id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[QUERY_ERROR] {e}"))?;
+        .map_err(|e| AppError::query_failed(format!("{e}")).to_string())?;
 
         // Manual extraction since we don't have a struct for this specific query or macros
         Ok(ConnectionForm {

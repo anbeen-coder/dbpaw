@@ -1168,7 +1168,7 @@ impl DatabaseDriver for MysqlDriver {
     async fn list_databases(&self) -> DriverResult<Vec<String>> {
         let rows = self.fetch_all_sql("SHOW DATABASES").await?;
         rows.into_iter()
-            .map(|row| decode_mysql_text_cell(&row, 0).map_err(AppError::from))
+            .map(|row| decode_mysql_text_cell(&row, 0))
             .collect()
     }
 
@@ -1508,7 +1508,7 @@ impl DatabaseDriver for MysqlDriver {
         };
         let query = format!("SHOW CREATE TABLE {}", qualified);
         let row = self.fetch_one_sql(&query).await?;
-        decode_mysql_text_cell(&row, 1).map_err(AppError::from)
+        decode_mysql_text_cell(&row, 1)
     }
 
     async fn get_table_data(

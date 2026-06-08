@@ -373,10 +373,10 @@ pub async fn create_database_by_id(
             })
             .await
         }
-        _ => Err(format!(
-            "[UNSUPPORTED] Driver {} not supported for create database",
+        _ => Err(AppError::unsupported(format!(
+            "Driver {} not supported for create database",
             driver
-        )),
+        )).to_string()),
     };
 
     exec_res.map_err(|e| normalize_create_database_error(e, &db_name))
@@ -465,10 +465,10 @@ pub async fn create_database_by_id_direct(
             })
             .await
         }
-        _ => Err(format!(
-            "[UNSUPPORTED] Driver {} not supported for create database",
+        _ => Err(AppError::unsupported(format!(
+            "Driver {} not supported for create database",
             driver
-        )),
+        )).to_string()),
     };
 
     exec_res.map_err(|e| normalize_create_database_error(e, &db_name))
@@ -537,7 +537,7 @@ pub async fn get_mysql_collations_by_id(
             format!("SHOW COLLATION WHERE Charset = '{}'", cs)
         }
         Some(cs) => {
-            return Err(format!("[VALIDATION_ERROR] Invalid charset: {}", cs));
+            return Err(AppError::validation(format!("Invalid charset: {}", cs)).to_string());
         }
         None => "SHOW COLLATION".to_string(),
     };
@@ -594,7 +594,7 @@ pub async fn get_mysql_collations_by_id_direct(
             format!("SHOW COLLATION WHERE Charset = '{}'", cs)
         }
         Some(cs) => {
-            return Err(format!("[VALIDATION_ERROR] Invalid charset: {}", cs));
+            return Err(AppError::validation(format!("Invalid charset: {}", cs)).to_string());
         }
         None => "SHOW COLLATION".to_string(),
     };

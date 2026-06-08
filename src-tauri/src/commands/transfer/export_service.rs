@@ -1,6 +1,7 @@
 use super::writer::ExportWriter;
 use super::{ExportFormat, ExportResult, ExportScope};
 use crate::db::drivers::DatabaseDriver;
+use crate::error::AppError;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -186,7 +187,7 @@ pub(super) async fn do_query_export(
     format: ExportFormat,
 ) -> Result<ExportResult, String> {
     if matches!(format, ExportFormat::SqlDdl) {
-        return Err("[EXPORT_ERROR] SqlDdl format is not supported for query exports".to_string());
+        return Err(AppError::unsupported("SqlDdl format is not supported for query exports").to_string());
     }
 
     let result = db_driver.execute_query(sql).await?;

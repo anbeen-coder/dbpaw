@@ -1,5 +1,6 @@
 use super::sql_writer::{quote_ident, quote_target, sql_value};
 use super::ExportFormat;
+use crate::error::AppError;
 use serde_json::{Map, Value};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
@@ -32,20 +33,20 @@ pub(super) fn resolve_output_path(
     validate_output_path(&path)?;
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("[EXPORT_ERROR] create dir failed: {e}"))?;
+        fs::create_dir_all(parent).map_err(|e| AppError::internal(format!("create dir failed: {e}")).to_string())?;
     }
     Ok(path)
 }
 
-pub(super) fn validate_output_path(path: &PathBuf) -> Result<(), String> {
+pub(super) fn validate_output_path(path: &PathBuf) -> Result<(), AppError> {
     if path.as_os_str().is_empty() {
-        return Err("[EXPORT_ERROR] Invalid output path".to_string());
+        return Err(AppError::validation("Invalid output path"));
     }
     if path.file_name().is_none() {
-        return Err("[EXPORT_ERROR] Output path must include a file name".to_string());
+        return Err(AppError::validation("Output path must include a file name"));
     }
     if path.exists() && path.is_dir() {
-        return Err("[EXPORT_ERROR] Output path points to a directory".to_string());
+        return Err(AppError::validation("Output path points to a directory"));
     }
     Ok(())
 }
@@ -94,13 +95,13 @@ pub(super) struct ExportWriter {
 impl ExportWriter {
     pub(super) fn new(path: PathBuf, format: ExportFormat) -> Result<Self, String> {
         let file =
-            File::create(path).map_err(|e| format!("[EXPORT_ERROR] create file failed: {e}"))?;
+            File::create(path).map_err(|e| AppError::internal(format!("create file failed: {e}")).to_string())?;
         let mut writer = BufWriter::new(file);
 
         if matches!(format, ExportFormat::Json) {
             writer
                 .write_all(b"[\n")
-                .map_err(|e| format!("[EXPORT_ERROR] write json header failed: {e}"))?;
+                .map_err(|e| AppError::internal(format!("write json header failed: {e}")).to_string())?;
         }
 
         Ok(Self {
@@ -121,7 +122,7 @@ impl ExportWriter {
             .join(",");
         self.writer
             .write_all(format!("{header}\n").as_bytes())
-            .map_err(|e| format!("[EXPORT_ERROR] write csv header failed: {e}"))
+            .map_err(|e| AppError::internal(format!("write csv header failed: {e}")).to_string())
     }
 
     pub(super) fn write_rows(
@@ -136,7 +137,7 @@ impl ExportWriter {
         for row in rows {
             let obj = row
                 .as_object()
-                .ok_or("[EXPORT_ERROR] row is not a JSON object")?;
+                .ok_or(AppError::validation("row is not a JSON object").to_string())?;
             self.write_row(obj, columns, schema, table, driver)?;
             count += 1;
         }
@@ -160,20 +161,20 @@ impl ExportWriter {
                     .join(",");
                 self.writer
                     .write_all(format!("{line}\n").as_bytes())
-                    .map_err(|e| format!("[EXPORT_ERROR] write csv row failed: {e}"))?;
+                    .map_err(|e| AppError::internal(format!("write csv row failed: {e}")).to_string())?;
             }
             ExportFormat::Json => {
                 if !self.first_json_row {
                     self.writer
                         .write_all(b",\n")
-                        .map_err(|e| format!("[EXPORT_ERROR] write json separator failed: {e}"))?;
+                        .map_err(|e| AppError::internal(format!("write json separator failed: {e}")).to_string())?;
                 }
                 self.first_json_row = false;
                 let text = serde_json::to_string(row)
-                    .map_err(|e| format!("[EXPORT_ERROR] serialize json row failed: {e}"))?;
+                    .map_err(|e| AppError::internal(format!("serialize json row failed: {e}")).to_string())?;
                 self.writer
                     .write_all(text.as_bytes())
-                    .map_err(|e| format!("[EXPORT_ERROR] write json row failed: {e}"))?;
+                    .map_err(|e| AppError::internal(format!("write json row failed: {e}")).to_string())?;
             }
             ExportFormat::SqlDml | ExportFormat::SqlFull => {
                 let quoted_cols = columns
@@ -198,7 +199,7 @@ impl ExportWriter {
                 );
                 self.writer
                     .write_all(statement.as_bytes())
-                    .map_err(|e| format!("[EXPORT_ERROR] write sql row failed: {e}"))?;
+                    .map_err(|e| AppError::internal(format!("write sql row failed: {e}")).to_string())?;
             }
             ExportFormat::SqlDdl => unreachable!("SqlDdl rows are never written"),
         }
@@ -209,7 +210,7 @@ impl ExportWriter {
         let content = format!("{}\n\n", ddl.trim_end());
         self.writer
             .write_all(content.as_bytes())
-            .map_err(|e| format!("[EXPORT_ERROR] write ddl failed: {e}"))?;
+            .map_err(|e| AppError::internal(format!("write ddl failed: {e}")).to_string())?;
         Ok(())
     }
 
@@ -217,11 +218,11 @@ impl ExportWriter {
         if matches!(self.format, ExportFormat::Json) {
             self.writer
                 .write_all(b"\n]\n")
-                .map_err(|e| format!("[EXPORT_ERROR] write json end failed: {e}"))?;
+                .map_err(|e| AppError::internal(format!("write json end failed: {e}")).to_string())?;
         }
         self.writer
             .flush()
-            .map_err(|e| format!("[EXPORT_ERROR] flush file failed: {e}"))?;
+            .map_err(|e| AppError::internal(format!("flush file failed: {e}")).to_string())?;
         Ok(())
     }
 }

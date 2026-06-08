@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::models::ConnectionForm;
 use ssh2::Session;
 use std::io::{Read, Write};
@@ -47,19 +48,19 @@ impl Drop for TunnelGuard {
     }
 }
 
-pub fn start_ssh_tunnel(config: &ConnectionForm) -> Result<SshTunnel, String> {
+pub fn start_ssh_tunnel(config: &ConnectionForm) -> Result<SshTunnel, AppError> {
     // Validate config
-    let ssh_host = config.ssh_host.clone().ok_or("SSH Host is required")?;
+    let ssh_host = config.ssh_host.clone().ok_or(AppError::validation("SSH Host is required"))?;
     let ssh_port = config.ssh_port.unwrap_or(22);
     if ssh_port < 1 || ssh_port > 65535 {
-        return Err("SSH port must be between 1 and 65535".to_string());
+        return Err(AppError::validation("SSH port must be between 1 and 65535"));
     }
     let ssh_port = ssh_port as u16;
 
     let ssh_user = config
         .ssh_username
         .clone()
-        .ok_or("SSH Username is required")?;
+        .ok_or(AppError::validation("SSH Username is required"))?;
     let ssh_password = config.ssh_password.clone();
     let ssh_key_path =
         config
@@ -72,13 +73,13 @@ pub fn start_ssh_tunnel(config: &ConnectionForm) -> Result<SshTunnel, String> {
     let default_port = default_target_port(&normalized_driver);
     let target_port = config.port.unwrap_or(default_port);
     if target_port < 1 || target_port > 65535 {
-        return Err("Target port must be between 1 and 65535".to_string());
+        return Err(AppError::validation("Target port must be between 1 and 65535"));
     }
     let target_port = target_port as u16;
 
     // Bind local listener
     let listener = TcpListener::bind("127.0.0.1:0")
-        .map_err(|e| format!("Failed to bind local port: {}", e))?;
+        .map_err(|e| AppError::internal(format!("Failed to bind local port: {}", e)))?;
     let local_port = listener.local_addr().unwrap().port();
 
     let guard = Arc::new(TunnelGuard {
@@ -268,23 +269,14 @@ fn handle_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::ConnectionForm;
+use crate::models::ConnectionForm;
 
     #[test]
     fn test_target_port_default_by_driver() {
-        // Verify driver-specific default ports are applied when port is None.
-        // We can only test port validation since start_ssh_tunnel requires a real host;
-        // use an out-of-range port to force early validation failure and confirm the
-        // default port resolution branch is NOT taken (port=None should NOT produce 5432 for MySQL).
-
-        // For MySQL with no port set, the default must be 3306 (not 5432).
-        // We verify indirectly: if port is None and driver is mysql, target_port = 3306 which
-        // passes validation (1..=65535). The tunnel will fail to connect (no real host), but
-        // the validation itself won't error with "Target port must be between 1 and 65535".
         let config_mysql = ConnectionForm {
             driver: "mysql".to_string(),
             host: Some("127.0.0.1".to_string()),
-            port: None, // deliberately omitted — should default to 3306
+            port: None,
             ssh_host: Some("127.0.0.1".to_string()),
             ssh_port: Some(22),
             ssh_username: Some("user".to_string()),
@@ -292,18 +284,18 @@ mod tests {
             ..Default::default()
         };
         let result = start_ssh_tunnel(&config_mysql);
-        // Should fail with a network/connect error, NOT a port validation error
         if let Err(e) = result {
+            let msg = e.to_string();
             assert!(
-                !e.contains("Target port must be between 1 and 65535"),
-                "MySQL default port (3306) should pass validation, got: {e}"
+                !msg.contains("Target port must be between 1 and 65535"),
+                "MySQL default port (3306) should pass validation, got: {msg}"
             );
         }
 
         let config_mssql = ConnectionForm {
             driver: "mssql".to_string(),
             host: Some("127.0.0.1".to_string()),
-            port: None, // should default to 1433
+            port: None,
             ssh_host: Some("127.0.0.1".to_string()),
             ssh_port: Some(22),
             ssh_username: Some("user".to_string()),
@@ -312,16 +304,17 @@ mod tests {
         };
         let result = start_ssh_tunnel(&config_mssql);
         if let Err(e) = result {
+            let msg = e.to_string();
             assert!(
-                !e.contains("Target port must be between 1 and 65535"),
-                "MSSQL default port (1433) should pass validation, got: {e}"
+                !msg.contains("Target port must be between 1 and 65535"),
+                "MSSQL default port (1433) should pass validation, got: {msg}"
             );
         }
 
         let config_starrocks = ConnectionForm {
             driver: "starrocks".to_string(),
             host: Some("127.0.0.1".to_string()),
-            port: None, // should default to 9030
+            port: None,
             ssh_host: Some("127.0.0.1".to_string()),
             ssh_port: Some(22),
             ssh_username: Some("user".to_string()),
@@ -330,16 +323,17 @@ mod tests {
         };
         let result = start_ssh_tunnel(&config_starrocks);
         if let Err(e) = result {
+            let msg = e.to_string();
             assert!(
-                !e.contains("Target port must be between 1 and 65535"),
-                "StarRocks default port (9030) should pass validation, got: {e}"
+                !msg.contains("Target port must be between 1 and 65535"),
+                "StarRocks default port (9030) should pass validation, got: {msg}"
             );
         }
 
         let config_doris = ConnectionForm {
             driver: "doris".to_string(),
             host: Some("127.0.0.1".to_string()),
-            port: None, // should default to 9030
+            port: None,
             ssh_host: Some("127.0.0.1".to_string()),
             ssh_port: Some(22),
             ssh_username: Some("user".to_string()),
@@ -348,9 +342,10 @@ mod tests {
         };
         let result = start_ssh_tunnel(&config_doris);
         if let Err(e) = result {
+            let msg = e.to_string();
             assert!(
-                !e.contains("Target port must be between 1 and 65535"),
-                "Doris default port (9030) should pass validation, got: {e}"
+                !msg.contains("Target port must be between 1 and 65535"),
+                "Doris default port (9030) should pass validation, got: {msg}"
             );
         }
     }
@@ -374,22 +369,20 @@ mod tests {
         config.ssh_host = Some("example.com".to_string());
         config.ssh_username = Some("user".to_string());
 
-        // Test negative port
         config.ssh_port = Some(-1);
         let result = start_ssh_tunnel(&config);
         assert!(result.is_err());
         assert_eq!(
-            result.err().unwrap(),
-            "SSH port must be between 1 and 65535"
+            result.err().unwrap().to_string(),
+            "[ERR-3001] SSH port must be between 1 and 65535"
         );
 
-        // Test out of range port
         config.ssh_port = Some(70000);
         let result = start_ssh_tunnel(&config);
         assert!(result.is_err());
         assert_eq!(
-            result.err().unwrap(),
-            "SSH port must be between 1 and 65535"
+            result.err().unwrap().to_string(),
+            "[ERR-3001] SSH port must be between 1 and 65535"
         );
     }
 
@@ -400,22 +393,20 @@ mod tests {
         config.ssh_username = Some("user".to_string());
         config.ssh_port = Some(22);
 
-        // Test negative port
         config.port = Some(-1);
         let result = start_ssh_tunnel(&config);
         assert!(result.is_err());
         assert_eq!(
-            result.err().unwrap(),
-            "Target port must be between 1 and 65535"
+            result.err().unwrap().to_string(),
+            "[ERR-3001] Target port must be between 1 and 65535"
         );
 
-        // Test out of range
         config.port = Some(70000);
         let result = start_ssh_tunnel(&config);
         assert!(result.is_err());
         assert_eq!(
-            result.err().unwrap(),
-            "Target port must be between 1 and 65535"
+            result.err().unwrap().to_string(),
+            "[ERR-3001] Target port must be between 1 and 65535"
         );
     }
 }

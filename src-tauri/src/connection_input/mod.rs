@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::models::ConnectionForm;
 
 fn trim_string_list(values: Option<Vec<String>>) -> Option<Vec<String>> {
@@ -44,19 +45,18 @@ fn parse_host_embedded_port(host: &str, fallback_port: Option<i64>) -> (String, 
     (host_part.to_string(), parsed_port)
 }
 
-fn validate_port_range(field: &str, port: Option<i64>) -> Result<(), String> {
+fn validate_port_range(field: &str, port: Option<i64>) -> Result<(), AppError> {
     if let Some(v) = port {
         if !(1..=65535).contains(&v) {
-            return Err(format!(
-                "[VALIDATION_ERROR] {} must be between 1 and 65535",
-                field
-            ));
+            return Err(AppError::validation(format!(
+                "{field} must be between 1 and 65535"
+            )));
         }
     }
     Ok(())
 }
 
-fn normalize_redis_options(form: &mut ConnectionForm) -> Result<(), String> {
+fn normalize_redis_options(form: &mut ConnectionForm) -> Result<(), AppError> {
     let mode = form
         .mode
         .as_deref()
@@ -119,7 +119,7 @@ fn normalize_redis_options(form: &mut ConnectionForm) -> Result<(), String> {
                 < 2
             {
                 return Err(
-                    "[VALIDATION_ERROR] Redis cluster requires at least two seed nodes".to_string(),
+                    AppError::validation("Redis cluster requires at least two seed nodes"),
                 );
             }
         }
@@ -131,8 +131,7 @@ fn normalize_redis_options(form: &mut ConnectionForm) -> Result<(), String> {
                 .unwrap_or(true)
             {
                 return Err(
-                    "[VALIDATION_ERROR] Redis sentinel requires at least one sentinel node"
-                        .to_string(),
+                    AppError::validation("Redis sentinel requires at least one sentinel node"),
                 );
             }
             if form.service_name.is_none() {
@@ -145,7 +144,7 @@ fn normalize_redis_options(form: &mut ConnectionForm) -> Result<(), String> {
     Ok(())
 }
 
-pub fn normalize_connection_form(mut form: ConnectionForm) -> Result<ConnectionForm, String> {
+pub fn normalize_connection_form(mut form: ConnectionForm) -> Result<ConnectionForm, AppError> {
     form.name = trim_to_option(form.name);
     form.host = trim_to_option(form.host);
     form.database = trim_to_option(form.database);
@@ -203,43 +202,43 @@ pub fn normalize_connection_form(mut form: ConnectionForm) -> Result<ConnectionF
 
     if matches!(driver.as_str(), "sqlite" | "duckdb") {
         if form.file_path.is_none() {
-            return Err("[VALIDATION_ERROR] file path cannot be empty".to_string());
+            return Err(AppError::validation("file path cannot be empty"));
         }
     } else if driver == "redis" {
         if form.mode.as_deref() == Some("standalone") && form.host.is_none() {
-            return Err("[VALIDATION_ERROR] host cannot be empty".to_string());
+            return Err(AppError::validation("host cannot be empty"));
         }
     } else if driver == "elasticsearch" {
         if form.host.is_none() && form.cloud_id.is_none() {
-            return Err("[VALIDATION_ERROR] host or cloudId cannot be empty".to_string());
+            return Err(AppError::validation("host or cloudId cannot be empty"));
         }
     } else if driver == "mongodb" {
         if form.host.is_none() {
-            return Err("[VALIDATION_ERROR] host cannot be empty".to_string());
+            return Err(AppError::validation("host cannot be empty"));
         }
     } else if driver == "db2" {
         if form.host.is_none() {
-            return Err("[VALIDATION_ERROR] host cannot be empty".to_string());
+            return Err(AppError::validation("host cannot be empty"));
         }
         if form.database.is_none() {
-            return Err("[VALIDATION_ERROR] database cannot be empty".to_string());
+            return Err(AppError::validation("database cannot be empty"));
         }
     } else if form.host.is_none() {
-        return Err("[VALIDATION_ERROR] host cannot be empty".to_string());
+        return Err(AppError::validation("host cannot be empty"));
     }
 
     if form.ssh_enabled.unwrap_or(false) {
         if form.ssh_host.is_none() {
-            return Err("[VALIDATION_ERROR] ssh host cannot be empty".to_string());
+            return Err(AppError::validation("ssh host cannot be empty"));
         }
         if form.ssh_username.is_none() {
-            return Err("[VALIDATION_ERROR] ssh username cannot be empty".to_string());
+            return Err(AppError::validation("ssh username cannot be empty"));
         }
         if form.ssh_port.is_none() {
             form.ssh_port = Some(22);
         }
         if form.ssh_password.is_none() && form.ssh_key_path.is_none() {
-            return Err("[VALIDATION_ERROR] ssh password or ssh key path is required".to_string());
+            return Err(AppError::validation("ssh password or ssh key path is required"));
         }
     }
 

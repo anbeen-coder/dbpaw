@@ -360,17 +360,17 @@ mod tests {
             _schema: String,
             _table: String,
         ) -> DriverResult<crate::models::TableStructure> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_metadata(
             &self,
             _schema: String,
             _table: String,
         ) -> DriverResult<crate::models::TableMetadata> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_ddl(&self, _schema: String, _table: String) -> DriverResult<String> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_data(
             &self,
@@ -383,7 +383,7 @@ mod tests {
             _filter: Option<String>,
             _order_by: Option<String>,
         ) -> DriverResult<crate::models::TableDataResponse> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_data_chunk(
             &self,
@@ -396,16 +396,16 @@ mod tests {
             _filter: Option<String>,
             _order_by: Option<String>,
         ) -> DriverResult<crate::models::TableDataResponse> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn execute_query(&self, _sql: String) -> DriverResult<crate::models::QueryResult> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_schema_overview(
             &self,
             _schema: Option<String>,
         ) -> DriverResult<crate::models::SchemaOverview> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
     }
 
@@ -544,33 +544,33 @@ mod tests {
     impl DatabaseDriver for UnhealthyMockDriver {
         async fn close(&self) {}
         async fn test_connection(&self) -> DriverResult<()> {
-            Err(crate::error::AppError::from("Connection failed"))
+            Err(crate::error::AppError::conn_failed("Connection failed", "Check connection settings"))
         }
         async fn list_databases(&self) -> DriverResult<Vec<String>> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn list_tables(
             &self,
             _schema: Option<String>,
         ) -> DriverResult<Vec<crate::models::TableInfo>> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_structure(
             &self,
             _schema: String,
             _table: String,
         ) -> DriverResult<crate::models::TableStructure> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_metadata(
             &self,
             _schema: String,
             _table: String,
         ) -> DriverResult<crate::models::TableMetadata> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_ddl(&self, _schema: String, _table: String) -> DriverResult<String> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_data(
             &self,
@@ -583,7 +583,7 @@ mod tests {
             _filter: Option<String>,
             _order_by: Option<String>,
         ) -> DriverResult<crate::models::TableDataResponse> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_table_data_chunk(
             &self,
@@ -596,16 +596,16 @@ mod tests {
             _filter: Option<String>,
             _order_by: Option<String>,
         ) -> DriverResult<crate::models::TableDataResponse> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn execute_query(&self, _sql: String) -> DriverResult<crate::models::QueryResult> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
         async fn get_schema_overview(
             &self,
             _schema: Option<String>,
         ) -> DriverResult<crate::models::SchemaOverview> {
-            Err(crate::error::AppError::from("Unimplemented"))
+            Err(crate::error::AppError::unsupported("Unimplemented"))
         }
     }
 

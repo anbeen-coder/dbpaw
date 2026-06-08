@@ -17,6 +17,7 @@ use self::writer::{csv_escape, validate_output_path, ExportWriter};
 use self::writer::{extension_for_format, resolve_output_path};
 #[cfg(test)]
 use crate::db::drivers::{DatabaseDriver, DriverResult};
+use crate::error::AppError;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -225,7 +226,7 @@ pub async fn export_query_result(
     file_path: Option<String>,
 ) -> Result<ExportResult, String> {
     if matches!(format, ExportFormat::SqlDdl) {
-        return Err("[EXPORT_ERROR] SqlDdl format is not supported for query exports".to_string().into());
+        return Err(AppError::unsupported("SqlDdl format is not supported for query exports").to_string().into());
     }
     let output_path =
         resolve_output_path(file_path, "query_result", extension_for_format(&format))?;
@@ -250,7 +251,7 @@ pub async fn export_query_result_direct(
     file_path: Option<String>,
 ) -> Result<ExportResult, String> {
     if matches!(format, ExportFormat::SqlDdl) {
-        return Err("[EXPORT_ERROR] SqlDdl format is not supported for query exports".to_string().into());
+        return Err(AppError::unsupported("SqlDdl format is not supported for query exports").to_string().into());
     }
     let output_path =
         resolve_output_path(file_path, "query_result", extension_for_format(&format))?;
@@ -380,7 +381,7 @@ mod tests {
             self.ddls
                 .get(&(schema, table))
                 .cloned()
-                .ok_or_else(|| crate::error::AppError::from("missing ddl"))
+                .ok_or_else(|| crate::error::AppError::not_found("missing ddl"))
         }
 
         async fn get_table_data(
@@ -523,8 +524,8 @@ mod tests {
     #[test]
     fn validate_output_path_rejects_empty_path() {
         assert_eq!(
-            validate_output_path(&PathBuf::new()).unwrap_err(),
-            "[EXPORT_ERROR] Invalid output path"
+            validate_output_path(&PathBuf::new()).unwrap_err().to_string(),
+            "[ERR-3001] Invalid output path"
         );
     }
 
@@ -536,15 +537,15 @@ mod tests {
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("dbpaw-transfer-test-dir-{unique}"));
         fs::create_dir_all(&dir).unwrap();
-        let err = validate_output_path(&dir).unwrap_err();
-        assert_eq!(err, "[EXPORT_ERROR] Output path points to a directory");
+        let err = validate_output_path(&dir).unwrap_err().to_string();
+        assert_eq!(err, "[ERR-3001] Output path points to a directory");
         let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
     fn validate_output_path_rejects_path_without_filename() {
-        let err = validate_output_path(&PathBuf::from("/")).unwrap_err();
-        assert_eq!(err, "[EXPORT_ERROR] Output path must include a file name");
+        let err = validate_output_path(&PathBuf::from("/")).unwrap_err().to_string();
+        assert_eq!(err, "[ERR-3001] Output path must include a file name");
     }
 
     #[test]
@@ -564,7 +565,7 @@ mod tests {
                 "postgres",
             )
             .unwrap_err();
-        assert_eq!(err, "[EXPORT_ERROR] row is not a JSON object");
+        assert_eq!(err, "[ERR-3001] row is not a JSON object");
         let _ = fs::remove_file(path);
     }
 

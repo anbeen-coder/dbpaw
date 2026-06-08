@@ -105,13 +105,9 @@ where
     F: for<'a> FnOnce(&'a ConnectionForm, &'a mut RedisConnection) -> RedisCommandFuture<'a, T>,
 {
     let form = super::get_connection_form_by_id_with_driver_check(state, id, "redis")
-        .await
-        .map_err(crate::error::AppError::from)
-        .map_err(String::from)?;
+        .await?;
     let mut conn = acquire(state, id, &form, database)
-        .await
-        .map_err(crate::error::AppError::from)
-        .map_err(String::from)?;
+        .await?;
     operation(&form, &mut conn).await.map_err(String::from)
 }
 
@@ -125,9 +121,7 @@ where
     F: for<'a> Fn(&'a ConnectionForm, &'a mut RedisConnection) -> RedisCommandFuture<'a, T>,
 {
     let form = super::get_connection_form_by_id_with_driver_check(state, id, "redis")
-        .await
-        .map_err(crate::error::AppError::from)
-        .map_err(String::from)?;
+        .await?;
     let operation = &operation;
 
     retry_once_on_redis_io_error(

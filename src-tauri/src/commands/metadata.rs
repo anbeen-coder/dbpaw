@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::models::{
     ConnectionForm, EventInfo, PackageInfo, RoutineInfo, SchemaForeignKey, SchemaOverview,
     SequenceInfo, SynonymInfo, TableInfo, TableMetadata, TableStructure, TypeInfo,
@@ -10,10 +11,10 @@ fn ensure_table_structure_found(
     table: &str,
 ) -> Result<TableStructure, String> {
     if structure.columns.is_empty() {
-        return Err(format!(
-            "[NOT_FOUND] Table '{}' does not exist or has no visible columns",
+        return Err(AppError::not_found(format!(
+            "Table '{}' does not exist or has no visible columns",
             table
-        ));
+        )).to_string());
     }
     Ok(structure)
 }
@@ -316,7 +317,7 @@ mod tests {
         let result = ensure_table_structure_found(structure, "users");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("[NOT_FOUND]"));
+        assert!(err.contains("[ERR-5003]"));
         assert!(err.contains("users"));
     }
 

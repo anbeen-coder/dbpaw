@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::models::{ConnectionForm, QueryResult, SqlExecutionLog, TableDataResponse};
 use crate::sql::query_guard::apply_default_limit;
 use crate::state::AppState;
@@ -143,12 +144,12 @@ async fn append_sql_execution_log_direct(
     }
 }
 
-fn validate_page_limit(page: i64, limit: i64) -> Result<(), String> {
+fn validate_page_limit(page: i64, limit: i64) -> Result<(), AppError> {
     if page <= 0 {
-        return Err("[VALIDATION_ERROR] page must be greater than 0".to_string());
+        return Err(AppError::validation("page must be greater than 0"));
     }
     if limit <= 0 {
-        return Err("[VALIDATION_ERROR] limit must be greater than 0".to_string());
+        return Err(AppError::validation("limit must be greater than 0"));
     }
     Ok(())
 }
@@ -190,7 +191,7 @@ pub async fn execute_query(
         .map(|d| d.eq_ignore_ascii_case("redis"))
         .unwrap_or(false)
     {
-        return Err("[UNSUPPORTED] Redis connections do not support SQL queries. Use the Redis key view to browse and edit keys.".to_string());
+        return Err(AppError::unsupported("Redis connections do not support SQL queries. Use the Redis key view to browse and edit keys.").to_string());
     }
     let cancellation_supported = driver
         .as_deref()
@@ -399,10 +400,10 @@ pub async fn cancel_query(
     let connection_id = uuid
         .trim()
         .parse::<i64>()
-        .map_err(|_| "[VALIDATION_ERROR] Invalid connection id for cancellation".to_string())?;
+        .map_err(|_| AppError::validation("Invalid connection id for cancellation").to_string())?;
     let query_id = query_id.trim().to_string();
     if query_id.is_empty() {
-        return Err("[VALIDATION_ERROR] query_id cannot be empty".to_string());
+        return Err(AppError::validation("query_id cannot be empty").to_string());
     }
     if !is_running_query(connection_id, &query_id).await {
         return Ok(false);
@@ -528,10 +529,10 @@ pub async fn cancel_query_direct(
     let connection_id = uuid
         .trim()
         .parse::<i64>()
-        .map_err(|_| "[VALIDATION_ERROR] Invalid connection id for cancellation".to_string())?;
+        .map_err(|_| AppError::validation("Invalid connection id for cancellation").to_string())?;
     let query_id = query_id.trim().to_string();
     if query_id.is_empty() {
-        return Err("[VALIDATION_ERROR] query_id cannot be empty".to_string());
+        return Err(AppError::validation("query_id cannot be empty").to_string());
     }
     if !is_running_query(connection_id, &query_id).await {
         return Ok(false);

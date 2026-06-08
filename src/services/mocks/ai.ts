@@ -1,4 +1,4 @@
-import { AIProviderConfig, AIConversation, AIConversationDetail } from "../api";
+import { AIProviderConfig, AIConversation, AIConversationDetail } from "../types";
 
 const mockAiProviders: AIProviderConfig[] = [
   {

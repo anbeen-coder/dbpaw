@@ -1,4 +1,4 @@
-import { ExportResult, ImportSqlResult } from "../api";
+import { ExportResult, ImportSqlResult } from "../types";
 import { mockTableData } from "./tableData";
 import { mockQueryResult } from "./query";
 

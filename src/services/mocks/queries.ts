@@ -1,4 +1,4 @@
-import { SavedQuery } from "../api";
+import { SavedQuery } from "../types";
 
 export const mockSavedQueries: SavedQuery[] = [
   {

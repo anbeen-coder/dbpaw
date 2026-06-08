@@ -3,7 +3,7 @@ import {
   SchemaForeignKey,
   SchemaOverview,
   ConnectionForm,
-} from "../api";
+} from "../types";
 
 export const mockTables: { schema: string; name: string; type: string }[] = [
   { schema: "public", name: "users", type: "table" },

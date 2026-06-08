@@ -3,7 +3,7 @@ import {
   SqlExecutionLog,
   RedisCommandLog,
   ConnectionForm,
-} from "../api";
+} from "../types";
 import { mockTableData } from "./tableData";
 
 // Dedicated dataset for querying "SELECT * FROM json_test" in mock mode.

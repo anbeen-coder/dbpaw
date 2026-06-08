@@ -1,4 +1,4 @@
-import { ConnectionForm } from "../api";
+import { ConnectionForm } from "../types";
 import { mockComplexTypeData, mockArrayTypeData } from "./query";
 
 export const mockTableData = {

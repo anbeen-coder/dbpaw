@@ -1,4 +1,4 @@
-import { ConnectionForm, TestConnectionResult } from "../api";
+import { ConnectionForm, TestConnectionResult } from "../types";
 
 export const mockConnections: any[] = [
   {

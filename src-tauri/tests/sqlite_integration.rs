@@ -271,6 +271,7 @@ async fn test_sqlite_get_table_data_rejects_invalid_sort_column() {
         )
         .await;
     let err = result.expect_err("invalid sort column should return error");
+    let err = err.to_string();
     assert!(
         err.contains("[ERR-3001] Invalid sort column name"),
         "unexpected error: {}",
@@ -649,6 +650,7 @@ async fn test_sqlite_error_handling_for_sql_error() {
         .execute_query("SELECT * FROM __dbpaw_table_not_exists".to_string())
         .await
         .expect_err("invalid SQL should return query error");
+    let err = err.to_string();
     assert!(
         err.contains("[ERR-2001]"),
         "unexpected error shape: {}",
@@ -775,11 +777,8 @@ async fn test_sqlite_connection_failure_with_invalid_file_path() {
         Ok(_) => panic!("invalid file path should fail"),
         Err(err) => err,
     };
-    assert!(
-        err.starts_with("[ERR-1001]"),
-        "unexpected error: {}",
-        err
-    );
+    let err = err.to_string();
+    assert!(err.starts_with("[ERR-1001]"), "unexpected error: {}", err);
     assert!(!err.trim().is_empty(), "error message should not be empty");
 }
 
@@ -831,6 +830,7 @@ async fn test_sqlite_lock_conflict_or_busy_error() {
         .execute_query("INSERT INTO dbpaw_sqlite_lock_probe (id, name) VALUES (2, 'b')".to_string())
         .await
         .expect_err("concurrent write under lock should fail");
+    let err = err.to_string();
     assert!(
         err.contains("[ERR-2001]"),
         "unexpected lock error shape: {}",
@@ -1034,11 +1034,12 @@ async fn try_read_table(path_str: &str, key: Option<&str>, table: &str) -> Resul
         ..Default::default()
     };
     match SqliteDriver::connect(&form).await {
-        Err(e) => Err(e),
+        Err(e) => Err(e.to_string()),
         Ok(d) => d
             .execute_query(format!("SELECT * FROM {table}"))
             .await
-            .map(|_| ()),
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
     }
 }
 

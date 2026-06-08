@@ -418,6 +418,7 @@ async fn test_starrocks_get_table_data_rejects_invalid_sort_column() {
         )
         .await;
     let err = result.expect_err("invalid sort column should return an error");
+    let err = err.to_string();
     assert!(
         err.contains("[ERR-3001] Invalid sort column name"),
         "unexpected error: {}",

@@ -102,17 +102,18 @@ pub fn env_i64_any(names: &[&str], default: i64) -> i64 {
 }
 
 #[allow(dead_code)]
-pub async fn connect_with_retry<T, F, Fut>(mut connect: F) -> T
+pub async fn connect_with_retry<T, E, F, Fut>(mut connect: F) -> T
 where
     F: FnMut() -> Fut,
-    Fut: Future<Output = Result<T, String>>,
+    Fut: Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
 {
     let mut last_error = String::new();
     for _ in 0..CONNECT_RETRY_ATTEMPTS {
         match connect().await {
             Ok(value) => return value,
             Err(err) => {
-                last_error = err;
+                last_error = err.to_string();
                 tokio::time::sleep(Duration::from_millis(CONNECT_RETRY_DELAY_MS)).await;
             }
         }

@@ -1854,7 +1854,9 @@ mod tests {
         let err =
             render_mysql_query_with_str_params("SELECT * FROM t WHERE a = ? AND b = ?", &["x"])
                 .unwrap_err();
-        assert!(err.contains("Placeholder count does not match parameter count"));
+        assert!(err
+            .to_string()
+            .contains("Placeholder count does not match parameter count"));
     }
 
     #[test]

@@ -1,5 +1,6 @@
 mod tests {
     use super::*;
+    use crate::error::AppError;
 
     #[test]
     fn cache_key_standalone_with_database() {
@@ -61,7 +62,7 @@ mod tests {
                 attempts += 1;
                 async move {
                     if attempts == 1 {
-                        Err("[REDIS_ERROR] connection reset by peer".to_string())
+                        Err(AppError::query_failed("connection reset by peer"))
                     } else {
                         Ok("ok")
                     }
@@ -74,7 +75,7 @@ mod tests {
         )
         .await;
 
-        assert_eq!(result, Ok("ok"));
+        assert!(matches!(result, Ok("ok")));
         assert_eq!(attempts, 2);
         assert_eq!(retries, 1);
     }
@@ -87,7 +88,7 @@ mod tests {
         let result = retry_once_on_redis_io_error(
             || {
                 attempts += 1;
-                async { Err::<(), _>("[REDIS_ERROR] ERR wrong number of arguments".to_string()) }
+                async { Err::<(), _>(AppError::query_failed("ERR wrong number of arguments")) }
             },
             || {
                 retries += 1;
@@ -96,10 +97,8 @@ mod tests {
         )
         .await;
 
-        assert_eq!(
-            result,
-            Err("[REDIS_ERROR] ERR wrong number of arguments".to_string())
-        );
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("ERR wrong number of arguments"));
         assert_eq!(attempts, 1);
         assert_eq!(retries, 0);
     }
@@ -112,7 +111,7 @@ mod tests {
         let result = retry_once_on_redis_io_error(
             || {
                 attempts += 1;
-                async { Err::<(), _>("[REDIS_ERROR] broken pipe".to_string()) }
+                async { Err::<(), _>(AppError::query_failed("broken pipe")) }
             },
             || {
                 retries += 1;
@@ -121,7 +120,8 @@ mod tests {
         )
         .await;
 
-        assert_eq!(result, Err("[REDIS_ERROR] broken pipe".to_string()));
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("broken pipe"));
         assert_eq!(attempts, 2);
         assert_eq!(retries, 1);
     }

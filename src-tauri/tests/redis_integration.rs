@@ -522,6 +522,7 @@ async fn cluster_scan_requires_narrow_pattern() {
     let err = redis::scan_keys(&mut conn, None, Some("*".to_string()), Some(10))
         .await
         .unwrap_err();
+    let err = err.to_string();
     assert!(
         err.contains("requires a non-wildcard pattern"),
         "unexpected error: {err}"
@@ -796,7 +797,7 @@ async fn crud_json() {
             );
             cleanup(&form, &key).await;
         }
-        Err(e) if e.to_lowercase().contains("unknown command") => {
+        Err(e) if e.to_string().to_lowercase().contains("unknown command") => {
             eprintln!("[skip] RedisJSON module not loaded; skipping json test");
         }
         Err(e) => panic!("unexpected error: {e}"),
@@ -820,6 +821,7 @@ async fn json_write_rejects_invalid_payload() {
     };
 
     let err = redis::set_key(&mut conn, payload).await.unwrap_err();
+    let err = err.to_string();
     assert!(
         err.contains("[ERR-3001] Invalid JSON"),
         "unexpected error: {err}"
@@ -948,6 +950,7 @@ async fn string_incr_by_int_rejects_non_integer() {
         ..Default::default()
     };
     let err = redis::patch_key(&mut conn, patch).await.unwrap_err();
+    let err = err.to_string();
     assert!(err.contains("not an integer"), "unexpected error: {err}");
 
     cleanup(&form, &key).await;
@@ -1711,6 +1714,7 @@ async fn xgroup_create_idempotent_error() {
     .await;
     assert!(result.is_err(), "duplicate group creation should fail");
     let err = result.unwrap_err();
+    let err = err.to_string();
     assert!(
         err.to_lowercase().contains("busygroup") || err.to_lowercase().contains("already exists"),
         "error should mention BUSYGROUP, got: {}",
@@ -1951,6 +1955,7 @@ async fn batch_invalid_op_returns_error() {
     let result = redis::batch_key_ops(&mut conn, ops).await;
     assert!(result.is_err(), "invalid op should return error");
     let err = result.unwrap_err();
+    let err = err.to_string();
     assert!(
         err.contains("Unknown batch operation"),
         "unexpected error: {err}"
@@ -2071,7 +2076,10 @@ async fn zmscore_empty_members_returns_error() {
 
     let result = redis::zmscore(&mut conn, key.clone(), vec![]).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("At least one member"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("At least one member"));
 
     cleanup(&form, &key).await;
 }

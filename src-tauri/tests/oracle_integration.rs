@@ -255,6 +255,7 @@ async fn test_oracle_integration_connection_failure() {
     let result = OracleDriver::connect(&form).await;
     assert!(result.is_err(), "wrong password should fail");
     let err = result.err().expect("should have an error");
+    let err = err.to_string();
     assert!(
         err.contains("[ERR-1001]"),
         "error should be tagged CONN_FAILED"

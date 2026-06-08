@@ -374,7 +374,7 @@ mod tests {
         )
         .await;
 
-        assert_eq!(result.unwrap_err(), "[QUERY_ERROR] pool closed");
+        assert_eq!(result.unwrap_err(), "[ERR-2001] pool closed");
         assert_eq!(task_calls.load(Ordering::SeqCst), 2);
         assert_eq!(ensure_calls.load(Ordering::SeqCst), 2);
         assert_eq!(remove_calls.load(Ordering::SeqCst), 1);

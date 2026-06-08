@@ -29,8 +29,8 @@ pub fn oracle_form_from_test_context() -> ConnectionForm {
     oracle_form_from_local_env()
 }
 
-fn is_missing_oracle_client_error(err: &str) -> bool {
-    let lower = err.to_ascii_lowercase();
+fn is_missing_oracle_client_error(err: &impl std::fmt::Display) -> bool {
+    let lower = err.to_string().to_ascii_lowercase();
     lower.contains("dpi-1047") || lower.contains("cannot locate a 64-bit oracle client")
 }
 

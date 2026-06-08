@@ -271,9 +271,9 @@ async fn test_mssql_get_table_data_rejects_invalid_sort_column() {
         )
         .await;
     let err = result.expect_err("invalid sort column should return error");
+    let err = err.to_string();
     assert!(
-        err.contains("[ERR-3001] Invalid sort column name")
-            || err.contains("Invalid column name"),
+        err.contains("[ERR-3001] Invalid sort column name") || err.contains("Invalid column name"),
         "unexpected error: {}",
         err
     );
@@ -818,6 +818,7 @@ async fn test_mssql_error_handling_for_sql_error() {
         .execute_query("SELECT * FROM __dbpaw_table_not_exists".to_string())
         .await
         .expect_err("invalid SQL should return query error");
+    let err = err.to_string();
     assert!(
         err.contains("[ERR-2001]") || err.contains("Invalid object name"),
         "unexpected error shape: {}",
@@ -835,11 +836,8 @@ async fn test_mssql_connection_failure_with_wrong_password() {
         Ok(_) => panic!("wrong password should fail"),
         Err(err) => err,
     };
-    assert!(
-        err.starts_with("[ERR-1001]"),
-        "unexpected error: {}",
-        err
-    );
+    let err = err.to_string();
+    assert!(err.starts_with("[ERR-1001]"), "unexpected error: {}", err);
     assert!(!err.trim().is_empty(), "error message should not be empty");
 }
 
@@ -861,11 +859,8 @@ async fn test_mssql_connection_timeout_or_unreachable_host_error() {
         Ok(_) => panic!("unreachable host should fail"),
         Err(err) => err,
     };
-    assert!(
-        err.starts_with("[ERR-1001]"),
-        "unexpected error: {}",
-        err
-    );
+    let err = err.to_string();
+    assert!(err.starts_with("[ERR-1001]"), "unexpected error: {}", err);
     assert!(
         err.to_ascii_lowercase().contains("timed out")
             || err.to_ascii_lowercase().contains("timeout")

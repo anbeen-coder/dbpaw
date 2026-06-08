@@ -151,16 +151,16 @@ pub async fn wait_until_ready(form: &ConnectionForm) {
                         }
                         Err(err) => {
                             let _ = driver.execute_query(drop_db_sql).await;
-                            last_error = err;
+                            last_error = err.to_string();
                         }
                     },
                     Err(err) => {
-                        last_error = err;
+                        last_error = err.to_string();
                     }
                 }
             }
             Err(err) => {
-                last_error = err;
+                last_error = err.to_string();
             }
         }
         sleep(Duration::from_secs(1)).await;

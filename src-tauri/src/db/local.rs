@@ -41,17 +41,17 @@ fn decode_string_list(value: Option<String>) -> Option<Vec<String>> {
 impl LocalDb {
     const AI_KEY_PREFIX: &'static str = "enc:v1:";
 
-    pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, String> {
+    pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, AppError> {
         let app_dir = app_handle
             .path()
             .app_data_dir()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::internal_with("Database operation failed", e))?;
         Self::init_with_app_dir(&app_dir).await
     }
 
-    pub async fn init_with_app_dir(app_dir: &Path) -> Result<Self, String> {
+    pub async fn init_with_app_dir(app_dir: &Path) -> Result<Self, AppError> {
         if !app_dir.exists() {
-            fs::create_dir_all(app_dir).map_err(|e| e.to_string())?;
+            fs::create_dir_all(app_dir).map_err(|e| AppError::internal_with("Database operation failed", e))?;
         }
         let ai_master_key = Self::load_or_create_ai_master_key(&app_dir)?;
         let db_path = app_dir.join("dbpaw.sqlite");
@@ -61,18 +61,18 @@ impl LocalDb {
             .max_connections(5)
             .connect(&db_url)
             .await
-            .map_err(|e| format!("[LOCAL_DB_INIT] {e}"))?;
+            .map_err(|e| AppError::internal_with("Local DB initialization failed", e))?;
 
         // Run migrations
         sqlx::query(include_str!("../../migrations/001_initial.sql"))
             .execute(&pool)
             .await
-            .map_err(|e| format!("[MIGRATION_001_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("Migration 001 failed: {e}")))?;
 
         sqlx::query(include_str!("../../migrations/002_saved_queries.sql"))
             .execute(&pool)
             .await
-            .map_err(|e| format!("[MIGRATION_002_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("Migration 002 failed: {e}")))?;
 
         // Check if database column exists in saved_queries to avoid duplicate column error
         let has_database_column: bool = sqlx::query_scalar(
@@ -80,7 +80,7 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_003_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 003 check failed: {e}")))?;
 
         if !has_database_column {
             sqlx::query(include_str!(
@@ -88,7 +88,7 @@ impl LocalDb {
             ))
             .execute(&pool)
             .await
-            .map_err(|e| format!("[MIGRATION_003_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("Migration 003 failed: {e}")))?;
         }
 
         // Check if ssh_enabled column exists in connections
@@ -97,7 +97,7 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_004_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 004 check failed: {e}")))?;
 
         if !has_ssh_column {
             // Split migration because sqlite doesn't support multiple ALTER TABLE in one query usually via sqlx wrapper sometimes
@@ -107,7 +107,7 @@ impl LocalDb {
             sqlx::query(include_str!("../../migrations/004_add_ssh_fields.sql"))
                 .execute(&pool)
                 .await
-                .map_err(|e| format!("[MIGRATION_004_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("Migration 004 failed: {e}")))?;
         }
 
         let has_ai_providers: bool = sqlx::query_scalar(
@@ -115,13 +115,13 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_005_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 005 check failed: {e}")))?;
 
         if !has_ai_providers {
             sqlx::query(include_str!("../../migrations/005_ai_providers.sql"))
                 .execute(&pool)
                 .await
-                .map_err(|e| format!("[MIGRATION_005_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("Migration 005 failed: {e}")))?;
         }
 
         let has_ai_conversations: bool = sqlx::query_scalar(
@@ -129,13 +129,13 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_006_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 006 check failed: {e}")))?;
 
         if !has_ai_conversations {
             sqlx::query(include_str!("../../migrations/006_ai_conversations.sql"))
                 .execute(&pool)
                 .await
-                .map_err(|e| format!("[MIGRATION_006_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("Migration 006 failed: {e}")))?;
         }
 
         let has_ai_messages: bool = sqlx::query_scalar(
@@ -143,13 +143,13 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_007_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 007 check failed: {e}")))?;
 
         if !has_ai_messages {
             sqlx::query(include_str!("../../migrations/007_ai_messages.sql"))
                 .execute(&pool)
                 .await
-                .map_err(|e| format!("[MIGRATION_007_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("Migration 007 failed: {e}")))?;
         }
 
         let has_provider_type_unique_index: bool = sqlx::query_scalar(
@@ -157,7 +157,7 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_008_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 008 check failed: {e}")))?;
 
         if !has_provider_type_unique_index {
             sqlx::query(include_str!(
@@ -165,7 +165,7 @@ impl LocalDb {
             ))
             .execute(&pool)
             .await
-            .map_err(|e| format!("[MIGRATION_008_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("Migration 008 failed: {e}")))?;
         }
 
         // Migration 009: Always execute — its SQL is idempotent (DROP IF EXISTS + CREATE IF NOT EXISTS).
@@ -176,20 +176,20 @@ impl LocalDb {
         ))
         .execute(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_009_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 009 failed: {e}")))?;
 
         let has_sql_execution_logs: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='sql_execution_logs')",
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_010_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 010 check failed: {e}")))?;
 
         if !has_sql_execution_logs {
             sqlx::query(include_str!("../../migrations/010_sql_execution_logs.sql"))
                 .execute(&pool)
                 .await
-                .map_err(|e| format!("[MIGRATION_010_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("Migration 010 failed: {e}")))?;
         }
 
         let has_ssl_mode_column: bool = sqlx::query_scalar(
@@ -197,13 +197,13 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_011_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 011 check failed: {e}")))?;
 
         if !has_ssl_mode_column {
             sqlx::query(include_str!("../../migrations/011_add_ssl_fields.sql"))
                 .execute(&pool)
                 .await
-                .map_err(|e| format!("[MIGRATION_011_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("Migration 011 failed: {e}")))?;
         }
 
         let has_redis_mode_column: bool = sqlx::query_scalar(
@@ -211,7 +211,7 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_012_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 012 check failed: {e}")))?;
 
         if !has_redis_mode_column {
             sqlx::query(include_str!(
@@ -219,7 +219,7 @@ impl LocalDb {
             ))
             .execute(&pool)
             .await
-            .map_err(|e| format!("[MIGRATION_012_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("Migration 012 failed: {e}")))?;
         }
 
         let has_auth_mode_column: bool = sqlx::query_scalar(
@@ -227,7 +227,7 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_013_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 013 check failed: {e}")))?;
 
         if !has_auth_mode_column {
             sqlx::query(include_str!(
@@ -235,7 +235,7 @@ impl LocalDb {
             ))
             .execute(&pool)
             .await
-            .map_err(|e| format!("[MIGRATION_013_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("Migration 013 failed: {e}")))?;
         }
 
         let has_service_name_column: bool = sqlx::query_scalar(
@@ -243,13 +243,13 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_014_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 014 check failed: {e}")))?;
 
         if !has_service_name_column {
             sqlx::query(include_str!("../../migrations/014_add_sentinel_fields.sql"))
                 .execute(&pool)
                 .await
-                .map_err(|e| format!("[MIGRATION_014_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("Migration 014 failed: {e}")))?;
         }
 
         let has_auth_source_column: bool = sqlx::query_scalar(
@@ -257,7 +257,7 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_015_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 015 check failed: {e}")))?;
 
         if !has_auth_source_column {
             sqlx::query(include_str!(
@@ -265,7 +265,7 @@ impl LocalDb {
             ))
             .execute(&pool)
             .await
-            .map_err(|e| format!("[MIGRATION_015_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("Migration 015 failed: {e}")))?;
         }
 
         let has_redis_command_logs: bool = sqlx::query_scalar(
@@ -273,13 +273,13 @@ impl LocalDb {
         )
         .fetch_one(&pool)
         .await
-        .map_err(|e| format!("[MIGRATION_016_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("Migration 016 check failed: {e}")))?;
 
         if !has_redis_command_logs {
             sqlx::query(include_str!("../../migrations/016_redis_command_logs.sql"))
                 .execute(&pool)
                 .await
-                .map_err(|e| format!("[MIGRATION_016_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("Migration 016 failed: {e}")))?;
         }
 
         Ok(Self {
@@ -288,11 +288,11 @@ impl LocalDb {
         })
     }
 
-    pub fn encrypt_ai_api_key(&self, plaintext: &str) -> Result<String, String> {
+    pub fn encrypt_ai_api_key(&self, plaintext: &str) -> Result<String, AppError> {
         Self::encrypt_ai_api_key_raw(&self.ai_master_key, plaintext)
     }
 
-    pub fn decrypt_ai_api_key(&self, encrypted: &str) -> Result<String, String> {
+    pub fn decrypt_ai_api_key(&self, encrypted: &str) -> Result<String, AppError> {
         Self::decrypt_ai_api_key_raw(&self.ai_master_key, encrypted)
     }
 
@@ -301,7 +301,7 @@ impl LocalDb {
         trimmed.starts_with(Self::AI_KEY_PREFIX) && trimmed.len() > Self::AI_KEY_PREFIX.len()
     }
 
-    fn load_or_create_ai_master_key(app_dir: &Path) -> Result<[u8; 32], String> {
+    fn load_or_create_ai_master_key(app_dir: &Path) -> Result<[u8; 32], AppError> {
         let key_path = app_dir.join("ai_master.key");
         if key_path.exists() {
             let bytes = fs::read(&key_path).map_err(|e| format!("[AI_MASTER_KEY_READ] {e}"))?;
@@ -325,7 +325,7 @@ impl LocalDb {
         Ok(key)
     }
 
-    fn encrypt_ai_api_key_raw(master_key: &[u8; 32], plaintext: &str) -> Result<String, String> {
+    fn encrypt_ai_api_key_raw(master_key: &[u8; 32], plaintext: &str) -> Result<String, AppError> {
         let cipher =
             Aes256Gcm::new_from_slice(master_key).map_err(|e| format!("[AI_KEY_CIPHER] {e}"))?;
         let mut nonce_bytes = [0u8; 12];
@@ -342,7 +342,7 @@ impl LocalDb {
         Ok(format!("{}{}", LocalDb::AI_KEY_PREFIX, encoded))
     }
 
-    fn decrypt_ai_api_key_raw(master_key: &[u8; 32], encrypted: &str) -> Result<String, String> {
+    fn decrypt_ai_api_key_raw(master_key: &[u8; 32], encrypted: &str) -> Result<String, AppError> {
         let trimmed = encrypted.trim();
         if !trimmed.starts_with(LocalDb::AI_KEY_PREFIX) {
             return Err("[AI_KEY_FORMAT] Missing encryption prefix".to_string());
@@ -360,11 +360,11 @@ impl LocalDb {
         let nonce = Nonce::from_slice(nonce_bytes);
         let plaintext = cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| format!("[AI_KEY_DECRYPT] {e}"))?;
-        String::from_utf8(plaintext).map_err(|e| format!("[AI_KEY_UTF8] {e}"))
+            .map_err(|e| AppError::internal_with("AI key decryption failed", e))?;
+        String::from_utf8(plaintext).map_err(|e| AppError::internal_with("AI key UTF-8 conversion failed", e))
     }
 
-    pub async fn create_connection(&self, form: ConnectionForm) -> Result<Connection, String> {
+    pub async fn create_connection(&self, form: ConnectionForm) -> Result<Connection, AppError> {
         let uuid = uuid::Uuid::new_v4().to_string();
         // Use provided name or fallback to host or "Unknown"
         let name = form
@@ -380,10 +380,10 @@ impl LocalDb {
                 .bind(&name)
                 .fetch_one(&self.pool)
                 .await
-                .map_err(|e| format!("[CHECK_EXIST_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal_with("Database existence check failed", e))?;
 
         if exists {
-            return Err(format!("Connection with name '{}' already exists", name));
+            return Err(AppError::already_exists(format!("Connection with name '{}' already exists", name)));
         }
 
         let id = sqlx::query_scalar::<_, i64>(
@@ -431,7 +431,7 @@ impl LocalDb {
         &self,
         id: i64,
         form: ConnectionForm,
-    ) -> Result<Connection, String> {
+    ) -> Result<Connection, AppError> {
         sqlx::query(
             "UPDATE connections SET name = COALESCE(NULLIF(?, ''), name), type = ?, host = ?, port = ?, database = ?, username = ?, password = COALESCE(NULLIF(?, ''), password), ssl = ?, ssl_mode = ?, ssl_ca_cert = ?, file_path = ?, ssh_enabled = ?, ssh_host = ?, ssh_port = ?, ssh_username = ?, ssh_password = ?, ssh_key_path = ?, mode = ?, seed_nodes = ?, sentinels = ?, connect_timeout_ms = ?, service_name = ?, sentinel_password = COALESCE(NULLIF(?, ''), sentinel_password), auth_mode = ?, api_key_id = ?, api_key_secret = COALESCE(NULLIF(?, ''), api_key_secret), api_key_encoded = COALESCE(NULLIF(?, ''), api_key_encoded), cloud_id = ?, auth_source = ?, updated_at = datetime('now') WHERE id = ?"
         )
@@ -472,7 +472,7 @@ impl LocalDb {
         self.get_connection_by_id(id).await
     }
 
-    pub async fn delete_connection(&self, id: i64) -> Result<(), String> {
+    pub async fn delete_connection(&self, id: i64) -> Result<(), AppError> {
         sqlx::query("DELETE FROM connections WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -481,7 +481,7 @@ impl LocalDb {
         Ok(())
     }
 
-    pub async fn list_connections(&self) -> Result<Vec<Connection>, String> {
+    pub async fn list_connections(&self) -> Result<Vec<Connection>, AppError> {
         let rows = sqlx::query(
             r#"SELECT
                 id, uuid, name, type as db_type, host, port, database, username, ssl, ssl_mode, ssl_ca_cert, file_path,
@@ -534,7 +534,7 @@ impl LocalDb {
             .collect())
     }
 
-    pub async fn get_connection_by_id(&self, id: i64) -> Result<Connection, String> {
+    pub async fn get_connection_by_id(&self, id: i64) -> Result<Connection, AppError> {
         let row = sqlx::query(
             r#"SELECT
                 id, uuid, name, type as db_type, host, port, database, username, ssl, ssl_mode, ssl_ca_cert, file_path,
@@ -637,7 +637,7 @@ impl LocalDb {
         description: Option<String>,
         connection_id: Option<i64>,
         database: Option<String>,
-    ) -> Result<SavedQuery, String> {
+    ) -> Result<SavedQuery, AppError> {
         let id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO saved_queries (name, query, description, connection_id, database) VALUES (?, ?, ?, ?, ?) RETURNING id"
         )
@@ -661,7 +661,7 @@ impl LocalDb {
         description: Option<String>,
         connection_id: Option<i64>,
         database: Option<String>,
-    ) -> Result<SavedQuery, String> {
+    ) -> Result<SavedQuery, AppError> {
         sqlx::query(
             "UPDATE saved_queries SET name = ?, query = ?, description = ?, connection_id = ?, database = ?, updated_at = datetime('now') WHERE id = ?"
         )
@@ -678,7 +678,7 @@ impl LocalDb {
         self.get_saved_query_by_id(id).await
     }
 
-    pub async fn delete_saved_query(&self, id: i64) -> Result<(), String> {
+    pub async fn delete_saved_query(&self, id: i64) -> Result<(), AppError> {
         sqlx::query("DELETE FROM saved_queries WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -687,7 +687,7 @@ impl LocalDb {
         Ok(())
     }
 
-    pub async fn list_saved_queries(&self) -> Result<Vec<SavedQuery>, String> {
+    pub async fn list_saved_queries(&self) -> Result<Vec<SavedQuery>, AppError> {
         let rows = sqlx::query_as::<_, SavedQuery>(
             "SELECT id, name, query, description, connection_id, database, created_at, updated_at FROM saved_queries ORDER BY updated_at DESC"
         )
@@ -697,7 +697,7 @@ impl LocalDb {
         Ok(rows)
     }
 
-    pub async fn get_saved_query_by_id(&self, id: i64) -> Result<SavedQuery, String> {
+    pub async fn get_saved_query_by_id(&self, id: i64) -> Result<SavedQuery, AppError> {
         sqlx::query_as::<_, SavedQuery>(
             "SELECT id, name, query, description, connection_id, database, created_at, updated_at FROM saved_queries WHERE id = ?"
         )
@@ -715,7 +715,7 @@ impl LocalDb {
         database: Option<String>,
         success: bool,
         error: Option<String>,
-    ) -> Result<(), String> {
+    ) -> Result<(), AppError> {
         sqlx::query(
             "INSERT INTO sql_execution_logs (sql, source, connection_id, database, success, error) VALUES (?, ?, ?, ?, ?, ?)",
         )
@@ -742,7 +742,7 @@ impl LocalDb {
     pub async fn list_sql_execution_logs(
         &self,
         limit: i64,
-    ) -> Result<Vec<SqlExecutionLog>, String> {
+    ) -> Result<Vec<SqlExecutionLog>, AppError> {
         sqlx::query_as::<_, SqlExecutionLog>(
             "SELECT id, sql, source, connection_id, database, success, error, executed_at FROM sql_execution_logs ORDER BY id DESC LIMIT ?",
         )
@@ -759,7 +759,7 @@ impl LocalDb {
         database: Option<String>,
         success: bool,
         error: Option<String>,
-    ) -> Result<(), String> {
+    ) -> Result<(), AppError> {
         sqlx::query(
             "INSERT INTO redis_command_logs (command, connection_id, database, success, error) VALUES (?, ?, ?, ?, ?)",
         )
@@ -785,7 +785,7 @@ impl LocalDb {
     pub async fn list_redis_command_logs(
         &self,
         limit: i64,
-    ) -> Result<Vec<RedisCommandLog>, String> {
+    ) -> Result<Vec<RedisCommandLog>, AppError> {
         sqlx::query_as::<_, RedisCommandLog>(
             "SELECT id, command, connection_id, database, success, error, executed_at FROM redis_command_logs ORDER BY id DESC LIMIT ?",
         )
@@ -795,7 +795,7 @@ impl LocalDb {
         .map_err(|e| format!("[LIST_REDIS_COMMAND_LOGS_ERROR] {e}"))
     }
 
-    pub async fn list_ai_providers(&self) -> Result<Vec<AiProvider>, String> {
+    pub async fn list_ai_providers(&self) -> Result<Vec<AiProvider>, AppError> {
         sqlx::query_as::<_, AiProvider>(
             "SELECT id, name, provider_type, base_url, model, api_key, is_default, enabled, extra_json, created_at, updated_at FROM ai_providers ORDER BY is_default DESC, updated_at DESC",
         )
@@ -804,7 +804,7 @@ impl LocalDb {
         .map_err(|e| format!("[LIST_AI_PROVIDERS_ERROR] {e}"))
     }
 
-    pub async fn list_ai_providers_public(&self) -> Result<Vec<AiProviderPublic>, String> {
+    pub async fn list_ai_providers_public(&self) -> Result<Vec<AiProviderPublic>, AppError> {
         sqlx::query_as::<_, AiProviderPublic>(
             "SELECT id, name, provider_type, base_url, model, CASE WHEN api_key LIKE 'enc:v1:%' THEN 1 ELSE 0 END AS has_api_key, is_default, enabled, extra_json, created_at, updated_at FROM ai_providers ORDER BY is_default DESC, updated_at DESC",
         )
@@ -813,7 +813,7 @@ impl LocalDb {
         .map_err(|e| format!("[LIST_AI_PROVIDERS_PUBLIC_ERROR] {e}"))
     }
 
-    pub async fn get_ai_provider_public_by_id(&self, id: i64) -> Result<AiProviderPublic, String> {
+    pub async fn get_ai_provider_public_by_id(&self, id: i64) -> Result<AiProviderPublic, AppError> {
         sqlx::query_as::<_, AiProviderPublic>(
             "SELECT id, name, provider_type, base_url, model, CASE WHEN api_key LIKE 'enc:v1:%' THEN 1 ELSE 0 END AS has_api_key, is_default, enabled, extra_json, created_at, updated_at FROM ai_providers WHERE id = ?",
         )
@@ -823,7 +823,7 @@ impl LocalDb {
         .map_err(|e| format!("[GET_AI_PROVIDER_PUBLIC_ERROR] {e}"))
     }
 
-    pub async fn clear_ai_provider_api_key(&self, provider_type: &str) -> Result<(), String> {
+    pub async fn clear_ai_provider_api_key(&self, provider_type: &str) -> Result<(), AppError> {
         sqlx::query("UPDATE ai_providers SET api_key = '', updated_at = datetime('now') WHERE provider_type = ?")
             .bind(provider_type)
             .execute(&self.pool)
@@ -832,7 +832,7 @@ impl LocalDb {
         Ok(())
     }
 
-    pub async fn get_ai_provider_by_id(&self, id: i64) -> Result<AiProvider, String> {
+    pub async fn get_ai_provider_by_id(&self, id: i64) -> Result<AiProvider, AppError> {
         sqlx::query_as::<_, AiProvider>(
             "SELECT id, name, provider_type, base_url, model, api_key, is_default, enabled, extra_json, created_at, updated_at FROM ai_providers WHERE id = ?",
         )
@@ -842,7 +842,7 @@ impl LocalDb {
         .map_err(|e| format!("[GET_AI_PROVIDER_ERROR] {e}"))
     }
 
-    pub async fn get_default_ai_provider(&self) -> Result<AiProvider, String> {
+    pub async fn get_default_ai_provider(&self) -> Result<AiProvider, AppError> {
         let provider = sqlx::query_as::<_, AiProvider>(
             "SELECT id, name, provider_type, base_url, model, api_key, is_default, enabled, extra_json, created_at, updated_at FROM ai_providers WHERE enabled = 1 ORDER BY is_default DESC, updated_at DESC LIMIT 1",
         )
@@ -855,7 +855,7 @@ impl LocalDb {
         })
     }
 
-    pub async fn create_ai_provider(&self, form: AiProviderForm) -> Result<AiProvider, String> {
+    pub async fn create_ai_provider(&self, form: AiProviderForm) -> Result<AiProvider, AppError> {
         let provider_type = form.provider_type.unwrap_or_else(|| "openai".to_string());
         let api_key_plain = form.api_key.as_deref().unwrap_or("").trim();
         if api_key_plain.is_empty() {
@@ -939,7 +939,7 @@ impl LocalDb {
         &self,
         id: i64,
         form: AiProviderForm,
-    ) -> Result<AiProvider, String> {
+    ) -> Result<AiProvider, AppError> {
         let existing = self.get_ai_provider_by_id(id).await?;
         let provider_type = form
             .provider_type
@@ -979,7 +979,7 @@ impl LocalDb {
         self.get_ai_provider_by_id(id).await
     }
 
-    pub async fn delete_ai_provider(&self, id: i64) -> Result<(), String> {
+    pub async fn delete_ai_provider(&self, id: i64) -> Result<(), AppError> {
         sqlx::query("DELETE FROM ai_providers WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -988,7 +988,7 @@ impl LocalDb {
         Ok(())
     }
 
-    pub async fn set_default_ai_provider(&self, id: i64) -> Result<(), String> {
+    pub async fn set_default_ai_provider(&self, id: i64) -> Result<(), AppError> {
         let target_enabled =
             sqlx::query_scalar::<_, bool>("SELECT enabled FROM ai_providers WHERE id = ?")
                 .bind(id)
@@ -1026,7 +1026,7 @@ impl LocalDb {
         scenario: String,
         connection_id: Option<i64>,
         database: Option<String>,
-    ) -> Result<AiConversation, String> {
+    ) -> Result<AiConversation, AppError> {
         let id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO ai_conversations (title, scenario, connection_id, database) VALUES (?, ?, ?, ?) RETURNING id",
         )
@@ -1044,7 +1044,7 @@ impl LocalDb {
         &self,
         connection_id: Option<i64>,
         database: Option<String>,
-    ) -> Result<Vec<AiConversation>, String> {
+    ) -> Result<Vec<AiConversation>, AppError> {
         let mut query = "SELECT id, title, scenario, connection_id, database, created_at, updated_at FROM ai_conversations".to_string();
         let mut has_where = false;
         if connection_id.is_some() {
@@ -1072,7 +1072,7 @@ impl LocalDb {
             .map_err(|e| format!("[LIST_AI_CONVERSATIONS_ERROR] {e}"))
     }
 
-    pub async fn get_ai_conversation(&self, id: i64) -> Result<AiConversation, String> {
+    pub async fn get_ai_conversation(&self, id: i64) -> Result<AiConversation, AppError> {
         sqlx::query_as::<_, AiConversation>(
             "SELECT id, title, scenario, connection_id, database, created_at, updated_at FROM ai_conversations WHERE id = ?",
         )
@@ -1082,7 +1082,7 @@ impl LocalDb {
         .map_err(|e| format!("[GET_AI_CONVERSATION_ERROR] {e}"))
     }
 
-    pub async fn delete_ai_conversation(&self, id: i64) -> Result<(), String> {
+    pub async fn delete_ai_conversation(&self, id: i64) -> Result<(), AppError> {
         sqlx::query("DELETE FROM ai_messages WHERE conversation_id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -1096,7 +1096,7 @@ impl LocalDb {
         Ok(())
     }
 
-    pub async fn touch_ai_conversation(&self, id: i64) -> Result<(), String> {
+    pub async fn touch_ai_conversation(&self, id: i64) -> Result<(), AppError> {
         sqlx::query("UPDATE ai_conversations SET updated_at = datetime('now') WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -1116,7 +1116,7 @@ impl LocalDb {
         token_in: Option<i64>,
         token_out: Option<i64>,
         latency_ms: Option<i64>,
-    ) -> Result<AiMessage, String> {
+    ) -> Result<AiMessage, AppError> {
         let id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO ai_messages (conversation_id, role, content, prompt_version, model, token_in, token_out, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
@@ -1135,7 +1135,7 @@ impl LocalDb {
         self.get_ai_message(id).await
     }
 
-    pub async fn get_ai_message(&self, id: i64) -> Result<AiMessage, String> {
+    pub async fn get_ai_message(&self, id: i64) -> Result<AiMessage, AppError> {
         sqlx::query_as::<_, AiMessage>(
             "SELECT id, conversation_id, role, content, prompt_version, model, token_in, token_out, latency_ms, created_at FROM ai_messages WHERE id = ?",
         )
@@ -1145,7 +1145,7 @@ impl LocalDb {
         .map_err(|e| format!("[GET_AI_MESSAGE_ERROR] {e}"))
     }
 
-    pub async fn list_ai_messages(&self, conversation_id: i64) -> Result<Vec<AiMessage>, String> {
+    pub async fn list_ai_messages(&self, conversation_id: i64) -> Result<Vec<AiMessage>, AppError> {
         sqlx::query_as::<_, AiMessage>(
             "SELECT id, conversation_id, role, content, prompt_version, model, token_in, token_out, latency_ms, created_at FROM ai_messages WHERE conversation_id = ? ORDER BY created_at ASC, id ASC",
         )

@@ -96,8 +96,8 @@ async fn is_running_query(connection_id: i64, query_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-async fn append_sql_execution_log(
-    state: &State<'_, AppState>,
+async fn append_sql_execution_log_core(
+    state: &AppState,
     sql: String,
     source: Option<String>,
     connection_id: Option<i64>,
@@ -120,6 +120,18 @@ async fn append_sql_execution_log(
     }
 }
 
+async fn append_sql_execution_log(
+    state: &State<'_, AppState>,
+    sql: String,
+    source: Option<String>,
+    connection_id: Option<i64>,
+    database: Option<String>,
+    success: bool,
+    error: Option<String>,
+) {
+    append_sql_execution_log_core(state.inner(), sql, source, connection_id, database, success, error).await
+}
+
 async fn append_sql_execution_log_direct(
     state: &AppState,
     sql: String,
@@ -129,19 +141,7 @@ async fn append_sql_execution_log_direct(
     success: bool,
     error: Option<String>,
 ) {
-    let db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-
-    if let Some(local_db) = db {
-        if let Err(e) = local_db
-            .insert_sql_execution_log(sql, source, connection_id, database, success, error)
-            .await
-        {
-            eprintln!("[SQL_LOG_APPEND_ERROR] {}", e);
-        }
-    }
+    append_sql_execution_log_core(state, sql, source, connection_id, database, success, error).await
 }
 
 fn validate_page_limit(page: i64, limit: i64) -> Result<(), AppError> {
@@ -170,6 +170,70 @@ pub async fn get_table_data_by_conn(
         .map_err(String::from)
 }
 
+async fn execute_query_core(
+    state: &AppState,
+    id: i64,
+    query: String,
+    database: Option<String>,
+    source: Option<String>,
+    query_id: String,
+    cancellation_supported: bool,
+) -> Result<QueryResult, AppError> {
+    let guarded_query = apply_default_limit(&query, resolve_driver_from_app_state(state, id).await.as_deref());
+    if cancellation_supported {
+        register_running_query(id, &query_id).await;
+    }
+
+    let result = super::execute_with_retry_from_app_state(state, id, database.clone(), |driver| {
+        let query_clone = guarded_query.clone();
+        let query_id_clone = query_id.clone();
+        async move {
+            driver
+                .execute_query_with_id(
+                    query_clone,
+                    if cancellation_supported {
+                        Some(query_id_clone.as_str())
+                    } else {
+                        None
+                    },
+                )
+                .await
+        }
+    })
+    .await
+    .map_err(AppError::internal);
+
+    if cancellation_supported {
+        unregister_running_query(id, &query_id).await;
+    }
+
+    if let Ok(res) = &result {
+        append_sql_execution_log_core(
+            state,
+            guarded_query.clone(),
+            source,
+            Some(id),
+            database,
+            true,
+            None,
+        )
+        .await;
+    } else if let Err(err) = &result {
+        append_sql_execution_log_core(
+            state,
+            guarded_query.clone(),
+            source,
+            Some(id),
+            database,
+            false,
+            Some(err.to_string()),
+        )
+        .await;
+    }
+
+    result
+}
+
 #[tauri::command]
 pub async fn execute_query(
     app_handle: tauri::AppHandle,
@@ -193,6 +257,64 @@ pub async fn execute_query(
     {
         return Err(AppError::unsupported("Redis connections do not support SQL queries. Use the Redis key view to browse and edit keys.").to_string());
     }
+    let cancellation_supported = driver
+        .as_deref()
+        .map(supports_query_cancellation)
+        .unwrap_or(false);
+
+    let result = execute_query_core(
+        state.inner(),
+        id,
+        query,
+        database,
+        source,
+        query_id.clone(),
+        cancellation_supported,
+    )
+    .await;
+
+    if let Ok(res) = &result {
+        if !res.data.is_empty() {
+            let _ = app_handle.emit(
+                "query.chunk",
+                serde_json::json!({
+                    "queryId": query_id,
+                    "rows": res.data.iter().take(50).collect::<Vec<_>>()
+                }),
+            );
+        }
+    }
+
+    result.map_err(String::from)
+}
+
+pub async fn execute_query_by_id_direct(
+    state: &AppState,
+    id: i64,
+    query: String,
+    database: Option<String>,
+    source: Option<String>,
+    query_id: Option<String>,
+) -> Result<QueryResult, String> {
+    let query_id = make_query_id(id, query_id);
+    let driver = resolve_driver_from_app_state(state, id).await;
+    let cancellation_supported = driver
+        .as_deref()
+        .map(supports_query_cancellation)
+        .unwrap_or(false);
+
+    execute_query_core(
+        state,
+        id,
+        query,
+        database,
+        source,
+        query_id,
+        cancellation_supported,
+    )
+    .await
+    .map_err(String::from)
+}
     let cancellation_supported = driver
         .as_deref()
         .map(supports_query_cancellation)
@@ -391,20 +513,55 @@ pub async fn get_table_data(
     .await
 }
 
+async fn cancel_query_core(
+    state: &AppState,
+    uuid: String,
+    query_id: String,
+) -> Result<bool, AppError> {
+    let connection_id = uuid
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| AppError::validation("Invalid connection id for cancellation"))?;
+    let query_id = query_id.trim().to_string();
+    if query_id.is_empty() {
+        return Err(AppError::validation("query_id cannot be empty"));
+    }
+    if !is_running_query(connection_id, &query_id).await {
+        return Ok(false);
+    }
+
+    let local_db = {
+        let lock = state.local_db.lock().await;
+        lock.clone()
+    };
+    let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
+    let form = db.get_connection_form_by_id(connection_id).await.map_err(AppError::internal)?;
+
+    execute_cancel_query(connection_id, &query_id, &form)
+        .await
+        .map_err(AppError::internal)
+}
+
 #[tauri::command]
 pub async fn cancel_query(
     state: State<'_, AppState>,
     uuid: String,
     query_id: String,
 ) -> Result<bool, String> {
-    let connection_id = uuid
-        .trim()
-        .parse::<i64>()
-        .map_err(|_| AppError::validation("Invalid connection id for cancellation").to_string())?;
-    let query_id = query_id.trim().to_string();
-    if query_id.is_empty() {
-        return Err(AppError::validation("query_id cannot be empty").to_string());
-    }
+    cancel_query_core(state.inner(), uuid, query_id)
+        .await
+        .map_err(String::from)
+}
+
+pub async fn cancel_query_direct(
+    state: &AppState,
+    uuid: String,
+    query_id: String,
+) -> Result<bool, String> {
+    cancel_query_core(state, uuid, query_id)
+        .await
+        .map_err(String::from)
+}
     if !is_running_query(connection_id, &query_id).await {
         return Ok(false);
     }
@@ -486,11 +643,10 @@ fn clamp_sql_execution_logs_limit(limit: Option<i64>) -> i64 {
     limit.unwrap_or(100).clamp(1, 100)
 }
 
-#[tauri::command]
-pub async fn list_sql_execution_logs(
-    state: State<'_, AppState>,
+async fn list_sql_execution_logs_core(
+    state: &AppState,
     limit: Option<i64>,
-) -> Result<Vec<SqlExecutionLog>, String> {
+) -> Result<Vec<SqlExecutionLog>, AppError> {
     let safe_limit = clamp_sql_execution_logs_limit(limit);
     let local_db = {
         let lock = state.local_db.lock().await;
@@ -498,27 +654,29 @@ pub async fn list_sql_execution_logs(
     };
 
     if let Some(db) = local_db {
-        db.list_sql_execution_logs(safe_limit).await
+        db.list_sql_execution_logs(safe_limit).await.map_err(AppError::internal)
     } else {
-        Err("Local DB not initialized".to_string())
+        Err(AppError::internal("Local DB not initialized"))
     }
+}
+
+#[tauri::command]
+pub async fn list_sql_execution_logs(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+) -> Result<Vec<SqlExecutionLog>, String> {
+    list_sql_execution_logs_core(state.inner(), limit)
+        .await
+        .map_err(String::from)
 }
 
 pub async fn list_sql_execution_logs_direct(
     state: &AppState,
     limit: Option<i64>,
 ) -> Result<Vec<SqlExecutionLog>, String> {
-    let safe_limit = clamp_sql_execution_logs_limit(limit);
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-
-    if let Some(db) = local_db {
-        db.list_sql_execution_logs(safe_limit).await
-    } else {
-        Err("Local DB not initialized".to_string())
-    }
+    list_sql_execution_logs_core(state, limit)
+        .await
+        .map_err(String::from)
 }
 
 pub async fn cancel_query_direct(

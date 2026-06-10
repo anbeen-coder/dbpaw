@@ -180,6 +180,7 @@ pub fn run() {
             commands::metadata::get_table_metadata,
             commands::metadata::get_schema_overview,
             commands::metadata::get_schema_foreign_keys,
+            commands::metadata::get_driver_capabilities,
             commands::metadata::list_tables_by_conn,
             commands::query::execute_query,
             commands::query::get_table_data,

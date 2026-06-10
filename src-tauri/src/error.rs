@@ -19,6 +19,8 @@ pub mod codes {
     pub const VALIDATION: u16 = 3001;
     pub const VALIDATION_INPUT: u16 = 3002;
     pub const VALIDATION_STATE: u16 = 3003;
+    pub const ALREADY_EXISTS: u16 = 3004;
+    pub const PERMISSION_DENIED: u16 = 3005;
 
     // AI 4xxx
     pub const AI_PROVIDER: u16 = 4001;
@@ -69,6 +71,10 @@ pub enum AppError {
         message: String,
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
+    /// Resource already exists
+    AlreadyExists { code: u16, message: String },
+    /// Permission denied
+    PermissionDenied { code: u16, message: String },
 }
 
 impl fmt::Display for AppError {
@@ -92,6 +98,8 @@ impl fmt::Display for AppError {
             AppError::Unsupported { code, message } => write!(f, "[ERR-{code}] {message}"),
             AppError::Internal { code, message, .. } => write!(f, "[ERR-{code}] {message}"),
             AppError::NotFound { code, message, .. } => write!(f, "[ERR-{code}] {message}"),
+            AppError::AlreadyExists { code, message } => write!(f, "[ERR-{code}] {message}"),
+            AppError::PermissionDenied { code, message } => write!(f, "[ERR-{code}] {message}"),
         }
     }
 }
@@ -126,6 +134,8 @@ impl std::error::Error for AppError {
             AppError::NotFound { source, .. } => source
                 .as_ref()
                 .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
+            AppError::AlreadyExists { .. } => None,
+            AppError::PermissionDenied { .. } => None,
             _ => None,
         }
     }
@@ -283,6 +293,20 @@ impl AppError {
             source: Some(Box::new(source)),
         }
     }
+
+    pub fn already_exists(message: impl Into<String>) -> Self {
+        AppError::AlreadyExists {
+            code: codes::ALREADY_EXISTS,
+            message: message.into(),
+        }
+    }
+
+    pub fn permission_denied(message: impl Into<String>) -> Self {
+        AppError::PermissionDenied {
+            code: codes::PERMISSION_DENIED,
+            message: message.into(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -362,5 +386,17 @@ mod tests {
     fn test_internal_error() {
         let err = AppError::internal("unexpected state");
         assert_eq!(err.to_string(), "[ERR-5002] unexpected state");
+    }
+
+    #[test]
+    fn test_already_exists_display() {
+        let err = AppError::already_exists("database 'app' already exists");
+        assert_eq!(err.to_string(), "[ERR-3004] database 'app' already exists");
+    }
+
+    #[test]
+    fn test_permission_denied_display() {
+        let err = AppError::permission_denied("access denied");
+        assert_eq!(err.to_string(), "[ERR-3005] access denied");
     }
 }

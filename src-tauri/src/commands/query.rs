@@ -258,7 +258,7 @@ pub async fn execute_query(
         .await;
     }
 
-    result
+    result.map_err(String::from)
 }
 
 async fn resolve_driver_from_app_state(state: &AppState, id: i64) -> Option<String> {
@@ -336,7 +336,7 @@ pub async fn execute_query_by_id_direct(
         .await;
     }
 
-    result
+    result.map_err(String::from)
 }
 
 pub async fn execute_by_conn_direct(
@@ -389,6 +389,7 @@ pub async fn get_table_data(
         }
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]

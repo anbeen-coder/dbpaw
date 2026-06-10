@@ -87,6 +87,8 @@ export const metadataApi = {
       invoke<SynonymInfo[]>("list_synonyms", { connectionId, database }),
     listPackages: (connectionId: string, database: string) =>
       invoke<PackageInfo[]>("list_packages", { connectionId, database }),
+    getCapabilities: (connectionId: number) =>
+      invoke<number>("get_driver_capabilities", { id: connectionId }),
   },
   tableData: {
     get: (params: {

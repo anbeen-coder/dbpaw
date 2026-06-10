@@ -5,6 +5,17 @@ import {
   ConnectionForm,
 } from "../types";
 
+const DriverCapabilities = {
+  ROUTINES:      0b0000_0001,
+  EVENTS:        0b0000_0010,
+  SEQUENCES:     0b0000_0100,
+  TYPES:         0b0000_1000,
+  SYNONYMS:      0b0001_0000,
+  PACKAGES:      0b0010_0000,
+  FOREIGN_KEYS:  0b0100_0000,
+  QUERY_WITH_ID: 0b1000_0000,
+} as const;
+
 export const mockTables: { schema: string; name: string; type: string }[] = [
   { schema: "public", name: "users", type: "table" },
   { schema: "public", name: "posts", type: "table" },
@@ -478,6 +489,10 @@ export function handleMetadata(cmd: string, args?: any): Promise<any> | null {
       return mockGetSchemaOverview(args.id, args.database, args.schema);
     case "get_schema_foreign_keys":
       return mockGetSchemaForeignKeys(args.id, args.database, args.schema);
+    case "get_driver_capabilities":
+      return Promise.resolve(
+        DriverCapabilities.ROUTINES | DriverCapabilities.EVENTS | DriverCapabilities.FOREIGN_KEYS
+      );
     default:
       return null;
   }

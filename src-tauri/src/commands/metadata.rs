@@ -305,6 +305,18 @@ pub async fn get_schema_foreign_keys(
     .map_err(String::from)
 }
 
+#[tauri::command]
+pub async fn get_driver_capabilities(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<u32, String> {
+    super::execute_with_retry(&state, id, None, |driver| {
+        async move { Ok(driver.capabilities().bits()) }
+    })
+    .await
+    .map_err(String::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,6 +374,7 @@ macro_rules! metadata_commands {
         $crate::commands::metadata::get_table_metadata,
         $crate::commands::metadata::get_schema_overview,
         $crate::commands::metadata::get_schema_foreign_keys,
+        $crate::commands::metadata::get_driver_capabilities,
         $crate::commands::metadata::list_tables_by_conn,
     };
 }

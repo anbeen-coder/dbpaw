@@ -1,4 +1,4 @@
-use super::{conn_failed_error, DatabaseDriver, DriverResult};
+use super::{conn_failed_error, DatabaseDriver, DriverCapabilities, DriverResult, ForeignKeyDriver, PackageDriver, SequenceDriver, TypeDriver};
 use crate::error::AppError;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, PackageInfo, QueryColumn,
@@ -158,71 +158,11 @@ impl OracleDriver {
 
 #[async_trait]
 impl DatabaseDriver for OracleDriver {
-    async fn get_schema_foreign_keys(
-        &self,
-        _database: Option<&str>,
-    ) -> DriverResult<Vec<SchemaForeignKey>> {
-        self.run_blocking(move |conn| {
-            let sql = "SELECT c.CONSTRAINT_NAME, \
-                            c.OWNER AS SRC_SCHEMA, \
-                            cc.TABLE_NAME, \
-                            cc.COLUMN_NAME, \
-                            rc.OWNER AS TGT_SCHEMA, \
-                            rc.TABLE_NAME AS REF_TABLE, \
-                            rcc.COLUMN_NAME AS REF_COLUMN, \
-                            c.DELETE_RULE \
-                     FROM ALL_CONSTRAINTS c \
-                     JOIN ALL_CONS_COLUMNS cc \
-                       ON cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME \
-                      AND cc.OWNER = c.OWNER \
-                     JOIN ALL_CONSTRAINTS rc \
-                       ON rc.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME \
-                      AND rc.OWNER = c.R_OWNER \
-                     JOIN ALL_CONS_COLUMNS rcc \
-                       ON rcc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME \
-                      AND rcc.OWNER = rc.OWNER \
-                      AND rcc.POSITION = cc.POSITION \
-                     WHERE c.CONSTRAINT_TYPE = 'R' \
-                     ORDER BY c.CONSTRAINT_NAME, cc.POSITION";
-            let rows = conn
-                .query(sql, &[] as &[&dyn oracle::sql_type::ToSql])
-                .map_err(|e| AppError::query_failed(format!("{e}")))?;
-
-            let mut foreign_keys = Vec::new();
-            for row_result in rows {
-                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
-                let fk_name: Option<String> = row.get(0).ok().flatten();
-                let src_schema: Option<String> = row.get(1).ok().flatten();
-                let src_table: Option<String> = row.get(2).ok().flatten();
-                let src_col: Option<String> = row.get(3).ok().flatten();
-                let tgt_schema: Option<String> = row.get(4).ok().flatten();
-                let tgt_table: Option<String> = row.get(5).ok().flatten();
-                let tgt_col: Option<String> = row.get(6).ok().flatten();
-                let delete_rule: Option<String> = row.get(7).ok().flatten();
-                if let (
-                    Some(name),
-                    Some(src_table),
-                    Some(src_col),
-                    Some(tgt_table),
-                    Some(tgt_col),
-                ) = (fk_name, src_table, src_col, tgt_table, tgt_col)
-                {
-                    foreign_keys.push(SchemaForeignKey {
-                        name,
-                        source_schema: src_schema,
-                        source_table: src_table,
-                        source_column: src_col,
-                        target_schema: tgt_schema,
-                        target_table: tgt_table,
-                        target_column: tgt_col,
-                        on_update: None,
-                        on_delete: delete_rule,
-                    });
-                }
-            }
-            Ok(foreign_keys)
-        })
-        .await
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities::SEQUENCES
+            | DriverCapabilities::TYPES
+            | DriverCapabilities::PACKAGES
+            | DriverCapabilities::FOREIGN_KEYS
     }
 
     async fn close(&self) {
@@ -306,134 +246,6 @@ impl DatabaseDriver for OracleDriver {
                         schema: s,
                         name: t,
                         r#type: ty,
-                    });
-                }
-            }
-            Ok(result)
-        })
-        .await
-    }
-
-    async fn list_sequences(&self, schema: Option<String>) -> DriverResult<Vec<SequenceInfo>> {
-        let schema_upper = schema
-            .map(|s| s.trim().to_uppercase())
-            .filter(|s| !s.is_empty());
-        self.run_blocking(move |conn| {
-            let sql = if let Some(ref s) = schema_upper {
-                format!(
-                    "SELECT SEQUENCE_OWNER, SEQUENCE_NAME, DATA_TYPE, CAST(MIN_VALUE AS VARCHAR2(64)), CAST(INCREMENT_BY AS VARCHAR2(64)) \
-                     FROM ALL_SEQUENCES \
-                     WHERE SEQUENCE_OWNER = '{}' \
-                     ORDER BY SEQUENCE_OWNER, SEQUENCE_NAME",
-                    escape_literal(s)
-                )
-            } else {
-                "SELECT SEQUENCE_OWNER, SEQUENCE_NAME, DATA_TYPE, CAST(MIN_VALUE AS VARCHAR2(64)), CAST(INCREMENT_BY AS VARCHAR2(64)) \
-                 FROM ALL_SEQUENCES \
-                 ORDER BY SEQUENCE_OWNER, SEQUENCE_NAME"
-                    .to_string()
-            };
-            let rows = conn
-                .query(&sql, &[] as &[&dyn oracle::sql_type::ToSql])
-                .map_err(|e| AppError::query_failed(format!("{e}")))?;
-            let mut result = Vec::new();
-            for row_result in rows {
-                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
-                let schema_name: Option<String> = row.get(0).ok().flatten();
-                let seq_name: Option<String> = row.get(1).ok().flatten();
-                let data_type: Option<String> = row.get(2).ok().flatten();
-                let start_value: Option<String> = row.get(3).ok().flatten();
-                let increment: Option<String> = row.get(4).ok().flatten();
-                if let (Some(s), Some(n)) = (schema_name, seq_name) {
-                    result.push(SequenceInfo {
-                        schema: s,
-                        name: n,
-                        data_type: data_type.unwrap_or_default(),
-                        start_value,
-                        increment,
-                    });
-                }
-            }
-            Ok(result)
-        })
-        .await
-    }
-
-    async fn list_types(&self, schema: Option<String>) -> DriverResult<Vec<TypeInfo>> {
-        let schema_upper = schema
-            .map(|s| s.trim().to_uppercase())
-            .filter(|s| !s.is_empty());
-        self.run_blocking(move |conn| {
-            let sql = if let Some(ref s) = schema_upper {
-                format!(
-                    "SELECT OWNER, TYPE_NAME, TYPECODE \
-                     FROM ALL_TYPES \
-                     WHERE OWNER = '{}' \
-                     ORDER BY OWNER, TYPE_NAME",
-                    escape_literal(s)
-                )
-            } else {
-                "SELECT OWNER, TYPE_NAME, TYPECODE \
-                 FROM ALL_TYPES \
-                 ORDER BY OWNER, TYPE_NAME"
-                    .to_string()
-            };
-            let rows = conn
-                .query(&sql, &[] as &[&dyn oracle::sql_type::ToSql])
-                .map_err(|e| AppError::query_failed(format!("{e}")))?;
-            let mut result = Vec::new();
-            for row_result in rows {
-                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
-                let schema_name: Option<String> = row.get(0).ok().flatten();
-                let type_name: Option<String> = row.get(1).ok().flatten();
-                let type_code: Option<String> = row.get(2).ok().flatten();
-                if let (Some(s), Some(n)) = (schema_name, type_name) {
-                    result.push(TypeInfo {
-                        schema: s,
-                        name: n,
-                        category: type_code.unwrap_or_default(),
-                    });
-                }
-            }
-            Ok(result)
-        })
-        .await
-    }
-
-    async fn list_packages(&self, schema: Option<String>) -> DriverResult<Vec<PackageInfo>> {
-        let schema_upper = schema
-            .map(|s| s.trim().to_uppercase())
-            .filter(|s| !s.is_empty());
-        self.run_blocking(move |conn| {
-            let sql = if let Some(ref s) = schema_upper {
-                format!(
-                    "SELECT OWNER, OBJECT_NAME, OBJECT_TYPE \
-                     FROM ALL_OBJECTS \
-                     WHERE OBJECT_TYPE = 'PACKAGE' AND OWNER = '{}' \
-                     ORDER BY OWNER, OBJECT_NAME",
-                    escape_literal(s)
-                )
-            } else {
-                "SELECT OWNER, OBJECT_NAME, OBJECT_TYPE \
-                 FROM ALL_OBJECTS \
-                 WHERE OBJECT_TYPE = 'PACKAGE' \
-                 ORDER BY OWNER, OBJECT_NAME"
-                    .to_string()
-            };
-            let rows = conn
-                .query(&sql, &[] as &[&dyn oracle::sql_type::ToSql])
-                .map_err(|e| AppError::query_failed(format!("{e}")))?;
-            let mut result = Vec::new();
-            for row_result in rows {
-                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
-                let schema_name: Option<String> = row.get(0).ok().flatten();
-                let pkg_name: Option<String> = row.get(1).ok().flatten();
-                let obj_type: Option<String> = row.get(2).ok().flatten();
-                if let (Some(s), Some(n)) = (schema_name, pkg_name) {
-                    result.push(PackageInfo {
-                        schema: s,
-                        name: n,
-                        object_type: obj_type.unwrap_or_default(),
                     });
                 }
             }
@@ -1041,6 +853,213 @@ impl DatabaseDriver for OracleDriver {
                 .collect();
             tables.sort_by(|a, b| a.schema.cmp(&b.schema).then(a.name.cmp(&b.name)));
             Ok(SchemaOverview { tables })
+        })
+        .await
+    }
+}
+
+#[async_trait]
+impl SequenceDriver for OracleDriver {
+    async fn list_sequences(&self, schema: Option<String>) -> DriverResult<Vec<SequenceInfo>> {
+        let schema_upper = schema
+            .map(|s| s.trim().to_uppercase())
+            .filter(|s| !s.is_empty());
+        self.run_blocking(move |conn| {
+            let sql = if let Some(ref s) = schema_upper {
+                format!(
+                    "SELECT SEQUENCE_OWNER, SEQUENCE_NAME, DATA_TYPE, CAST(MIN_VALUE AS VARCHAR2(64)), CAST(INCREMENT_BY AS VARCHAR2(64)) \
+                     FROM ALL_SEQUENCES \
+                     WHERE SEQUENCE_OWNER = '{}' \
+                     ORDER BY SEQUENCE_OWNER, SEQUENCE_NAME",
+                    escape_literal(s)
+                )
+            } else {
+                "SELECT SEQUENCE_OWNER, SEQUENCE_NAME, DATA_TYPE, CAST(MIN_VALUE AS VARCHAR2(64)), CAST(INCREMENT_BY AS VARCHAR2(64)) \
+                 FROM ALL_SEQUENCES \
+                 ORDER BY SEQUENCE_OWNER, SEQUENCE_NAME"
+                    .to_string()
+            };
+            let rows = conn
+                .query(&sql, &[] as &[&dyn oracle::sql_type::ToSql])
+                .map_err(|e| AppError::query_failed(format!("{e}")))?;
+            let mut result = Vec::new();
+            for row_result in rows {
+                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
+                let schema_name: Option<String> = row.get(0).ok().flatten();
+                let seq_name: Option<String> = row.get(1).ok().flatten();
+                let data_type: Option<String> = row.get(2).ok().flatten();
+                let start_value: Option<String> = row.get(3).ok().flatten();
+                let increment: Option<String> = row.get(4).ok().flatten();
+                if let (Some(s), Some(n)) = (schema_name, seq_name) {
+                    result.push(SequenceInfo {
+                        schema: s,
+                        name: n,
+                        data_type: data_type.unwrap_or_default(),
+                        start_value,
+                        increment,
+                    });
+                }
+            }
+            Ok(result)
+        })
+        .await
+    }
+}
+
+#[async_trait]
+impl TypeDriver for OracleDriver {
+    async fn list_types(&self, schema: Option<String>) -> DriverResult<Vec<TypeInfo>> {
+        let schema_upper = schema
+            .map(|s| s.trim().to_uppercase())
+            .filter(|s| !s.is_empty());
+        self.run_blocking(move |conn| {
+            let sql = if let Some(ref s) = schema_upper {
+                format!(
+                    "SELECT OWNER, TYPE_NAME, TYPECODE \
+                     FROM ALL_TYPES \
+                     WHERE OWNER = '{}' \
+                     ORDER BY OWNER, TYPE_NAME",
+                    escape_literal(s)
+                )
+            } else {
+                "SELECT OWNER, TYPE_NAME, TYPECODE \
+                 FROM ALL_TYPES \
+                 ORDER BY OWNER, TYPE_NAME"
+                    .to_string()
+            };
+            let rows = conn
+                .query(&sql, &[] as &[&dyn oracle::sql_type::ToSql])
+                .map_err(|e| AppError::query_failed(format!("{e}")))?;
+            let mut result = Vec::new();
+            for row_result in rows {
+                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
+                let schema_name: Option<String> = row.get(0).ok().flatten();
+                let type_name: Option<String> = row.get(1).ok().flatten();
+                let type_code: Option<String> = row.get(2).ok().flatten();
+                if let (Some(s), Some(n)) = (schema_name, type_name) {
+                    result.push(TypeInfo {
+                        schema: s,
+                        name: n,
+                        category: type_code.unwrap_or_default(),
+                    });
+                }
+            }
+            Ok(result)
+        })
+        .await
+    }
+}
+
+#[async_trait]
+impl PackageDriver for OracleDriver {
+    async fn list_packages(&self, schema: Option<String>) -> DriverResult<Vec<PackageInfo>> {
+        let schema_upper = schema
+            .map(|s| s.trim().to_uppercase())
+            .filter(|s| !s.is_empty());
+        self.run_blocking(move |conn| {
+            let sql = if let Some(ref s) = schema_upper {
+                format!(
+                    "SELECT OWNER, OBJECT_NAME, OBJECT_TYPE \
+                     FROM ALL_OBJECTS \
+                     WHERE OBJECT_TYPE = 'PACKAGE' AND OWNER = '{}' \
+                     ORDER BY OWNER, OBJECT_NAME",
+                    escape_literal(s)
+                )
+            } else {
+                "SELECT OWNER, OBJECT_NAME, OBJECT_TYPE \
+                 FROM ALL_OBJECTS \
+                 WHERE OBJECT_TYPE = 'PACKAGE' \
+                 ORDER BY OWNER, OBJECT_NAME"
+                    .to_string()
+            };
+            let rows = conn
+                .query(&sql, &[] as &[&dyn oracle::sql_type::ToSql])
+                .map_err(|e| AppError::query_failed(format!("{e}")))?;
+            let mut result = Vec::new();
+            for row_result in rows {
+                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
+                let schema_name: Option<String> = row.get(0).ok().flatten();
+                let pkg_name: Option<String> = row.get(1).ok().flatten();
+                let obj_type: Option<String> = row.get(2).ok().flatten();
+                if let (Some(s), Some(n)) = (schema_name, pkg_name) {
+                    result.push(PackageInfo {
+                        schema: s,
+                        name: n,
+                        object_type: obj_type.unwrap_or_default(),
+                    });
+                }
+            }
+            Ok(result)
+        })
+        .await
+    }
+}
+
+#[async_trait]
+impl ForeignKeyDriver for OracleDriver {
+    async fn get_schema_foreign_keys(
+        &self,
+        _database: Option<&str>,
+    ) -> DriverResult<Vec<SchemaForeignKey>> {
+        self.run_blocking(move |conn| {
+            let sql = "SELECT c.CONSTRAINT_NAME, \
+                            c.OWNER AS SRC_SCHEMA, \
+                            cc.TABLE_NAME, \
+                            cc.COLUMN_NAME, \
+                            rc.OWNER AS TGT_SCHEMA, \
+                            rc.TABLE_NAME AS REF_TABLE, \
+                            rcc.COLUMN_NAME AS REF_COLUMN, \
+                            c.DELETE_RULE \
+                     FROM ALL_CONSTRAINTS c \
+                     JOIN ALL_CONS_COLUMNS cc \
+                       ON cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME \
+                      AND cc.OWNER = c.OWNER \
+                     JOIN ALL_CONSTRAINTS rc \
+                       ON rc.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME \
+                      AND rc.OWNER = c.R_OWNER \
+                     JOIN ALL_CONS_COLUMNS rcc \
+                       ON rcc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME \
+                      AND rcc.OWNER = rc.OWNER \
+                      AND rcc.POSITION = cc.POSITION \
+                     WHERE c.CONSTRAINT_TYPE = 'R' \
+                     ORDER BY c.CONSTRAINT_NAME, cc.POSITION";
+            let rows = conn
+                .query(sql, &[] as &[&dyn oracle::sql_type::ToSql])
+                .map_err(|e| AppError::query_failed(format!("{e}")))?;
+
+            let mut foreign_keys = Vec::new();
+            for row_result in rows {
+                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
+                let fk_name: Option<String> = row.get(0).ok().flatten();
+                let src_schema: Option<String> = row.get(1).ok().flatten();
+                let src_table: Option<String> = row.get(2).ok().flatten();
+                let src_col: Option<String> = row.get(3).ok().flatten();
+                let tgt_schema: Option<String> = row.get(4).ok().flatten();
+                let tgt_table: Option<String> = row.get(5).ok().flatten();
+                let tgt_col: Option<String> = row.get(6).ok().flatten();
+                let delete_rule: Option<String> = row.get(7).ok().flatten();
+                if let (
+                    Some(name),
+                    Some(src_table),
+                    Some(src_col),
+                    Some(tgt_table),
+                    Some(tgt_col),
+                ) = (fk_name, src_table, src_col, tgt_table, tgt_col)
+                {
+                    foreign_keys.push(SchemaForeignKey {
+                        name,
+                        source_schema: src_schema,
+                        source_table: src_table,
+                        source_column: src_col,
+                        target_schema: tgt_schema,
+                        target_table: tgt_table,
+                        target_column: tgt_col,
+                        on_update: None,
+                        on_delete: delete_rule,
+                    });
+                }
+            }
+            Ok(foreign_keys)
         })
         .await
     }

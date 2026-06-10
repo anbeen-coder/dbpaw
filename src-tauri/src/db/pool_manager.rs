@@ -240,12 +240,19 @@ impl PoolManager {
         }
 
         if !to_remove.is_empty() {
-            let mut pools_write = pools.write().await;
-            for key in to_remove {
-                if let Some(entry) = pools_write.remove(&key) {
-                    println!("[POOL_CLEANUP] Removing idle connection: {}", key);
-                    entry.driver.close().await;
-                }
+            let entries: Vec<PoolEntry> = {
+                let mut pools_write = pools.write().await;
+                to_remove
+                    .iter()
+                    .filter_map(|key| {
+                        let entry = pools_write.remove(key)?;
+                        println!("[POOL_CLEANUP] Removing idle connection: {}", key);
+                        Some(entry)
+                    })
+                    .collect()
+            };
+            for entry in entries {
+                entry.driver.close().await;
             }
         }
     }
@@ -262,12 +269,19 @@ impl PoolManager {
         }
 
         if !to_remove.is_empty() {
-            let mut pools_write = pools.write().await;
-            for key in to_remove {
-                if let Some(entry) = pools_write.remove(&key) {
-                    println!("[POOL_CLEANUP] Removing unhealthy connection: {}", key);
-                    entry.driver.close().await;
-                }
+            let entries: Vec<PoolEntry> = {
+                let mut pools_write = pools.write().await;
+                to_remove
+                    .iter()
+                    .filter_map(|key| {
+                        let entry = pools_write.remove(key)?;
+                        println!("[POOL_CLEANUP] Removing unhealthy connection: {}", key);
+                        Some(entry)
+                    })
+                    .collect()
+            };
+            for entry in entries {
+                entry.driver.close().await;
             }
         }
     }

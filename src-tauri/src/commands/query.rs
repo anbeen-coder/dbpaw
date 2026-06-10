@@ -39,17 +39,6 @@ async fn resolve_driver(state: &State<'_, AppState>, id: i64) -> Option<String> 
         .map(|f| f.driver)
 }
 
-async fn resolve_driver_from_app_state(state: &AppState, id: i64) -> Option<String> {
-    let db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    }?;
-    db.get_connection_form_by_id(id)
-        .await
-        .ok()
-        .map(|f| f.driver)
-}
-
 fn supports_query_cancellation(driver: &str) -> bool {
     let d = driver.to_ascii_lowercase();
     d == "clickhouse" || crate::db::drivers::is_mysql_family_driver(&d)
@@ -107,8 +96,8 @@ async fn is_running_query(connection_id: i64, query_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-async fn append_sql_execution_log_core(
-    state: &AppState,
+async fn append_sql_execution_log(
+    state: &State<'_, AppState>,
     sql: String,
     source: Option<String>,
     connection_id: Option<i64>,
@@ -131,18 +120,6 @@ async fn append_sql_execution_log_core(
     }
 }
 
-async fn append_sql_execution_log(
-    state: &State<'_, AppState>,
-    sql: String,
-    source: Option<String>,
-    connection_id: Option<i64>,
-    database: Option<String>,
-    success: bool,
-    error: Option<String>,
-) {
-    append_sql_execution_log_core(state.inner(), sql, source, connection_id, database, success, error).await
-}
-
 async fn append_sql_execution_log_direct(
     state: &AppState,
     sql: String,
@@ -152,7 +129,19 @@ async fn append_sql_execution_log_direct(
     success: bool,
     error: Option<String>,
 ) {
-    append_sql_execution_log_core(state, sql, source, connection_id, database, success, error).await
+    let db = {
+        let lock = state.local_db.lock().await;
+        lock.clone()
+    };
+
+    if let Some(local_db) = db {
+        if let Err(e) = local_db
+            .insert_sql_execution_log(sql, source, connection_id, database, success, error)
+            .await
+        {
+            eprintln!("[SQL_LOG_APPEND_ERROR] {}", e);
+        }
+    }
 }
 
 fn validate_page_limit(page: i64, limit: i64) -> Result<(), AppError> {
@@ -179,70 +168,6 @@ pub async fn get_table_data_by_conn(
         .get_table_data(schema, table, page, limit, None, None, None, None)
         .await
         .map_err(String::from)
-}
-
-async fn execute_query_core(
-    state: &AppState,
-    id: i64,
-    query: String,
-    database: Option<String>,
-    source: Option<String>,
-    query_id: String,
-    cancellation_supported: bool,
-) -> Result<QueryResult, AppError> {
-    let guarded_query = apply_default_limit(&query, resolve_driver_from_app_state(state, id).await.as_deref());
-    if cancellation_supported {
-        register_running_query(id, &query_id).await;
-    }
-
-    let result = super::execute_with_retry_from_app_state(state, id, database.clone(), |driver| {
-        let query_clone = guarded_query.clone();
-        let query_id_clone = query_id.clone();
-        async move {
-            driver
-                .execute_query_with_id(
-                    query_clone,
-                    if cancellation_supported {
-                        Some(query_id_clone.as_str())
-                    } else {
-                        None
-                    },
-                )
-                .await
-        }
-    })
-    .await
-    .map_err(AppError::internal);
-
-    if cancellation_supported {
-        unregister_running_query(id, &query_id).await;
-    }
-
-    if result.is_ok() {
-        append_sql_execution_log_core(
-            state,
-            guarded_query.clone(),
-            source,
-            Some(id),
-            database,
-            true,
-            None,
-        )
-        .await;
-    } else if let Err(err) = &result {
-        append_sql_execution_log_core(
-            state,
-            guarded_query.clone(),
-            source,
-            Some(id),
-            database,
-            false,
-            Some(err.to_string()),
-        )
-        .await;
-    }
-
-    result
 }
 
 #[tauri::command]
@@ -272,19 +197,34 @@ pub async fn execute_query(
         .as_deref()
         .map(supports_query_cancellation)
         .unwrap_or(false);
+    let guarded_query = apply_default_limit(&query, driver.as_deref());
+    if cancellation_supported {
+        register_running_query(id, &query_id).await;
+    }
 
-    let result = execute_query_core(
-        state.inner(),
-        id,
-        query,
-        database,
-        source,
-        query_id.clone(),
-        cancellation_supported,
-    )
+    let result = super::execute_with_retry(&state, id, database.clone(), |driver| {
+        let query_clone = guarded_query.clone();
+        let query_id_clone = query_id.clone();
+        async move {
+            driver
+                .execute_query_with_id(
+                    query_clone,
+                    if cancellation_supported {
+                        Some(query_id_clone.as_str())
+                    } else {
+                        None
+                    },
+                )
+                .await
+        }
+    })
     .await;
+    if cancellation_supported {
+        unregister_running_query(id, &query_id).await;
+    }
 
     if let Ok(res) = &result {
+        // Stream first chunk for UX (simulated)
         if !res.data.is_empty() {
             let _ = app_handle.emit(
                 "query.chunk",
@@ -294,9 +234,42 @@ pub async fn execute_query(
                 }),
             );
         }
+
+        append_sql_execution_log(
+            &state,
+            guarded_query.clone(),
+            source,
+            Some(id),
+            database,
+            true,
+            None,
+        )
+        .await;
+    } else if let Err(err) = &result {
+        append_sql_execution_log(
+            &state,
+            guarded_query.clone(),
+            source,
+            Some(id),
+            database,
+            false,
+            Some(err.to_string()),
+        )
+        .await;
     }
 
     result.map_err(String::from)
+}
+
+async fn resolve_driver_from_app_state(state: &AppState, id: i64) -> Option<String> {
+    let db = {
+        let lock = state.local_db.lock().await;
+        lock.clone()
+    }?;
+    db.get_connection_form_by_id(id)
+        .await
+        .ok()
+        .map(|f| f.driver)
 }
 
 pub async fn execute_query_by_id_direct(
@@ -313,18 +286,57 @@ pub async fn execute_query_by_id_direct(
         .as_deref()
         .map(supports_query_cancellation)
         .unwrap_or(false);
+    let guarded_query = apply_default_limit(&query, driver.as_deref());
+    if cancellation_supported {
+        register_running_query(id, &query_id).await;
+    }
 
-    execute_query_core(
-        state,
-        id,
-        query,
-        database,
-        source,
-        query_id,
-        cancellation_supported,
-    )
-    .await
-    .map_err(String::from)
+    let result = super::execute_with_retry_from_app_state(state, id, database.clone(), |driver| {
+        let query_clone = guarded_query.clone();
+        let query_id_clone = query_id.clone();
+        async move {
+            driver
+                .execute_query_with_id(
+                    query_clone,
+                    if cancellation_supported {
+                        Some(query_id_clone.as_str())
+                    } else {
+                        None
+                    },
+                )
+                .await
+        }
+    })
+    .await;
+    if cancellation_supported {
+        unregister_running_query(id, &query_id).await;
+    }
+
+    if result.is_ok() {
+        append_sql_execution_log_direct(
+            state,
+            guarded_query.clone(),
+            source,
+            Some(id),
+            database,
+            true,
+            None,
+        )
+        .await;
+    } else if let Err(err) = &result {
+        append_sql_execution_log_direct(
+            state,
+            guarded_query.clone(),
+            source,
+            Some(id),
+            database,
+            false,
+            Some(err.to_string()),
+        )
+        .await;
+    }
+
+    result.map_err(String::from)
 }
 
 pub async fn execute_by_conn_direct(
@@ -377,20 +389,22 @@ pub async fn get_table_data(
         }
     })
     .await
+    .map_err(String::from)
 }
 
-async fn cancel_query_core(
-    state: &AppState,
+#[tauri::command]
+pub async fn cancel_query(
+    state: State<'_, AppState>,
     uuid: String,
     query_id: String,
-) -> Result<bool, AppError> {
+) -> Result<bool, String> {
     let connection_id = uuid
         .trim()
         .parse::<i64>()
-        .map_err(|_| AppError::validation("Invalid connection id for cancellation"))?;
+        .map_err(|_| AppError::validation("Invalid connection id for cancellation").to_string())?;
     let query_id = query_id.trim().to_string();
     if query_id.is_empty() {
-        return Err(AppError::validation("query_id cannot be empty"));
+        return Err(AppError::validation("query_id cannot be empty").to_string());
     }
     if !is_running_query(connection_id, &query_id).await {
         return Ok(false);
@@ -400,33 +414,10 @@ async fn cancel_query_core(
         let lock = state.local_db.lock().await;
         lock.clone()
     };
-    let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
-    let form = db.get_connection_form_by_id(connection_id).await.map_err(AppError::internal)?;
+    let db = local_db.ok_or("Local DB not initialized".to_string())?;
+    let form = db.get_connection_form_by_id(connection_id).await?;
 
-    execute_cancel_query(connection_id, &query_id, &form)
-        .await
-        .map_err(AppError::internal)
-}
-
-#[tauri::command]
-pub async fn cancel_query(
-    state: State<'_, AppState>,
-    uuid: String,
-    query_id: String,
-) -> Result<bool, String> {
-    cancel_query_core(state.inner(), uuid, query_id)
-        .await
-        .map_err(String::from)
-}
-
-pub async fn cancel_query_direct(
-    state: &AppState,
-    uuid: String,
-    query_id: String,
-) -> Result<bool, String> {
-    cancel_query_core(state, uuid, query_id)
-        .await
-        .map_err(String::from)
+    execute_cancel_query(connection_id, &query_id, &form).await
 }
 
 #[tauri::command]
@@ -496,10 +487,11 @@ fn clamp_sql_execution_logs_limit(limit: Option<i64>) -> i64 {
     limit.unwrap_or(100).clamp(1, 100)
 }
 
-async fn list_sql_execution_logs_core(
-    state: &AppState,
+#[tauri::command]
+pub async fn list_sql_execution_logs(
+    state: State<'_, AppState>,
     limit: Option<i64>,
-) -> Result<Vec<SqlExecutionLog>, AppError> {
+) -> Result<Vec<SqlExecutionLog>, String> {
     let safe_limit = clamp_sql_execution_logs_limit(limit);
     let local_db = {
         let lock = state.local_db.lock().await;
@@ -507,29 +499,54 @@ async fn list_sql_execution_logs_core(
     };
 
     if let Some(db) = local_db {
-        db.list_sql_execution_logs(safe_limit).await.map_err(AppError::internal)
+        db.list_sql_execution_logs(safe_limit).await
     } else {
-        Err(AppError::internal("Local DB not initialized"))
+        Err("Local DB not initialized".to_string())
     }
-}
-
-#[tauri::command]
-pub async fn list_sql_execution_logs(
-    state: State<'_, AppState>,
-    limit: Option<i64>,
-) -> Result<Vec<SqlExecutionLog>, String> {
-    list_sql_execution_logs_core(state.inner(), limit)
-        .await
-        .map_err(String::from)
 }
 
 pub async fn list_sql_execution_logs_direct(
     state: &AppState,
     limit: Option<i64>,
 ) -> Result<Vec<SqlExecutionLog>, String> {
-    list_sql_execution_logs_core(state, limit)
-        .await
-        .map_err(String::from)
+    let safe_limit = clamp_sql_execution_logs_limit(limit);
+    let local_db = {
+        let lock = state.local_db.lock().await;
+        lock.clone()
+    };
+
+    if let Some(db) = local_db {
+        db.list_sql_execution_logs(safe_limit).await
+    } else {
+        Err("Local DB not initialized".to_string())
+    }
+}
+
+pub async fn cancel_query_direct(
+    state: &AppState,
+    uuid: String,
+    query_id: String,
+) -> Result<bool, String> {
+    let connection_id = uuid
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| AppError::validation("Invalid connection id for cancellation").to_string())?;
+    let query_id = query_id.trim().to_string();
+    if query_id.is_empty() {
+        return Err(AppError::validation("query_id cannot be empty").to_string());
+    }
+    if !is_running_query(connection_id, &query_id).await {
+        return Ok(false);
+    }
+
+    let local_db = {
+        let lock = state.local_db.lock().await;
+        lock.clone()
+    };
+    let db = local_db.ok_or("Local DB not initialized".to_string())?;
+    let form = db.get_connection_form_by_id(connection_id).await?;
+
+    execute_cancel_query(connection_id, &query_id, &form).await
 }
 
 #[cfg(test)]

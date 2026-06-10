@@ -182,7 +182,7 @@ impl BulkImportAccumulator {
 
 fn trim_to_option(value: Option<&String>) -> Option<String> {
     value
-        .map(|v| v.trim().to_string())
+        .map(|v| v.trim())
         .and_then(|v| if v.is_empty() { None } else { Some(v) })
 }
 
@@ -307,7 +307,7 @@ fn build_reqwest_client(form: &ConnectionForm, timeout_ms: i64) -> Result<reqwes
     let mut builder = reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms as u64));
     if form.ssl.unwrap_or(false) {
         let ssl_mode =
-            trim_to_option(form.ssl_mode.as_ref()).unwrap_or_else(|| "require".to_string());
+            trim_to_option(form.ssl_mode.as_ref()).unwrap_or_else(|| "require");
         if ssl_mode == "verify_ca" {
             let ca_cert = trim_to_option(form.ssl_ca_cert.as_ref()).ok_or_else(|| {
                 AppError::validation("sslCaCert cannot be empty in verify_ca mode")
@@ -406,7 +406,7 @@ fn validate_index_name(index: &str) -> Result<String, AppError> {
     if trimmed.is_empty() {
         return Err(AppError::validation("index name cannot be empty"));
     }
-    Ok(trimmed.to_string())
+    Ok(trimmed)
 }
 
 fn build_search_body(query: Option<String>, dsl: Option<String>) -> Result<Value, AppError> {
@@ -484,7 +484,7 @@ fn parse_bulk_action_line(line: &str, line_number: usize) -> Result<BulkAction, 
 
 fn build_bulk_action_line(index: &str, action: &BulkAction) -> Result<String, AppError> {
     let mut metadata = action.metadata.clone();
-    metadata.insert("_index".to_string(), Value::String(index.to_string()));
+    metadata.insert("_index".to_string(), Value::String(index));
     let action_name = match action.kind {
         BulkActionKind::Index => "index",
         BulkActionKind::Create => "create",
@@ -548,7 +548,7 @@ fn parse_search_response(value: Value, elapsed_ms: i64) -> ElasticsearchSearchRe
 }
 
 impl ElasticsearchClient {
-    pub fn connect(form: &ConnectionForm) -> Result<Self, String> {
+    pub fn connect(form: &ConnectionForm) -> Result<Self, AppError> {
         let timeout_ms = form
             .connect_timeout_ms
             .filter(|&v| v > 0)
@@ -557,7 +557,7 @@ impl ElasticsearchClient {
         let mut effective_form = form.clone();
         let ssh_tunnel = if let Some(true) = form.ssh_enabled {
             let tunnel = crate::ssh::start_ssh_tunnel(form)?;
-            effective_form.host = Some("127.0.0.1".to_string());
+            effective_form.host = Some("127.0.0.1");
             effective_form.port = Some(tunnel.local_port as i64);
             Some(tunnel)
         } else {
@@ -591,39 +591,39 @@ impl ElasticsearchClient {
         }
     }
 
-    async fn read_json(&self, req: reqwest::RequestBuilder) -> Result<Value, String> {
+    async fn read_json(&self, req: reqwest::RequestBuilder) -> Result<Value, AppError> {
         let response = req
             .send()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         let status = response.status();
         let body = response
             .text()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         if !status.is_success() {
-            return Err(normalize_error(status, &body).to_string());
+            return Err(normalize_error(status, &body));
         }
         serde_json::from_str::<Value>(&body)
-            .map_err(|e| AppError::internal(format!("invalid JSON response: {e}")).to_string())
+            .map_err(|e| AppError::internal(format!("{e}")))
     }
 
     async fn read_mutation(
         &self,
         req: reqwest::RequestBuilder,
-    ) -> Result<ElasticsearchMutationResult, String> {
+    ) -> Result<ElasticsearchMutationResult, AppError> {
         let response = req
             .send()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         let status = response.status();
         let status_code = status.as_u16();
         let body = response
             .text()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         if !status.is_success() {
-            return Err(normalize_error(status, &body).to_string());
+            return Err(normalize_error(status, &body));
         }
         let value = serde_json::from_str::<Value>(&body).unwrap_or(Value::Null);
         Ok(ElasticsearchMutationResult {
@@ -644,19 +644,19 @@ impl ElasticsearchClient {
         &self,
         req: reqwest::RequestBuilder,
         index: Option<String>,
-    ) -> Result<ElasticsearchIndexOperationResult, String> {
+    ) -> Result<ElasticsearchIndexOperationResult, AppError> {
         let response = req
             .send()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         let status = response.status();
         let status_code = status.as_u16();
         let body = response
             .text()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         if !status.is_success() {
-            return Err(normalize_error(status, &body).to_string());
+            return Err(normalize_error(status, &body));
         }
         let value = serde_json::from_str::<Value>(&body).unwrap_or(Value::Null);
         Ok(ElasticsearchIndexOperationResult {
@@ -667,7 +667,7 @@ impl ElasticsearchClient {
         })
     }
 
-    pub async fn test_connection(&self) -> Result<ElasticsearchConnectionInfo, String> {
+    pub async fn test_connection(&self) -> Result<ElasticsearchConnectionInfo, AppError> {
         let value = self
             .read_json(self.request(reqwest::Method::GET, "/"))
             .await?;
@@ -691,7 +691,7 @@ impl ElasticsearchClient {
         })
     }
 
-    pub async fn list_indices(&self) -> Result<Vec<ElasticsearchIndexInfo>, String> {
+    pub async fn list_indices(&self) -> Result<Vec<ElasticsearchIndexInfo>, AppError> {
         let value = self
             .read_json(self.request(
                 reqwest::Method::GET,
@@ -727,7 +727,7 @@ impl ElasticsearchClient {
             .collect())
     }
 
-    pub async fn get_index_mapping(&self, index: String) -> Result<Value, String> {
+    pub async fn get_index_mapping(&self, index: String) -> Result<Value, AppError> {
         self.read_json(self.request(
             reqwest::Method::GET,
             &format!("/{}/_mapping", encode_path_segment(&index)),
@@ -739,11 +739,11 @@ impl ElasticsearchClient {
         &self,
         index: String,
         body: Option<Value>,
-    ) -> Result<ElasticsearchIndexOperationResult, String> {
+    ) -> Result<ElasticsearchIndexOperationResult, AppError> {
         let index = validate_index_name(&index)?;
         let body = body.unwrap_or_else(|| serde_json::json!({}));
         if !body.is_object() {
-            return Err(AppError::validation("index body must be a JSON object").to_string());
+            return Err(AppError::validation("index body must be a JSON object"));
         }
         self.read_index_operation(
             self.request(
@@ -759,7 +759,7 @@ impl ElasticsearchClient {
     pub async fn delete_index(
         &self,
         index: String,
-    ) -> Result<ElasticsearchIndexOperationResult, String> {
+    ) -> Result<ElasticsearchIndexOperationResult, AppError> {
         let index = validate_index_name(&index)?;
         self.read_index_operation(
             self.request(
@@ -774,7 +774,7 @@ impl ElasticsearchClient {
     pub async fn refresh_index(
         &self,
         index: String,
-    ) -> Result<ElasticsearchIndexOperationResult, String> {
+    ) -> Result<ElasticsearchIndexOperationResult, AppError> {
         let index = validate_index_name(&index)?;
         self.read_index_operation(
             self.request(
@@ -789,7 +789,7 @@ impl ElasticsearchClient {
     pub async fn open_index(
         &self,
         index: String,
-    ) -> Result<ElasticsearchIndexOperationResult, String> {
+    ) -> Result<ElasticsearchIndexOperationResult, AppError> {
         let index = validate_index_name(&index)?;
         self.read_index_operation(
             self.request(
@@ -804,7 +804,7 @@ impl ElasticsearchClient {
     pub async fn close_index(
         &self,
         index: String,
-    ) -> Result<ElasticsearchIndexOperationResult, String> {
+    ) -> Result<ElasticsearchIndexOperationResult, AppError> {
         let index = validate_index_name(&index)?;
         self.read_index_operation(
             self.request(
@@ -823,7 +823,7 @@ impl ElasticsearchClient {
         dsl: Option<String>,
         from: i64,
         size: i64,
-    ) -> Result<ElasticsearchSearchResponse, String> {
+    ) -> Result<ElasticsearchSearchResponse, AppError> {
         let mut body = build_search_body(query, dsl)?;
         set_search_pagination(&mut body, Some(from), clamp_search_size(size))?;
 
@@ -847,7 +847,7 @@ impl ElasticsearchClient {
         &self,
         index: String,
         document_id: String,
-    ) -> Result<ElasticsearchDocument, String> {
+    ) -> Result<ElasticsearchDocument, AppError> {
         let value = self
             .read_json(self.request(
                 reqwest::Method::GET,
@@ -881,9 +881,9 @@ impl ElasticsearchClient {
         document_id: Option<String>,
         source: Value,
         refresh: bool,
-    ) -> Result<ElasticsearchMutationResult, String> {
+    ) -> Result<ElasticsearchMutationResult, AppError> {
         if !source.is_object() {
-            return Err(AppError::validation("document source must be a JSON object").to_string());
+            return Err(AppError::validation("document source must be a JSON object"));
         }
         let refresh_query = if refresh { "?refresh=true" } else { "" };
         let (method, path) = match document_id.and_then(|v| {
@@ -913,10 +913,10 @@ impl ElasticsearchClient {
         index: String,
         document_id: String,
         refresh: bool,
-    ) -> Result<ElasticsearchMutationResult, String> {
+    ) -> Result<ElasticsearchMutationResult, AppError> {
         let id = document_id.trim();
         if id.is_empty() {
-            return Err(AppError::validation("document id cannot be empty").to_string());
+            return Err(AppError::validation("document id cannot be empty"));
         }
         let refresh_query = if refresh { "?refresh=true" } else { "" };
         self.read_mutation(self.request(
@@ -938,7 +938,7 @@ impl ElasticsearchClient {
         dsl: Option<String>,
         file_path: String,
         batch_size: Option<i64>,
-    ) -> Result<ElasticsearchBulkExportResult, String> {
+    ) -> Result<ElasticsearchBulkExportResult, AppError> {
         let index = validate_index_name(&index)?;
         let output_path = validate_file_path(&file_path, "export")?;
         let batch_size = clamp_bulk_batch_size(batch_size.unwrap_or(DEFAULT_BULK_BATCH_SIZE));
@@ -946,7 +946,7 @@ impl ElasticsearchClient {
         set_search_pagination(&mut body, None, batch_size)?;
 
         let file = File::create(&output_path)
-            .map_err(|e| AppError::internal(format!("create file failed: {e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         let mut writer = BufWriter::new(file);
         let started = Instant::now();
         let mut documents = 0i64;
@@ -995,7 +995,7 @@ impl ElasticsearchClient {
                 let document_id = hit
                     .get("_id")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| AppError::internal("Elasticsearch hit is missing _id").to_string())?;
+                    .ok_or_else(|| AppError::internal("Elasticsearch hit is missing _id")?;
                 let source = hit.get("_source").cloned().unwrap_or(Value::Null);
                 let action = build_export_action_line(document_id)?;
                 write_ndjson_pair(&mut writer, &action, &source)?;
@@ -1006,7 +1006,7 @@ impl ElasticsearchClient {
         self.clear_scroll(scroll_id).await;
         writer
             .flush()
-            .map_err(|e| AppError::internal(format!("flush file failed: {e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
 
         Ok(ElasticsearchBulkExportResult {
             file_path: output_path.to_string_lossy().to_string(),
@@ -1023,15 +1023,15 @@ impl ElasticsearchClient {
         file_path: String,
         batch_size: Option<i64>,
         refresh: bool,
-    ) -> Result<ElasticsearchBulkImportResult, String> {
+    ) -> Result<ElasticsearchBulkImportResult, AppError> {
         let index = validate_index_name(&index)?;
         let import_path = validate_file_path(&file_path, "import")?;
         if !import_path.exists() {
-            return Err(AppError::internal("Elasticsearch bulk import file does not exist").to_string());
+            return Err(AppError::internal("Elasticsearch bulk import file does not exist"));
         }
         let batch_size = clamp_bulk_batch_size(batch_size.unwrap_or(DEFAULT_BULK_BATCH_SIZE));
         let file = File::open(&import_path)
-            .map_err(|e| AppError::internal(format!("failed to open import file: {e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         let mut reader = BufReader::new(file);
         let started = Instant::now();
         let mut line_number = 0usize;
@@ -1045,7 +1045,7 @@ impl ElasticsearchClient {
             action_line.clear();
             let read = reader
                 .read_line(&mut action_line)
-                .map_err(|e| AppError::internal(format!("failed to read import file: {e}")).to_string())?;
+                .map_err(|e| AppError::internal(format!("{e}")))?;
             if read == 0 {
                 break;
             }
@@ -1058,11 +1058,11 @@ impl ElasticsearchClient {
             source_line.clear();
             let read = reader
                 .read_line(&mut source_line)
-                .map_err(|e| AppError::internal(format!("failed to read import file: {e}")).to_string())?;
+                .map_err(|e| AppError::internal(format!("{e}")))?;
             if read == 0 {
                 return Err(AppError::validation(format!(
                     "missing bulk source line after action at line {line_number}"
-                )).to_string());
+                )));
             }
             line_number += 1;
             let source = serde_json::from_str::<Value>(source_line.trim()).map_err(|e| {
@@ -1071,14 +1071,14 @@ impl ElasticsearchClient {
             if !source.is_object() {
                 return Err(AppError::validation(format!(
                     "bulk source at line {line_number} must be a JSON object"
-                )).to_string());
+                )));
             }
 
             batch.push_str(&build_bulk_action_line(&index, &action)?);
             batch.push('\n');
             batch.push_str(
                 &serde_json::to_string(&source)
-                    .map_err(|e| AppError::internal(format!("failed to encode source: {e}")).to_string())?,
+                    .map_err(|e| AppError::internal(format!("{e}")))?,
             );
             batch.push('\n');
             batch_actions += 1;
@@ -1128,7 +1128,7 @@ impl ElasticsearchClient {
         batch_actions: &mut i64,
         refresh: bool,
         accumulator: &mut BulkImportAccumulator,
-    ) -> Result<(), String> {
+    ) -> Result<(), AppError> {
         if *batch_actions == 0 {
             return Ok(());
         }
@@ -1144,7 +1144,7 @@ impl ElasticsearchClient {
         index: &str,
         body: &str,
         refresh: bool,
-    ) -> Result<BulkBatchResult, String> {
+    ) -> Result<BulkBatchResult, AppError> {
         let refresh_query = if refresh { "?refresh=true" } else { "" };
         let response = self
             .request(
@@ -1152,20 +1152,20 @@ impl ElasticsearchClient {
                 &format!("/{}/_bulk{}", encode_path_segment(index), refresh_query),
             )
             .header(CONTENT_TYPE, "application/x-ndjson")
-            .body(body.to_string())
+            .body(body)
             .send()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         let status = response.status();
         let text = response
             .text()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         if !status.is_success() {
-            return Err(normalize_error(status, &text).to_string());
+            return Err(normalize_error(status, &text));
         }
         let value = serde_json::from_str::<Value>(&text)
-            .map_err(|e| AppError::internal(format!("invalid bulk JSON response: {e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         let items = value
             .get("items")
             .and_then(Value::as_array)
@@ -1222,7 +1222,7 @@ impl ElasticsearchClient {
         method: String,
         path: String,
         body: Option<String>,
-    ) -> Result<ElasticsearchRawResponse, String> {
+    ) -> Result<ElasticsearchRawResponse, AppError> {
         let method = match method.trim().to_ascii_uppercase().as_str() {
             "GET" => reqwest::Method::GET,
             "POST" => reqwest::Method::POST,
@@ -1243,7 +1243,7 @@ impl ElasticsearchClient {
             (!trimmed.is_empty()).then_some(trimmed)
         }) {
             let json = serde_json::from_str::<Value>(&raw)
-                .map_err(|e| AppError::validation(format!("invalid JSON body: {e}")).to_string())?;
+                .map_err(|e| AppError::validation(format!("invalid JSON body: {e}"))?;
             req = req.json(&json);
         }
 
@@ -1251,15 +1251,15 @@ impl ElasticsearchClient {
         let response = req
             .send()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         let status = response.status();
         let status_code = status.as_u16();
         let text = response
             .text()
             .await
-            .map_err(|e| AppError::internal(format!("{e}")).to_string())?;
+            .map_err(|e| AppError::internal(format!("{e}")))?;
         if !status.is_success() {
-            return Err(normalize_error(status, &text).to_string());
+            return Err(normalize_error(status, &text));
         }
         Ok(ElasticsearchRawResponse {
             status: status_code,
@@ -1287,7 +1287,7 @@ use crate::models::ConnectionForm;
     fn build_base_url_uses_http_by_default() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            host: Some(" localhost ".to_string()),
+            host: Some(" localhost "),
             port: Some(9201),
             ..Default::default()
         };
@@ -1298,7 +1298,7 @@ use crate::models::ConnectionForm;
     fn build_base_url_strips_scheme_and_uses_https_when_ssl_enabled() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            host: Some("http://es.local/".to_string()),
+            host: Some("http://es.local/"),
             port: None,
             ssl: Some(true),
             ..Default::default()
@@ -1311,7 +1311,7 @@ use crate::models::ConnectionForm;
         let encoded = general_purpose::STANDARD.encode("example.es.io$abc123$kibana123");
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            host: Some("ignored.local".to_string()),
+            host: Some("ignored.local"),
             port: Some(9200),
             cloud_id: Some(format!("deployment:{encoded}")),
             ..Default::default()
@@ -1326,7 +1326,7 @@ use crate::models::ConnectionForm;
     fn build_base_url_rejects_invalid_cloud_id() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            cloud_id: Some("not-base64".to_string()),
+            cloud_id: Some("not-base64"),
             ..Default::default()
         };
         assert!(build_base_url(&form).is_err());
@@ -1336,7 +1336,7 @@ use crate::models::ConnectionForm;
     fn build_api_key_supports_encoded_and_id_secret() {
         let encoded_form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            api_key_encoded: Some("already-encoded".to_string()),
+            api_key_encoded: Some("already-encoded"),
             ..Default::default()
         };
         assert_eq!(
@@ -1346,8 +1346,8 @@ use crate::models::ConnectionForm;
 
         let split_form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            api_key_id: Some("id".to_string()),
-            api_key_secret: Some("secret".to_string()),
+            api_key_id: Some("id"),
+            api_key_secret: Some("secret"),
             ..Default::default()
         };
         assert_eq!(
@@ -1360,9 +1360,9 @@ use crate::models::ConnectionForm;
     fn verify_ca_requires_certificate() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            host: Some("localhost".to_string()),
+            host: Some("localhost"),
             ssl: Some(true),
-            ssl_mode: Some("verify_ca".to_string()),
+            ssl_mode: Some("verify_ca"),
             ..Default::default()
         };
         assert!(build_reqwest_client(&form, 5000).is_err());
@@ -1489,8 +1489,8 @@ use crate::models::ConnectionForm;
     fn build_auth_auto_mode_detects_basic_from_username() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            username: Some("user".to_string()),
-            password: Some("pass".to_string()),
+            username: Some("user"),
+            password: Some("pass"),
             ..Default::default()
         };
         match build_auth(&form).unwrap() {
@@ -1506,7 +1506,7 @@ use crate::models::ConnectionForm;
     fn build_auth_auto_mode_detects_api_key() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            api_key_encoded: Some("mykey".to_string()),
+            api_key_encoded: Some("mykey"),
             ..Default::default()
         };
         match build_auth(&form).unwrap() {
@@ -1519,7 +1519,7 @@ use crate::models::ConnectionForm;
     fn build_auth_unsupported_mode_returns_error() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            auth_mode: Some("oauth".to_string()),
+            auth_mode: Some("oauth"),
             ..Default::default()
         };
         assert!(build_auth(&form).is_err());
@@ -1540,8 +1540,8 @@ use crate::models::ConnectionForm;
     #[test]
     fn build_search_body_dsl_takes_priority() {
         let result = build_search_body(
-            Some("ignored".to_string()),
-            Some(r#"{"match":{"title":"hello"}}"#.to_string()),
+            Some("ignored"),
+            Some(r#"{"match":{"title":"hello"}}"#),
         )
         .unwrap();
         assert_eq!(result["match"]["title"], "hello");
@@ -1549,7 +1549,7 @@ use crate::models::ConnectionForm;
 
     #[test]
     fn build_search_body_query_string_fallback() {
-        let result = build_search_body(Some("status:ok".to_string()), None).unwrap();
+        let result = build_search_body(Some("status:ok"), None).unwrap();
         assert_eq!(result["query"]["query_string"]["query"], "status:ok");
     }
 
@@ -1561,7 +1561,7 @@ use crate::models::ConnectionForm;
 
     #[test]
     fn build_search_body_invalid_dsl_returns_error() {
-        assert!(build_search_body(None, Some("not json".to_string())).is_err());
+        assert!(build_search_body(None, Some("not json")).is_err());
     }
 
     #[test]

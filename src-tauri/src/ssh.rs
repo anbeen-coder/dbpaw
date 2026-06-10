@@ -136,31 +136,31 @@ fn handle_connection(
     ssh_key_path: Option<&str>,
     target_host: &str,
     target_port: u16,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     // 1. Connect to SSH server
     let tcp = TcpStream::connect(format!("{}:{}", ssh_host, ssh_port))
-        .map_err(|e| format!("Failed to connect to SSH server: {}", e))?;
+        .map_err(|e| AppError::conn_failed(format!("Failed to connect to SSH server: {}", e), "Check SSH host and port"))?;
 
-    let mut sess = Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+    let mut sess = Session::new().map_err(|e| AppError::internal_with("Failed to create SSH session", e))?;
     sess.set_tcp_stream(tcp);
     sess.handshake()
-        .map_err(|e| format!("SSH handshake failed: {}", e))?;
+        .map_err(|e| AppError::conn_failed(format!("SSH handshake failed: {}", e), "Check SSH server availability"))?;
 
     // 2. Authenticate
     if let Some(key_path) = ssh_key_path {
         sess.userauth_pubkey_file(ssh_user, None, std::path::Path::new(key_path), None)
-            .map_err(|e| format!("SSH key auth failed: {}", e))?;
+            .map_err(|e| AppError::conn_auth_failed(format!("SSH key auth failed: {}", e)))?;
     } else if let Some(password) = ssh_password {
         sess.userauth_password(ssh_user, password)
-            .map_err(|e| format!("SSH password auth failed: {}", e))?;
+            .map_err(|e| AppError::conn_auth_failed(format!("SSH password auth failed: {}", e)))?;
     } else {
-        return Err("SSH authentication requires password or key".to_string());
+        return Err(AppError::validation("SSH authentication requires password or key"));
     }
 
     // 3. Open Channel
     let mut channel = sess
         .channel_direct_tcpip(target_host, target_port, None)
-        .map_err(|e| format!("Failed to create SSH channel: {}", e))?;
+        .map_err(|e| AppError::internal_with("Failed to create SSH channel", e))?;
 
     // 4. Bidirectional Copy
     // We need non-blocking I/O or two threads.

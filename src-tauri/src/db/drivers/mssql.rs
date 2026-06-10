@@ -1,4 +1,4 @@
-use super::{DatabaseDriver, DriverResult};
+use super::{DatabaseDriver, DriverCapabilities, DriverResult, ForeignKeyDriver, RoutineDriver, SynonymDriver};
 use crate::error::AppError;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
@@ -1825,58 +1825,10 @@ fn quote_ident_or(name: &str) -> String {
 
 #[async_trait]
 impl DatabaseDriver for MssqlDriver {
-    async fn get_schema_foreign_keys(
-        &self,
-        database: Option<&str>,
-    ) -> DriverResult<Vec<SchemaForeignKey>> {
-        let schema_filter = database
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| format!("AND ss.name = '{}'", escape_literal(s.trim())));
-
-        let sql = format!(
-            "SELECT fk.name, ss.name, ts.name, cp.name, rs.name, tr.name, cr.name, \
-                    fk.update_referential_action_desc, fk.delete_referential_action_desc \
-             FROM sys.foreign_keys fk \
-             JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id \
-             JOIN sys.tables ts ON fkc.parent_object_id = ts.object_id \
-             JOIN sys.schemas ss ON ts.schema_id = ss.schema_id \
-             JOIN sys.columns cp ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id \
-             JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id \
-             JOIN sys.schemas rs ON tr.schema_id = rs.schema_id \
-             JOIN sys.columns cr ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id \
-             {} \
-             ORDER BY fk.name, fkc.constraint_column_id",
-            schema_filter.unwrap_or_default()
-        );
-        let rows = self.fetch_rows(&sql).await?;
-
-        let mut foreign_keys = Vec::new();
-        for row in rows {
-            let source_schema = Self::parse_string(&row, 1);
-            let target_schema = Self::parse_string(&row, 4);
-            let on_update_raw = Self::parse_string(&row, 7);
-            let on_delete_raw = Self::parse_string(&row, 8);
-            foreign_keys.push(SchemaForeignKey {
-                name: Self::parse_string(&row, 0),
-                source_schema: Some(source_schema),
-                source_table: Self::parse_string(&row, 2),
-                source_column: Self::parse_string(&row, 3),
-                target_schema: Some(target_schema),
-                target_table: Self::parse_string(&row, 5),
-                target_column: Self::parse_string(&row, 6),
-                on_update: if on_update_raw.is_empty() {
-                    None
-                } else {
-                    Some(on_update_raw)
-                },
-                on_delete: if on_delete_raw.is_empty() {
-                    None
-                } else {
-                    Some(on_delete_raw)
-                },
-            });
-        }
-        Ok(foreign_keys)
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities::ROUTINES
+            | DriverCapabilities::SYNONYMS
+            | DriverCapabilities::FOREIGN_KEYS
     }
 
     async fn close(&self) {}
@@ -1926,95 +1878,6 @@ impl DatabaseDriver for MssqlDriver {
                 r#type: Self::parse_string(&row, 2),
             })
             .collect())
-    }
-
-    async fn list_routines(&self, schema: Option<String>) -> DriverResult<Vec<RoutineInfo>> {
-        let schema_filter = schema
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| format!("AND s.name = '{}'", escape_literal(s.trim())));
-
-        let sql = format!(
-            "SELECT s.name AS schema_name, o.name AS routine_name, \
-                    CASE WHEN o.type = 'P' THEN 'procedure' ELSE 'function' END AS routine_type \
-             FROM sys.objects o \
-             JOIN sys.schemas s ON s.schema_id = o.schema_id \
-             WHERE o.type IN ('P','FN','IF','TF','FS','FT') \
-               AND o.is_ms_shipped = 0 {} \
-             ORDER BY s.name, routine_type, o.name",
-            schema_filter.unwrap_or_default(),
-        );
-        let rows = self.fetch_rows(&sql).await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|row| RoutineInfo {
-                schema: Self::parse_string(&row, 0),
-                name: Self::parse_string(&row, 1),
-                r#type: Self::parse_string(&row, 2),
-            })
-            .collect())
-    }
-
-    async fn list_synonyms(&self, schema: Option<String>) -> DriverResult<Vec<SynonymInfo>> {
-        let schema_filter = schema
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| format!("AND s.name = '{}'", escape_literal(s.trim())));
-
-        let sql = format!(
-            "SELECT s.name AS schema_name, o.name AS synonym_name, 'synonym' AS base_object_type \
-             FROM sys.objects o \
-             JOIN sys.schemas s ON s.schema_id = o.schema_id \
-             WHERE o.type = 'SN' {} \
-             ORDER BY s.name, o.name",
-            schema_filter.unwrap_or_default(),
-        );
-        let rows = self.fetch_rows(&sql).await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|row| SynonymInfo {
-                schema: Self::parse_string(&row, 0),
-                name: Self::parse_string(&row, 1),
-                base_object_type: Self::parse_string(&row, 2),
-            })
-            .collect())
-    }
-
-    async fn get_routine_ddl(
-        &self,
-        schema: String,
-        name: String,
-        routine_type: String,
-    ) -> DriverResult<String> {
-        let type_filter = routine_type_sql_filter(&routine_type)?;
-
-        let sql = format!(
-            "SELECT m.definition \
-             FROM sys.objects o \
-             JOIN sys.schemas s ON s.schema_id = o.schema_id \
-             JOIN sys.sql_modules m ON m.object_id = o.object_id \
-             WHERE s.name = '{}' \
-               AND o.name = '{}' \
-               AND o.type IN {} \
-               AND o.is_ms_shipped = 0",
-            escape_literal(&schema),
-            escape_literal(&name),
-            type_filter
-        );
-        let rows = self.fetch_rows(&sql).await?;
-        let ddl = rows
-            .first()
-            .map(|row| Self::parse_string(row, 0))
-            .unwrap_or_default();
-
-        if ddl.trim().is_empty() {
-            return Err(AppError::not_found(format!(
-                "Routine '{}.{}' does not exist or its definition is not visible",
-                schema, name
-            )));
-        }
-
-        Ok(ddl)
     }
 
     async fn get_table_structure(
@@ -2375,5 +2238,157 @@ impl DatabaseDriver for MssqlDriver {
 
         tables.sort_by(|a, b| a.schema.cmp(&b.schema).then(a.name.cmp(&b.name)));
         Ok(SchemaOverview { tables })
+    }
+}
+
+#[async_trait]
+impl RoutineDriver for MssqlDriver {
+    async fn list_routines(&self, schema: Option<String>) -> DriverResult<Vec<RoutineInfo>> {
+        let schema_filter = schema
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| format!("AND s.name = '{}'", escape_literal(s.trim())));
+
+        let sql = format!(
+            "SELECT s.name AS schema_name, o.name AS routine_name, \
+                    CASE WHEN o.type = 'P' THEN 'procedure' ELSE 'function' END AS routine_type \
+             FROM sys.objects o \
+             JOIN sys.schemas s ON s.schema_id = o.schema_id \
+             WHERE o.type IN ('P','FN','IF','TF','FS','FT') \
+               AND o.is_ms_shipped = 0 {} \
+             ORDER BY s.name, routine_type, o.name",
+            schema_filter.unwrap_or_default(),
+        );
+        let rows = self.fetch_rows(&sql).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| RoutineInfo {
+                schema: Self::parse_string(&row, 0),
+                name: Self::parse_string(&row, 1),
+                r#type: Self::parse_string(&row, 2),
+            })
+            .collect())
+    }
+
+    async fn get_routine_ddl(
+        &self,
+        schema: String,
+        name: String,
+        routine_type: String,
+    ) -> DriverResult<String> {
+        let type_filter = routine_type_sql_filter(&routine_type)?;
+
+        let sql = format!(
+            "SELECT m.definition \
+             FROM sys.objects o \
+             JOIN sys.schemas s ON s.schema_id = o.schema_id \
+             JOIN sys.sql_modules m ON m.object_id = o.object_id \
+             WHERE s.name = '{}' \
+               AND o.name = '{}' \
+               AND o.type IN {} \
+               AND o.is_ms_shipped = 0",
+            escape_literal(&schema),
+            escape_literal(&name),
+            type_filter
+        );
+        let rows = self.fetch_rows(&sql).await?;
+        let ddl = rows
+            .first()
+            .map(|row| Self::parse_string(row, 0))
+            .unwrap_or_default();
+
+        if ddl.trim().is_empty() {
+            return Err(AppError::not_found(format!(
+                "Routine '{}.{}' does not exist or its definition is not visible",
+                schema, name
+            )));
+        }
+
+        Ok(ddl)
+    }
+}
+
+#[async_trait]
+impl SynonymDriver for MssqlDriver {
+    async fn list_synonyms(&self, schema: Option<String>) -> DriverResult<Vec<SynonymInfo>> {
+        let schema_filter = schema
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| format!("AND s.name = '{}'", escape_literal(s.trim())));
+
+        let sql = format!(
+            "SELECT s.name AS schema_name, o.name AS synonym_name, 'synonym' AS base_object_type \
+             FROM sys.objects o \
+             JOIN sys.schemas s ON s.schema_id = o.schema_id \
+             WHERE o.type = 'SN' {} \
+             ORDER BY s.name, o.name",
+            schema_filter.unwrap_or_default(),
+        );
+        let rows = self.fetch_rows(&sql).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| SynonymInfo {
+                schema: Self::parse_string(&row, 0),
+                name: Self::parse_string(&row, 1),
+                base_object_type: Self::parse_string(&row, 2),
+            })
+            .collect())
+    }
+}
+
+#[async_trait]
+impl ForeignKeyDriver for MssqlDriver {
+    async fn get_schema_foreign_keys(
+        &self,
+        database: Option<&str>,
+    ) -> DriverResult<Vec<SchemaForeignKey>> {
+        let schema_filter = database
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| format!("AND ss.name = '{}'", escape_literal(s.trim())));
+
+        let sql = format!(
+            "SELECT fk.name, ss.name, ts.name, cp.name, rs.name, tr.name, cr.name, \
+                    fk.update_referential_action_desc, fk.delete_referential_action_desc \
+             FROM sys.foreign_keys fk \
+             JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id \
+             JOIN sys.tables ts ON fkc.parent_object_id = ts.object_id \
+             JOIN sys.schemas ss ON ts.schema_id = ss.schema_id \
+             JOIN sys.columns cp ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id \
+             JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id \
+             JOIN sys.schemas rs ON tr.schema_id = rs.schema_id \
+             JOIN sys.columns cr ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id \
+             {} \
+             ORDER BY fk.name, fkc.constraint_column_id",
+            schema_filter.unwrap_or_default()
+        );
+        let rows = self.fetch_rows(&sql).await?;
+
+        let mut foreign_keys = Vec::new();
+        for row in rows {
+            let source_schema = Self::parse_string(&row, 1);
+            let target_schema = Self::parse_string(&row, 4);
+            let on_update_raw = Self::parse_string(&row, 7);
+            let on_delete_raw = Self::parse_string(&row, 8);
+            foreign_keys.push(SchemaForeignKey {
+                name: Self::parse_string(&row, 0),
+                source_schema: Some(source_schema),
+                source_table: Self::parse_string(&row, 2),
+                source_column: Self::parse_string(&row, 3),
+                target_schema: Some(target_schema),
+                target_table: Self::parse_string(&row, 5),
+                target_column: Self::parse_string(&row, 6),
+                on_update: if on_update_raw.is_empty() {
+                    None
+                } else {
+                    Some(on_update_raw)
+                },
+                on_delete: if on_delete_raw.is_empty() {
+                    None
+                } else {
+                    Some(on_delete_raw)
+                },
+            });
+        }
+        Ok(foreign_keys)
     }
 }

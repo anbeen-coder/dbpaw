@@ -1,4 +1,7 @@
-use super::{strip_trailing_statement_terminator, DatabaseDriver, DriverResult};
+use super::{
+    strip_trailing_statement_terminator, DatabaseDriver, DriverCapabilities, DriverResult,
+    ForeignKeyDriver, RoutineDriver, SequenceDriver, TypeDriver,
+};
 use crate::error::AppError;
 use crate::models::{
     ColumnInfo, ColumnSchema, ConnectionForm, ForeignKeyInfo, IndexInfo, QueryColumn, QueryResult,
@@ -1114,78 +1117,11 @@ fn collect_high_precision_query_columns(columns: &[QueryColumn]) -> HashSet<Stri
 
 #[async_trait]
 impl DatabaseDriver for PostgresDriver {
-    async fn get_schema_foreign_keys(
-        &self,
-        _database: Option<&str>,
-    ) -> DriverResult<Vec<SchemaForeignKey>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-              con.conname AS constraint_name,
-              n.nspname AS source_schema,
-              c.relname AS source_table,
-              a.attname AS source_column,
-              fn.nspname AS target_schema,
-              fc.relname AS target_table,
-              fa.attname AS target_column,
-              CASE con.confupdtype::text
-                WHEN 'a' THEN 'NO ACTION'
-                WHEN 'r' THEN 'RESTRICT'
-                WHEN 'c' THEN 'CASCADE'
-                WHEN 'n' THEN 'SET NULL'
-                WHEN 'd' THEN 'SET DEFAULT'
-                ELSE NULL
-              END AS on_update,
-              CASE con.confdeltype::text
-                WHEN 'a' THEN 'NO ACTION'
-                WHEN 'r' THEN 'RESTRICT'
-                WHEN 'c' THEN 'CASCADE'
-                WHEN 'n' THEN 'SET NULL'
-                WHEN 'd' THEN 'SET DEFAULT'
-                ELSE NULL
-              END AS on_delete
-            FROM pg_constraint con
-            JOIN pg_class c ON c.oid = con.conrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            JOIN pg_class fc ON fc.oid = con.confrelid
-            JOIN pg_namespace fn ON fn.oid = fc.relnamespace
-            JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
-            JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
-            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ck.attnum
-            JOIN pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = fk.attnum
-            WHERE con.contype = 'f'
-            ORDER BY con.conname, ck.ord
-            "#,
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| query_error(e.to_string()))?;
-
-        let mut foreign_keys = Vec::new();
-        for row in rows {
-            let source_schema: String = row.try_get(1).unwrap_or_default();
-            let target_schema: String = row.try_get(4).unwrap_or_default();
-            foreign_keys.push(SchemaForeignKey {
-                name: row.try_get(0).unwrap_or_default(),
-                source_schema: if source_schema.is_empty() {
-                    None
-                } else {
-                    Some(source_schema)
-                },
-                source_table: row.try_get(2).unwrap_or_default(),
-                source_column: row.try_get(3).unwrap_or_default(),
-                target_schema: if target_schema.is_empty() {
-                    None
-                } else {
-                    Some(target_schema)
-                },
-                target_table: row.try_get(5).unwrap_or_default(),
-                target_column: row.try_get(6).unwrap_or_default(),
-                on_update: row.try_get::<Option<String>, _>(7).unwrap_or(None),
-                on_delete: row.try_get::<Option<String>, _>(8).unwrap_or(None),
-            });
-        }
-        Ok(foreign_keys)
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities::ROUTINES
+            | DriverCapabilities::SEQUENCES
+            | DriverCapabilities::TYPES
+            | DriverCapabilities::FOREIGN_KEYS
     }
 
     async fn close(&self) {
@@ -1246,79 +1182,6 @@ impl DatabaseDriver for PostgresDriver {
             });
         }
         Ok(res)
-    }
-
-    async fn list_routines(&self, schema: Option<String>) -> DriverResult<Vec<RoutineInfo>> {
-        let rows = if let Some(schema) = schema {
-            sqlx::query(
-                "SELECT n.nspname AS schema_name, \
-                        p.proname AS routine_name, \
-                        CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END AS routine_type \
-                 FROM pg_proc p \
-                 JOIN pg_namespace n ON n.oid = p.pronamespace \
-                 WHERE n.nspname = $1 \
-                   AND p.prokind IN ('f', 'p') \
-                 ORDER BY routine_type, p.proname",
-            )
-            .bind(&schema)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| query_error(e.to_string()))?
-        } else {
-            sqlx::query(
-                "SELECT n.nspname AS schema_name, \
-                        p.proname AS routine_name, \
-                        CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END AS routine_type \
-                 FROM pg_proc p \
-                 JOIN pg_namespace n ON n.oid = p.pronamespace \
-                 WHERE n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast') \
-                   AND n.nspname NOT LIKE 'pg_toast%' \
-                   AND p.prokind IN ('f', 'p') \
-                 ORDER BY n.nspname, routine_type, p.proname",
-            )
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| query_error(e.to_string()))?
-        };
-
-        let mut res = Vec::new();
-        for row in rows {
-            res.push(RoutineInfo {
-                schema: decode_postgres_text_cell(&row, 0).unwrap_or_else(|_| "public".to_string()),
-                name: decode_postgres_text_cell(&row, 1).unwrap_or_default(),
-                r#type: decode_postgres_text_cell(&row, 2).unwrap_or_default(),
-            });
-        }
-        Ok(res)
-    }
-
-    async fn get_routine_ddl(
-        &self,
-        schema: String,
-        name: String,
-        _routine_type: String,
-    ) -> DriverResult<String> {
-        let row: (String,) = sqlx::query_as(
-            "SELECT pg_get_functiondef(p.oid) \
-             FROM pg_proc p \
-             JOIN pg_namespace n ON n.oid = p.pronamespace \
-             WHERE n.nspname = $1 AND p.proname = $2 \
-             LIMIT 1",
-        )
-        .bind(&schema)
-        .bind(&name)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| query_error(e.to_string()))?;
-
-        let ddl = row.0;
-        if ddl.trim().is_empty() {
-            return Err(AppError::not_found(format!(
-                "Routine '{}.{}' does not exist or its definition is not visible",
-                schema, name
-            )));
-        }
-        Ok(ddl)
     }
 
     async fn get_table_structure(
@@ -1788,69 +1651,6 @@ impl DatabaseDriver for PostgresDriver {
         })
     }
 
-    async fn list_sequences(&self, schema: Option<String>) -> DriverResult<Vec<SequenceInfo>> {
-        let target_schema = schema.unwrap_or_else(|| "public".to_string());
-
-        let rows = sqlx::query(
-            "SELECT schemaname, sequencename, data_type, start_value, increment_by \
-             FROM pg_sequences \
-             WHERE schemaname = $1 \
-             ORDER BY sequencename",
-        )
-        .bind(&target_schema)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| query_error(e.to_string()))?;
-
-        let mut res = Vec::new();
-        for row in rows {
-            res.push(SequenceInfo {
-                schema: row.try_get::<String, _>(0).unwrap_or_default(),
-                name: row.try_get::<String, _>(1).unwrap_or_default(),
-                data_type: row.try_get::<String, _>(2).unwrap_or_default(),
-                start_value: row.try_get::<Option<String>, _>(3).ok().flatten(),
-                increment: row.try_get::<Option<String>, _>(4).ok().flatten(),
-            });
-        }
-        Ok(res)
-    }
-
-    async fn list_types(&self, schema: Option<String>) -> DriverResult<Vec<TypeInfo>> {
-        let target_schema = schema.unwrap_or_else(|| "public".to_string());
-
-        let rows = sqlx::query(
-            "SELECT n.nspname, t.typname, \
-                    CASE t.typtype \
-                      WHEN 'e' THEN 'enum' \
-                      WHEN 'c' THEN 'composite' \
-                      WHEN 'r' THEN 'range' \
-                      ELSE t.typtype \
-                    END as category \
-             FROM pg_type t \
-             JOIN pg_namespace n ON t.typnamespace = n.oid \
-             WHERE n.nspname = $1 \
-               AND t.typtype IN ('e', 'c', 'r') \
-               AND NOT EXISTS ( \
-                 SELECT 1 FROM pg_class WHERE reltype = t.oid AND relkind != 'c' \
-               ) \
-             ORDER BY t.typname",
-        )
-        .bind(&target_schema)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| query_error(e.to_string()))?;
-
-        let mut res = Vec::new();
-        for row in rows {
-            res.push(TypeInfo {
-                schema: row.try_get::<String, _>(0).unwrap_or_default(),
-                name: row.try_get::<String, _>(1).unwrap_or_default(),
-                category: row.try_get::<String, _>(2).unwrap_or_default(),
-            });
-        }
-        Ok(res)
-    }
-
     async fn get_schema_overview(&self, schema: Option<String>) -> DriverResult<SchemaOverview> {
         // Note: Using a simpler approach for now since sqlx QueryBuilder needs specific DB type setup
         // and I don't want to overcomplicate.
@@ -1913,6 +1713,228 @@ impl DatabaseDriver for PostgresDriver {
         tables.sort_by(|a, b| a.schema.cmp(&b.schema).then(a.name.cmp(&b.name)));
 
         Ok(SchemaOverview { tables })
+    }
+}
+
+#[async_trait]
+impl RoutineDriver for PostgresDriver {
+    async fn list_routines(&self, schema: Option<String>) -> DriverResult<Vec<RoutineInfo>> {
+        let rows = if let Some(schema) = schema {
+            sqlx::query(
+                "SELECT n.nspname AS schema_name, \
+                        p.proname AS routine_name, \
+                        CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END AS routine_type \
+                 FROM pg_proc p \
+                 JOIN pg_namespace n ON n.oid = p.pronamespace \
+                 WHERE n.nspname = $1 \
+                   AND p.prokind IN ('f', 'p') \
+                 ORDER BY routine_type, p.proname",
+            )
+            .bind(&schema)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| query_error(e.to_string()))?
+        } else {
+            sqlx::query(
+                "SELECT n.nspname AS schema_name, \
+                        p.proname AS routine_name, \
+                        CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END AS routine_type \
+                 FROM pg_proc p \
+                 JOIN pg_namespace n ON n.oid = p.pronamespace \
+                 WHERE n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast') \
+                   AND n.nspname NOT LIKE 'pg_toast%' \
+                   AND p.prokind IN ('f', 'p') \
+                 ORDER BY n.nspname, routine_type, p.proname",
+            )
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| query_error(e.to_string()))?
+        };
+
+        let mut res = Vec::new();
+        for row in rows {
+            res.push(RoutineInfo {
+                schema: decode_postgres_text_cell(&row, 0).unwrap_or_else(|_| "public".to_string()),
+                name: decode_postgres_text_cell(&row, 1).unwrap_or_default(),
+                r#type: decode_postgres_text_cell(&row, 2).unwrap_or_default(),
+            });
+        }
+        Ok(res)
+    }
+
+    async fn get_routine_ddl(
+        &self,
+        schema: String,
+        name: String,
+        _routine_type: String,
+    ) -> DriverResult<String> {
+        let row: (String,) = sqlx::query_as(
+            "SELECT pg_get_functiondef(p.oid) \
+             FROM pg_proc p \
+             JOIN pg_namespace n ON n.oid = p.pronamespace \
+             WHERE n.nspname = $1 AND p.proname = $2 \
+             LIMIT 1",
+        )
+        .bind(&schema)
+        .bind(&name)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| query_error(e.to_string()))?;
+
+        let ddl = row.0;
+        if ddl.trim().is_empty() {
+            return Err(AppError::not_found(format!(
+                "Routine '{}.{}' does not exist or its definition is not visible",
+                schema, name
+            )));
+        }
+        Ok(ddl)
+    }
+}
+
+#[async_trait]
+impl SequenceDriver for PostgresDriver {
+    async fn list_sequences(&self, schema: Option<String>) -> DriverResult<Vec<SequenceInfo>> {
+        let target_schema = schema.unwrap_or_else(|| "public".to_string());
+
+        let rows = sqlx::query(
+            "SELECT schemaname, sequencename, data_type, start_value, increment_by \
+             FROM pg_sequences \
+             WHERE schemaname = $1 \
+             ORDER BY sequencename",
+        )
+        .bind(&target_schema)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| query_error(e.to_string()))?;
+
+        let mut res = Vec::new();
+        for row in rows {
+            res.push(SequenceInfo {
+                schema: row.try_get::<String, _>(0).unwrap_or_default(),
+                name: row.try_get::<String, _>(1).unwrap_or_default(),
+                data_type: row.try_get::<String, _>(2).unwrap_or_default(),
+                start_value: row.try_get::<Option<String>, _>(3).ok().flatten(),
+                increment: row.try_get::<Option<String>, _>(4).ok().flatten(),
+            });
+        }
+        Ok(res)
+    }
+}
+
+#[async_trait]
+impl TypeDriver for PostgresDriver {
+    async fn list_types(&self, schema: Option<String>) -> DriverResult<Vec<TypeInfo>> {
+        let target_schema = schema.unwrap_or_else(|| "public".to_string());
+
+        let rows = sqlx::query(
+            "SELECT n.nspname, t.typname, \
+                    CASE t.typtype \
+                      WHEN 'e' THEN 'enum' \
+                      WHEN 'c' THEN 'composite' \
+                      WHEN 'r' THEN 'range' \
+                      ELSE t.typtype \
+                    END as category \
+             FROM pg_type t \
+             JOIN pg_namespace n ON t.typnamespace = n.oid \
+             WHERE n.nspname = $1 \
+               AND t.typtype IN ('e', 'c', 'r') \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM pg_class WHERE reltype = t.oid AND relkind != 'c' \
+               ) \
+             ORDER BY t.typname",
+        )
+        .bind(&target_schema)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| query_error(e.to_string()))?;
+
+        let mut res = Vec::new();
+        for row in rows {
+            res.push(TypeInfo {
+                schema: row.try_get::<String, _>(0).unwrap_or_default(),
+                name: row.try_get::<String, _>(1).unwrap_or_default(),
+                category: row.try_get::<String, _>(2).unwrap_or_default(),
+            });
+        }
+        Ok(res)
+    }
+}
+
+#[async_trait]
+impl ForeignKeyDriver for PostgresDriver {
+    async fn get_schema_foreign_keys(
+        &self,
+        _database: Option<&str>,
+    ) -> DriverResult<Vec<SchemaForeignKey>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+              con.conname AS constraint_name,
+              n.nspname AS source_schema,
+              c.relname AS source_table,
+              a.attname AS source_column,
+              fn.nspname AS target_schema,
+              fc.relname AS target_table,
+              fa.attname AS target_column,
+              CASE con.confupdtype::text
+                WHEN 'a' THEN 'NO ACTION'
+                WHEN 'r' THEN 'RESTRICT'
+                WHEN 'c' THEN 'CASCADE'
+                WHEN 'n' THEN 'SET NULL'
+                WHEN 'd' THEN 'SET DEFAULT'
+                ELSE NULL
+              END AS on_update,
+              CASE con.confdeltype::text
+                WHEN 'a' THEN 'NO ACTION'
+                WHEN 'r' THEN 'RESTRICT'
+                WHEN 'c' THEN 'CASCADE'
+                WHEN 'n' THEN 'SET NULL'
+                WHEN 'd' THEN 'SET DEFAULT'
+                ELSE NULL
+              END AS on_delete
+            FROM pg_constraint con
+            JOIN pg_class c ON c.oid = con.conrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_class fc ON fc.oid = con.confrelid
+            JOIN pg_namespace fn ON fn.oid = fc.relnamespace
+            JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
+            JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ck.attnum
+            JOIN pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = fk.attnum
+            WHERE con.contype = 'f'
+            ORDER BY con.conname, ck.ord
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| query_error(e.to_string()))?;
+
+        let mut foreign_keys = Vec::new();
+        for row in rows {
+            let source_schema: String = row.try_get(1).unwrap_or_default();
+            let target_schema: String = row.try_get(4).unwrap_or_default();
+            foreign_keys.push(SchemaForeignKey {
+                name: row.try_get(0).unwrap_or_default(),
+                source_schema: if source_schema.is_empty() {
+                    None
+                } else {
+                    Some(source_schema)
+                },
+                source_table: row.try_get(2).unwrap_or_default(),
+                source_column: row.try_get(3).unwrap_or_default(),
+                target_schema: if target_schema.is_empty() {
+                    None
+                } else {
+                    Some(target_schema)
+                },
+                target_table: row.try_get(5).unwrap_or_default(),
+                target_column: row.try_get(6).unwrap_or_default(),
+                on_update: row.try_get::<Option<String>, _>(7).unwrap_or(None),
+                on_delete: row.try_get::<Option<String>, _>(8).unwrap_or(None),
+            });
+        }
+        Ok(foreign_keys)
     }
 }
 

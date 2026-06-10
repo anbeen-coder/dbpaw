@@ -2092,6 +2092,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bb8",
+ "bitflags 2.11.1",
  "chrono",
  "duckdb",
  "fontique",

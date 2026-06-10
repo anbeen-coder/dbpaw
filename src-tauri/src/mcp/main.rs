@@ -55,6 +55,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = Arc::new(AppState::new());
     state.pool_manager.start_cleanup_task().await;
 
+    // Initialize tracing for MCP binary (env-based, no runtime reload)
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
     match transport_mode {
         "stdio" => {
             let mut server = McpServer::new(state);
@@ -70,12 +79,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         "both" => {
             let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-            eprintln!("Starting in dual mode: stdio + http://{}", addr);
+            tracing::info!(addr = %addr, "Starting MCP in dual mode: stdio + http");
             let mut server = McpServer::new(state);
             server.run().await?;
         }
         _ => {
-            eprintln!("Unknown transport mode: {}", transport_mode);
+            tracing::error!(mode = %transport_mode, "Unknown transport mode");
             eprintln!("Valid modes: stdio, http, both");
             std::process::exit(1);
         }

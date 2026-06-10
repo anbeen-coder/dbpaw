@@ -1759,7 +1759,7 @@ impl DatabaseDriver for MysqlDriver {
         };
 
         let rows = rows.map_err(|e| {
-            eprintln!("MySQL schema overview query failed: {}", e);
+            tracing::error!(error = %e, "MySQL schema overview query failed");
             query_error("Failed to fetch schema overview")
         })?;
 

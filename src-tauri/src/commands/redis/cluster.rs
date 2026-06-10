@@ -8,4 +8,5 @@ pub async fn redis_cluster_info(
         Box::pin(redis::cluster_info(conn))
     })
     .await
+    .map_err(String::from)
 }

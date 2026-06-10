@@ -114,7 +114,7 @@ pub fn start_ssh_tunnel(config: &ConnectionForm) -> Result<SshTunnel, AppError> 
                         &target_host,
                         target_port,
                     ) {
-                        eprintln!("SSH Tunnel Error: {}", e);
+                        tracing::error!(error = %e, "SSH tunnel error");
                     }
                 });
             }

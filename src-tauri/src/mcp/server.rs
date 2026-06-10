@@ -22,7 +22,7 @@ impl McpServer {
     }
 
     pub async fn run(&mut self) -> Result<(), String> {
-        eprintln!("DbPaw MCP Server started");
+        tracing::info!("DbPaw MCP Server started");
 
         loop {
             match self.transport.receive().await {
@@ -39,13 +39,13 @@ impl McpServer {
                     break;
                 }
                 Err(e) => {
-                    eprintln!("Error receiving request: {}", e);
+                    tracing::error!(error = %e, "Error receiving request");
                     break;
                 }
             }
         }
 
-        eprintln!("DbPaw MCP Server stopped");
+        tracing::info!("DbPaw MCP Server stopped");
         Ok(())
     }
 }

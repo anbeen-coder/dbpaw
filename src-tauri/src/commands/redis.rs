@@ -7,6 +7,7 @@ use crate::datasources::redis::{
     RedisZRangeByLexResult, RedisZRangeByScoreResult, RedisZSetMember,
 };
 use crate::datasources::redis::{connect, RedisConnection};
+use crate::error::AppError;
 use crate::models::{ConnectionForm, RedisCommandLog};
 use crate::state::AppState;
 use std::collections::HashMap;

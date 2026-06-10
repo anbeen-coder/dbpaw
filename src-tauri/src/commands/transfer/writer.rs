@@ -137,7 +137,7 @@ impl ExportWriter {
         for row in rows {
             let obj = row
                 .as_object()
-                .ok_or(AppError::validation("row is not a JSON object")?;
+                .ok_or(AppError::validation("row is not a JSON object"))?;
             self.write_row(obj, columns, schema, table, driver)?;
             count += 1;
         }
@@ -156,7 +156,7 @@ impl ExportWriter {
             ExportFormat::Csv => {
                 let line = columns
                     .iter()
-                    .map(|c| row.get(c).map(csv_value).unwrap_or_else(|| ""))
+                    .map(|c| row.get(c).map(csv_value).unwrap_or_else(|| "".to_string()))
                     .collect::<Vec<_>>()
                     .join(",");
                 self.writer
@@ -187,7 +187,7 @@ impl ExportWriter {
                     .map(|c| {
                         row.get(c)
                             .map(sql_value)
-                            .unwrap_or_else(|| "NULL")
+                            .unwrap_or_else(|| "NULL".to_string())
                     })
                     .collect::<Vec<_>>()
                     .join(", ");

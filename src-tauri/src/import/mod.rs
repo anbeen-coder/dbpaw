@@ -94,9 +94,10 @@ pub async fn import_from_file(path: &str, local_db: &LocalDb) -> Result<ImportRe
             Ok(conn) => imported.push(conn),
             Err(e) => {
                 // Continue with remaining connections on partial failure
-                eprintln!(
-                    "Failed to import connection '{}': {e}",
-                    form.name.as_deref().unwrap_or("?")
+                tracing::error!(
+                    connection_name = form.name.as_deref().unwrap_or("?"),
+                    error = %e,
+                    "Failed to import connection"
                 );
             }
         }

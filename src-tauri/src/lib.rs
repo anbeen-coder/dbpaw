@@ -12,6 +12,21 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[tauri::command]
+async fn set_log_level(
+    state: tauri::State<'_, AppState>,
+    level: String,
+) -> Result<(), String> {
+    let handle = state.log_reload_handle.lock().await;
+    if let Some(ref h) = *handle {
+        let filter = tracing_subscriber::EnvFilter::try_new(&level)
+            .map_err(|e| format!("Invalid log level: {}", e))?;
+        h.reload(filter)
+            .map_err(|e| format!("Failed to set log level: {}", e))?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -42,6 +57,16 @@ pub fn run() {
         .manage(AppState::new())
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Initialize structured logging
+            let (log_handle, log_guard) = crate::log::init_logging(&handle);
+            {
+                let state = handle.state::<AppState>();
+                let mut h = state.log_reload_handle.blocking_lock();
+                *h = Some(log_handle);
+                let mut g = state._log_guard.blocking_lock();
+                *g = Some(log_guard);
+            }
 
             // Initialize Oracle Instant Client library path
             // This must be done before any Oracle connections are made
@@ -125,7 +150,7 @@ pub fn run() {
                     app.set_menu(menu)?;
                     Ok(())
                 })() {
-                    eprintln!("Error setting up menu: {}", e);
+                    tracing::error!(error = %e, "Error setting up menu");
                 }
             }
 
@@ -137,10 +162,10 @@ pub fn run() {
                     Ok(db) => {
                         let mut lock = state.local_db.lock().await;
                         *lock = Some(Arc::new(db));
-                        println!("Local DB initialized successfully");
+                        tracing::info!("Local DB initialized successfully");
                     }
                     Err(e) => {
-                        eprintln!("Failed to initialize local DB: {}", e);
+                        tracing::error!(error = %e, "Failed to initialize local DB");
                         // Make the error visible in the frontend if possible, or at least easier to debug
                     }
                 }
@@ -156,6 +181,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             greet,
+            set_log_level,
             commands::connection::get_connections,
             commands::connection::create_connection,
             commands::connection::update_connection,
@@ -315,6 +341,7 @@ pub mod db;
 pub mod error;
 pub mod events;
 pub mod import;
+pub mod log;
 pub mod mcp;
 pub mod models;
 pub mod sql;
@@ -358,7 +385,7 @@ fn init_oracle_lib_path(app_handle: &tauri::AppHandle) {
         unsafe {
             std::env::set_var("DYLD_LIBRARY_PATH", &new_path);
         }
-        println!("Oracle: Set DYLD_LIBRARY_PATH to include {}", oracle_path);
+        tracing::info!(path = %oracle_path, "Oracle: Set DYLD_LIBRARY_PATH");
     }
 
     #[cfg(target_os = "linux")]
@@ -372,7 +399,7 @@ fn init_oracle_lib_path(app_handle: &tauri::AppHandle) {
         unsafe {
             std::env::set_var("LD_LIBRARY_PATH", &new_path);
         }
-        println!("Oracle: Set LD_LIBRARY_PATH to include {}", oracle_path);
+        tracing::info!(path = %oracle_path, "Oracle: Set LD_LIBRARY_PATH");
     }
 
     #[cfg(target_os = "windows")]
@@ -386,7 +413,7 @@ fn init_oracle_lib_path(app_handle: &tauri::AppHandle) {
         unsafe {
             std::env::set_var("PATH", &new_path);
         }
-        println!("Oracle: Added to PATH: {}", oracle_path);
+        tracing::info!(path = %oracle_path, "Oracle: Added to PATH");
     }
 
     // Also set ORACLE_HOME if not already set
@@ -394,6 +421,6 @@ fn init_oracle_lib_path(app_handle: &tauri::AppHandle) {
         unsafe {
             std::env::set_var("ORACLE_HOME", &oracle_path);
         }
-        println!("Oracle: Set ORACLE_HOME to {}", oracle_path);
+        tracing::info!(path = %oracle_path, "Oracle: Set ORACLE_HOME");
     }
 }

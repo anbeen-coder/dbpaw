@@ -5,6 +5,7 @@ use crate::ai::types::{
     AiChatMessage, AiChatRequest, AiChunkPayload, AiColumnSummary, AiDonePayload, AiErrorPayload,
     AiSchemaOverview, AiStartResponse, AiStartedPayload, AiTableSummary,
 };
+use crate::error::AppError;
 use crate::models::{AiConversation, AiMessage, AiProviderForm, AiProviderPublic};
 use crate::state::AppState;
 use std::sync::Arc;
@@ -17,10 +18,10 @@ pub struct AiConversationDetail {
     pub messages: Vec<AiMessage>,
 }
 
-fn normalize_provider_type(value: &str) -> Result<String, String> {
+fn normalize_provider_type(value: &str) -> Result<String, AppError> {
     let normalized = value.trim().to_ascii_lowercase();
     if normalized.is_empty() {
-        return Err("providerType is required".to_string());
+        return Err(AppError::validation("providerType is required"));
     }
     if normalized == "openai_compat" {
         return Ok("openai".to_string());
@@ -31,14 +32,14 @@ fn normalize_provider_type(value: &str) -> Result<String, String> {
     {
         Ok(normalized)
     } else {
-        Err("providerType has invalid format".to_string())
+        Err(AppError::validation("providerType has invalid format"))
     }
 }
 
 fn normalize_provider_form(
     form: &mut AiProviderForm,
     fallback_type: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let raw = match form.provider_type.as_deref() {
         Some(v) => v,
         None => match fallback_type {
@@ -51,48 +52,32 @@ fn normalize_provider_form(
     Ok(())
 }
 
-fn map_provider_lookup_error(e: &str) -> String {
-    if e.contains("[GET_AI_PROVIDER_ERROR]") {
-        "Selected AI provider does not exist".to_string()
-    } else {
-        e.to_string()
-    }
-}
-
-fn map_default_provider_error(e: &str) -> String {
-    if e.contains("[NO_ENABLED_AI_PROVIDER]") {
-        "No enabled AI provider is configured. Please enable one in AI Provider settings."
-            .to_string()
-    } else {
-        e.to_string()
-    }
-}
-
-fn ensure_provider_enabled(enabled: bool) -> Result<(), String> {
+fn ensure_provider_enabled(enabled: bool) -> Result<(), AppError> {
     if enabled {
         Ok(())
     } else {
-        Err("Selected AI provider is disabled".to_string())
+        Err(AppError::validation("Selected AI provider is disabled"))
     }
 }
 
 fn validate_conversation_requirement(
     conversation_id: Option<i64>,
     create_if_missing: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if conversation_id.is_none() && !create_if_missing {
-        Err("conversationId is required".to_string())
+        Err(AppError::validation("conversationId is required"))
     } else {
         Ok(())
     }
 }
 
-fn map_history_load_error(conversation_id: i64, e: &str) -> String {
-    eprintln!(
-        "[AI_HISTORY_LOAD_ERROR] Failed to load messages for conversation {}: {}",
-        conversation_id, e
+fn map_history_load_error(conversation_id: i64, e: &str) -> AppError {
+    tracing::error!(
+        conversation_id = conversation_id,
+        error = e,
+        "Failed to load conversation messages"
     );
-    "Failed to load conversation history".to_string()
+    AppError::internal("Failed to load conversation history")
 }
 
 fn assemble_final_messages(
@@ -105,20 +90,20 @@ fn assemble_final_messages(
     final_messages
 }
 
-async fn get_db(state: &State<'_, AppState>) -> Result<Arc<crate::db::local::LocalDb>, String> {
+async fn get_db(state: &State<'_, AppState>) -> Result<Arc<crate::db::local::LocalDb>, AppError> {
     let local_db = {
         let lock = state.local_db.lock().await;
         lock.clone()
     };
-    local_db.ok_or_else(|| "Local DB not initialized".to_string())
+    local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))
 }
 
-async fn get_db_from_app_state(state: &AppState) -> Result<Arc<crate::db::local::LocalDb>, String> {
+async fn get_db_from_app_state(state: &AppState) -> Result<Arc<crate::db::local::LocalDb>, AppError> {
     let local_db = {
         let lock = state.local_db.lock().await;
         lock.clone()
     };
-    local_db.ok_or_else(|| "Local DB not initialized".to_string())
+    local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))
 }
 
 fn provider_from_model(p: crate::models::AiProvider, api_key: String) -> OpenAICompatProvider {
@@ -154,12 +139,12 @@ pub async fn ai_list_providers(
     state: State<'_, AppState>,
 ) -> Result<Vec<AiProviderPublic>, String> {
     let db = get_db(&state).await?;
-    db.list_ai_providers_public().await
+    db.list_ai_providers_public().await.map_err(String::from)
 }
 
 pub async fn ai_list_providers_direct(state: &AppState) -> Result<Vec<AiProviderPublic>, String> {
     let db = get_db_from_app_state(state).await?;
-    db.list_ai_providers_public().await
+    db.list_ai_providers_public().await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -170,7 +155,7 @@ pub async fn ai_create_provider(
     normalize_provider_form(&mut config, Some("openai"))?;
     let db = get_db(&state).await?;
     let created = db.create_ai_provider(config).await?;
-    db.get_ai_provider_public_by_id(created.id).await
+    db.get_ai_provider_public_by_id(created.id).await.map_err(String::from)
 }
 
 pub async fn ai_create_provider_direct(
@@ -180,7 +165,7 @@ pub async fn ai_create_provider_direct(
     normalize_provider_form(&mut config, Some("openai"))?;
     let db = get_db_from_app_state(state).await?;
     let created = db.create_ai_provider(config).await?;
-    db.get_ai_provider_public_by_id(created.id).await
+    db.get_ai_provider_public_by_id(created.id).await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -192,7 +177,7 @@ pub async fn ai_update_provider(
     normalize_provider_form(&mut config, None)?;
     let db = get_db(&state).await?;
     let updated = db.update_ai_provider(id, config).await?;
-    db.get_ai_provider_public_by_id(updated.id).await
+    db.get_ai_provider_public_by_id(updated.id).await.map_err(String::from)
 }
 
 pub async fn ai_update_provider_direct(
@@ -203,29 +188,29 @@ pub async fn ai_update_provider_direct(
     normalize_provider_form(&mut config, None)?;
     let db = get_db_from_app_state(state).await?;
     let updated = db.update_ai_provider(id, config).await?;
-    db.get_ai_provider_public_by_id(updated.id).await
+    db.get_ai_provider_public_by_id(updated.id).await.map_err(String::from)
 }
 
 #[tauri::command]
 pub async fn ai_delete_provider(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let db = get_db(&state).await?;
-    db.delete_ai_provider(id).await
+    db.delete_ai_provider(id).await.map_err(String::from)
 }
 
 pub async fn ai_delete_provider_direct(state: &AppState, id: i64) -> Result<(), String> {
     let db = get_db_from_app_state(state).await?;
-    db.delete_ai_provider(id).await
+    db.delete_ai_provider(id).await.map_err(String::from)
 }
 
 #[tauri::command]
 pub async fn ai_set_default_provider(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let db = get_db(&state).await?;
-    db.set_default_ai_provider(id).await
+    db.set_default_ai_provider(id).await.map_err(String::from)
 }
 
 pub async fn ai_set_default_provider_direct(state: &AppState, id: i64) -> Result<(), String> {
     let db = get_db_from_app_state(state).await?;
-    db.set_default_ai_provider(id).await
+    db.set_default_ai_provider(id).await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -235,7 +220,7 @@ pub async fn ai_clear_provider_api_key(
 ) -> Result<(), String> {
     let provider_type = normalize_provider_type(&provider_type)?;
     let db = get_db(&state).await?;
-    db.clear_ai_provider_api_key(&provider_type).await
+    db.clear_ai_provider_api_key(&provider_type).await.map_err(String::from)
 }
 
 pub async fn ai_clear_provider_api_key_direct(
@@ -244,7 +229,7 @@ pub async fn ai_clear_provider_api_key_direct(
 ) -> Result<(), String> {
     let provider_type = normalize_provider_type(&provider_type)?;
     let db = get_db_from_app_state(state).await?;
-    db.clear_ai_provider_api_key(&provider_type).await
+    db.clear_ai_provider_api_key(&provider_type).await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -276,29 +261,31 @@ async fn run_chat(
     let provider_record = if let Some(provider_id) = request.provider_id {
         match db.get_ai_provider_by_id(provider_id).await {
             Ok(provider) => provider,
-            Err(e) => {
-                let msg = map_provider_lookup_error(&e);
+            Err(_e) => {
+                let msg = AppError::not_found("Selected AI provider does not exist");
                 emit_ai_error(
                     &app,
                     request.request_id,
                     request.conversation_id,
-                    msg.clone(),
+                    msg.to_string(),
                 );
-                return Err(msg);
+                return Err(msg.into());
             }
         }
     } else {
         match db.get_default_ai_provider().await {
             Ok(provider) => provider,
-            Err(e) => {
-                let msg = map_default_provider_error(&e);
+            Err(_e) => {
+                let msg = AppError::validation(
+                    "No enabled AI provider is configured. Please enable one in AI Provider settings.",
+                );
                 emit_ai_error(
                     &app,
                     request.request_id,
                     request.conversation_id,
-                    msg.clone(),
+                    msg.to_string(),
                 );
-                return Err(msg);
+                return Err(msg.into());
             }
         }
     };
@@ -308,9 +295,9 @@ async fn run_chat(
             &app,
             request.request_id,
             request.conversation_id,
-            msg.clone(),
+            msg.to_string(),
         );
-        return Err(msg);
+        return Err(msg.into());
     }
 
     validate_conversation_requirement(request.conversation_id, create_if_missing)?;
@@ -318,8 +305,9 @@ async fn run_chat(
     let api_key = db
         .decrypt_ai_api_key(&provider_record.api_key)
         .map_err(|_| {
-            "AI provider apiKey is missing or invalid. Please re-save it in AI Provider settings."
-                .to_string()
+            AppError::ai_key(
+                "AI provider apiKey is missing or invalid. Please re-save it in AI Provider settings.",
+            )
         })?;
     let provider = provider_from_model(provider_record.clone(), api_key);
     if let Err(e) = provider.validate_config() {
@@ -413,14 +401,14 @@ async fn run_chat(
     let mut existing = match db.list_ai_messages(conversation.id).await {
         Ok(messages) => messages,
         Err(e) => {
-            let client_error = map_history_load_error(conversation.id, &e);
+            let client_error = map_history_load_error(conversation.id, &e.to_string());
             emit_ai_error(
                 &app,
                 request.request_id.clone(),
                 Some(conversation.id),
-                client_error.clone(),
+                client_error.to_string(),
             );
-            return Err(client_error);
+            return Err(client_error.into());
         }
     };
     if existing.len() > 16 {
@@ -510,13 +498,15 @@ async fn run_chat_direct(
     let db = get_db_from_app_state(state).await?;
 
     let provider_record = if let Some(provider_id) = request.provider_id {
-        db.get_ai_provider_by_id(provider_id)
-            .await
-            .map_err(|e| map_provider_lookup_error(&e))?
+        db.get_ai_provider_by_id(provider_id).await.map_err(|_| {
+            AppError::not_found("Selected AI provider does not exist")
+        })?
     } else {
-        db.get_default_ai_provider()
-            .await
-            .map_err(|e| map_default_provider_error(&e))?
+        db.get_default_ai_provider().await.map_err(|_| {
+            AppError::validation(
+                "No enabled AI provider is configured. Please enable one in AI Provider settings.",
+            )
+        })?
     };
 
     ensure_provider_enabled(provider_record.enabled)?;
@@ -525,8 +515,9 @@ async fn run_chat_direct(
     let api_key = db
         .decrypt_ai_api_key(&provider_record.api_key)
         .map_err(|_| {
-            "AI provider apiKey is missing or invalid. Please re-save it in AI Provider settings."
-                .to_string()
+            AppError::ai_key(
+                "AI provider apiKey is missing or invalid. Please re-save it in AI Provider settings.",
+            )
         })?;
     let provider = provider_from_model(provider_record.clone(), api_key);
     provider.validate_config()?;
@@ -621,7 +612,7 @@ async fn run_chat_direct(
     let mut existing = db
         .list_ai_messages(conversation.id)
         .await
-        .map_err(|e| map_history_load_error(conversation.id, &e))?;
+        .map_err(|e| map_history_load_error(conversation.id, &e.to_string()))?;
     if existing.len() > 16 {
         existing = existing.split_off(existing.len() - 16);
     }
@@ -681,7 +672,7 @@ pub async fn ai_list_conversations(
     database: Option<String>,
 ) -> Result<Vec<AiConversation>, String> {
     let db = get_db(&state).await?;
-    db.list_ai_conversations(connection_id, database).await
+    db.list_ai_conversations(connection_id, database).await.map_err(String::from)
 }
 
 pub async fn ai_list_conversations_direct(
@@ -690,7 +681,7 @@ pub async fn ai_list_conversations_direct(
     database: Option<String>,
 ) -> Result<Vec<AiConversation>, String> {
     let db = get_db_from_app_state(state).await?;
-    db.list_ai_conversations(connection_id, database).await
+    db.list_ai_conversations(connection_id, database).await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -726,7 +717,7 @@ pub async fn ai_delete_conversation(
     conversation_id: i64,
 ) -> Result<(), String> {
     let db = get_db(&state).await?;
-    db.delete_ai_conversation(conversation_id).await
+    db.delete_ai_conversation(conversation_id).await.map_err(String::from)
 }
 
 pub async fn ai_delete_conversation_direct(
@@ -734,14 +725,14 @@ pub async fn ai_delete_conversation_direct(
     conversation_id: i64,
 ) -> Result<(), String> {
     let db = get_db_from_app_state(state).await?;
-    db.delete_ai_conversation(conversation_id).await
+    db.delete_ai_conversation(conversation_id).await.map_err(String::from)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        assemble_final_messages, ensure_provider_enabled, map_default_provider_error,
-        map_history_load_error, map_provider_lookup_error, normalize_provider_type,
+        assemble_final_messages, ensure_provider_enabled,
+        map_history_load_error, normalize_provider_type,
         validate_conversation_requirement,
     };
     use crate::ai::types::AiChatMessage;
@@ -749,8 +740,8 @@ mod tests {
     #[test]
     fn normalize_provider_type_rejects_empty_value() {
         assert_eq!(
-            normalize_provider_type("   ").unwrap_err(),
-            "providerType is required"
+            normalize_provider_type("   ").unwrap_err().to_string(),
+            "[ERR-3001] providerType is required"
         );
     }
 
@@ -765,8 +756,8 @@ mod tests {
     #[test]
     fn normalize_provider_type_rejects_invalid_chars() {
         assert_eq!(
-            normalize_provider_type("bad type!").unwrap_err(),
-            "providerType has invalid format"
+            normalize_provider_type("bad type!").unwrap_err().to_string(),
+            "[ERR-3001] providerType has invalid format"
         );
     }
 
@@ -779,42 +770,26 @@ mod tests {
     }
 
     #[test]
-    fn provider_lookup_error_maps_not_found_to_user_friendly_message() {
-        assert_eq!(
-            map_provider_lookup_error("[GET_AI_PROVIDER_ERROR] row not found"),
-            "Selected AI provider does not exist"
-        );
-    }
-
-    #[test]
-    fn default_provider_error_maps_no_enabled_provider_to_user_friendly_message() {
-        assert_eq!(
-            map_default_provider_error("[NO_ENABLED_AI_PROVIDER] nothing configured"),
-            "No enabled AI provider is configured. Please enable one in AI Provider settings."
-        );
-    }
-
-    #[test]
     fn ensure_provider_enabled_rejects_disabled_provider() {
         assert_eq!(
-            ensure_provider_enabled(false).unwrap_err(),
-            "Selected AI provider is disabled"
+            ensure_provider_enabled(false).unwrap_err().to_string(),
+            "[ERR-3001] Selected AI provider is disabled"
         );
     }
 
     #[test]
     fn continue_requires_conversation_id() {
         assert_eq!(
-            validate_conversation_requirement(None, false).unwrap_err(),
-            "conversationId is required"
+            validate_conversation_requirement(None, false).unwrap_err().to_string(),
+            "[ERR-3001] conversationId is required"
         );
     }
 
     #[test]
     fn history_load_error_maps_to_client_message() {
         assert_eq!(
-            map_history_load_error(42, "[DB_ERROR] broken"),
-            "Failed to load conversation history"
+            map_history_load_error(42, "[ERR-5002] broken").to_string(),
+            "[ERR-5002] Failed to load conversation history"
         );
     }
 

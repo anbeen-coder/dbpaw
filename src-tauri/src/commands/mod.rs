@@ -132,16 +132,16 @@ where
         Err(e) => {
             let err = e.into();
             if is_connection_error(&err.to_string()) {
-                println!("[Pool] Connection error detected, retrying...");
+                tracing::warn!("Connection error detected, retrying");
                 remove().await;
                 let driver = ensure().await?;
                 task(driver).await.map_err(|e| {
                     let err = e.into();
-                    println!("[Pool] Retry failed: {}", err);
+                    tracing::error!(error = %err, "Retry failed");
                     err
                 })
             } else {
-                println!("[Pool] Operation failed: {}", err);
+                tracing::error!(error = %err, "Operation failed");
                 Err(err)
             }
         }

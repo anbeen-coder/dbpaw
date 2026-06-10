@@ -59,7 +59,7 @@ impl HttpTransport {
             .await
             .map_err(|e| format!("Failed to bind: {}", e))?;
 
-        eprintln!("MCP HTTP server listening on {}", addr);
+        tracing::info!(addr = %addr, "MCP HTTP server listening");
 
         axum::serve(listener, app)
             .await

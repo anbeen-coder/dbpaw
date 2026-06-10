@@ -183,7 +183,7 @@ impl BulkImportAccumulator {
 fn trim_to_option(value: Option<&String>) -> Option<String> {
     value
         .map(|v| v.trim())
-        .and_then(|v| if v.is_empty() { None } else { Some(v) })
+        .and_then(|v| if v.is_empty() { None } else { Some(v.to_string()) })
 }
 
 fn parse_cloud_id(cloud_id: &str) -> Result<String, AppError> {
@@ -307,7 +307,7 @@ fn build_reqwest_client(form: &ConnectionForm, timeout_ms: i64) -> Result<reqwes
     let mut builder = reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms as u64));
     if form.ssl.unwrap_or(false) {
         let ssl_mode =
-            trim_to_option(form.ssl_mode.as_ref()).unwrap_or_else(|| "require");
+            trim_to_option(form.ssl_mode.as_ref()).unwrap_or_else(|| "require".to_string());
         if ssl_mode == "verify_ca" {
             let ca_cert = trim_to_option(form.ssl_ca_cert.as_ref()).ok_or_else(|| {
                 AppError::validation("sslCaCert cannot be empty in verify_ca mode")
@@ -406,7 +406,7 @@ fn validate_index_name(index: &str) -> Result<String, AppError> {
     if trimmed.is_empty() {
         return Err(AppError::validation("index name cannot be empty"));
     }
-    Ok(trimmed)
+    Ok(trimmed.to_string())
 }
 
 fn build_search_body(query: Option<String>, dsl: Option<String>) -> Result<Value, AppError> {
@@ -484,7 +484,7 @@ fn parse_bulk_action_line(line: &str, line_number: usize) -> Result<BulkAction, 
 
 fn build_bulk_action_line(index: &str, action: &BulkAction) -> Result<String, AppError> {
     let mut metadata = action.metadata.clone();
-    metadata.insert("_index".to_string(), Value::String(index));
+    metadata.insert("_index".to_string(), Value::String(index.to_string()));
     let action_name = match action.kind {
         BulkActionKind::Index => "index",
         BulkActionKind::Create => "create",
@@ -557,7 +557,7 @@ impl ElasticsearchClient {
         let mut effective_form = form.clone();
         let ssh_tunnel = if let Some(true) = form.ssh_enabled {
             let tunnel = crate::ssh::start_ssh_tunnel(form)?;
-            effective_form.host = Some("127.0.0.1");
+            effective_form.host = Some("127.0.0.1".to_string());
             effective_form.port = Some(tunnel.local_port as i64);
             Some(tunnel)
         } else {
@@ -995,7 +995,7 @@ impl ElasticsearchClient {
                 let document_id = hit
                     .get("_id")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| AppError::internal("Elasticsearch hit is missing _id")?;
+                    .ok_or_else(|| AppError::internal("Elasticsearch hit is missing _id"))?;
                 let source = hit.get("_source").cloned().unwrap_or(Value::Null);
                 let action = build_export_action_line(document_id)?;
                 write_ndjson_pair(&mut writer, &action, &source)?;
@@ -1106,7 +1106,7 @@ impl ElasticsearchClient {
 
         if accumulator.total_actions == 0 {
             return Err(
-                AppError::internal("Elasticsearch bulk file does not contain actions").to_string(),
+                AppError::internal("Elasticsearch bulk file does not contain actions"),
             );
         }
 
@@ -1132,7 +1132,7 @@ impl ElasticsearchClient {
         if *batch_actions == 0 {
             return Ok(());
         }
-        let result = self.send_bulk_batch(index, batch, refresh).await?;
+        let result = self.send_bulk_batch(index, batch.clone(), refresh).await?;
         accumulator.add_batch(result);
         batch.clear();
         *batch_actions = 0;
@@ -1142,7 +1142,7 @@ impl ElasticsearchClient {
     async fn send_bulk_batch(
         &self,
         index: &str,
-        body: &str,
+        body: String,
         refresh: bool,
     ) -> Result<BulkBatchResult, AppError> {
         let refresh_query = if refresh { "?refresh=true" } else { "" };
@@ -1231,8 +1231,7 @@ impl ElasticsearchClient {
             "PATCH" => reqwest::Method::PATCH,
             _ => {
                 return Err(
-                    AppError::validation("method must be one of GET, POST, PUT, DELETE, PATCH")
-                        .to_string(),
+                    AppError::validation("method must be one of GET, POST, PUT, DELETE, PATCH"),
                 )
             }
         };
@@ -1243,7 +1242,7 @@ impl ElasticsearchClient {
             (!trimmed.is_empty()).then_some(trimmed)
         }) {
             let json = serde_json::from_str::<Value>(&raw)
-                .map_err(|e| AppError::validation(format!("invalid JSON body: {e}"))?;
+                .map_err(|e| AppError::validation(format!("invalid JSON body: {e}")))?;
             req = req.json(&json);
         }
 
@@ -1549,7 +1548,7 @@ use crate::models::ConnectionForm;
 
     #[test]
     fn build_search_body_query_string_fallback() {
-        let result = build_search_body(Some("status:ok"), None).unwrap();
+        let result = build_search_body(Some("status:ok".to_string()), None).unwrap();
         assert_eq!(result["query"]["query_string"]["query"], "status:ok");
     }
 
@@ -1561,7 +1560,7 @@ use crate::models::ConnectionForm;
 
     #[test]
     fn build_search_body_invalid_dsl_returns_error() {
-        assert!(build_search_body(None, Some("not json")).is_err());
+        assert!(build_search_body(None, Some("not json".to_string())).is_err());
     }
 
     #[test]

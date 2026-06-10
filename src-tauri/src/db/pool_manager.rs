@@ -70,7 +70,7 @@ impl PoolManager {
         if let Some(entry) = pools.get(id) {
             match entry.last_used.lock() {
                 Ok(mut last) => *last = std::time::Instant::now(),
-                Err(e) => eprintln!("[POOL_ERROR] Failed to lock last_used timestamp: {}", e),
+                Err(e) => tracing::warn!(error = %e, "Failed to lock last_used timestamp"),
             }
             entry
                 .use_count
@@ -250,7 +250,7 @@ impl PoolManager {
                     .iter()
                     .filter_map(|key| {
                         let entry = pools_write.remove(key)?;
-                        println!("[POOL_CLEANUP] Removing idle connection: {}", key);
+                        tracing::info!(connection_id = %key, "Removing idle connection");
                         Some(entry)
                     })
                     .collect()
@@ -279,7 +279,7 @@ impl PoolManager {
                     .iter()
                     .filter_map(|key| {
                         let entry = pools_write.remove(key)?;
-                        println!("[POOL_CLEANUP] Removing unhealthy connection: {}", key);
+                        tracing::warn!(connection_id = %key, "Removing unhealthy connection");
                         Some(entry)
                     })
                     .collect()

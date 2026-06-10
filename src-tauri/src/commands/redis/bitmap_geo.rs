@@ -10,6 +10,7 @@ pub async fn redis_bitmap_get_bit(
         Box::pin(redis::bitmap_get_bit(conn, key.clone(), offset))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -25,6 +26,7 @@ pub async fn redis_bitmap_count(
         Box::pin(redis::bitmap_count(conn, key.clone(), start, end))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -42,6 +44,7 @@ pub async fn redis_bitmap_pos(
         Box::pin(redis::bitmap_pos(conn, key.clone(), bit, start, end, count))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -56,6 +59,7 @@ pub async fn redis_hll_pfadd(
         Box::pin(redis::hll_pfadd(conn, key.clone(), elements.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -70,6 +74,7 @@ pub async fn redis_geo_add(
         Box::pin(redis::geo_add(conn, key.clone(), members.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -84,6 +89,7 @@ pub async fn redis_geo_pos(
         Box::pin(redis::geo_pos(conn, key.clone(), members.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -106,6 +112,7 @@ pub async fn redis_geo_dist(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -140,5 +147,6 @@ pub async fn redis_geo_search(
         ))
     })
     .await
+    .map_err(String::from)
 }
 

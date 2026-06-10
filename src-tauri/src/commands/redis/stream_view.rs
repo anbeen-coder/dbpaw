@@ -16,6 +16,7 @@ pub async fn redis_get_stream_range(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -38,4 +39,5 @@ pub async fn redis_get_stream_view(
         ))
     })
     .await
+    .map_err(String::from)
 }

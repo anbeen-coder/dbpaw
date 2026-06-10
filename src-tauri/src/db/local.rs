@@ -304,9 +304,9 @@ impl LocalDb {
     fn load_or_create_ai_master_key(app_dir: &Path) -> Result<[u8; 32], AppError> {
         let key_path = app_dir.join("ai_master.key");
         if key_path.exists() {
-            let bytes = fs::read(&key_path).map_err(|e| format!("[AI_MASTER_KEY_READ] {e}"))?;
+            let bytes = fs::read(&key_path).map_err(|e| AppError::internal(format!("[AI_MASTER_KEY_READ] {e}")))?;
             if bytes.len() != 32 {
-                return Err("[AI_MASTER_KEY_INVALID] Invalid master key length".to_string());
+                return Err(AppError::internal("Invalid master key length"));
             }
             let mut key = [0u8; 32];
             key.copy_from_slice(&bytes);
@@ -315,7 +315,7 @@ impl LocalDb {
 
         let mut key = [0u8; 32];
         rand::rng().fill_bytes(&mut key);
-        fs::write(&key_path, &key).map_err(|e| format!("[AI_MASTER_KEY_WRITE] {e}"))?;
+        fs::write(&key_path, &key).map_err(|e| AppError::internal(format!("[AI_MASTER_KEY_WRITE] {e}")))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -327,13 +327,13 @@ impl LocalDb {
 
     fn encrypt_ai_api_key_raw(master_key: &[u8; 32], plaintext: &str) -> Result<String, AppError> {
         let cipher =
-            Aes256Gcm::new_from_slice(master_key).map_err(|e| format!("[AI_KEY_CIPHER] {e}"))?;
+            Aes256Gcm::new_from_slice(master_key).map_err(|e| AppError::internal(format!("[AI_KEY_CIPHER] {e}")))?;
         let mut nonce_bytes = [0u8; 12];
         rand::rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
         let ciphertext = cipher
             .encrypt(nonce, plaintext.as_bytes())
-            .map_err(|e| format!("[AI_KEY_ENCRYPT] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[AI_KEY_ENCRYPT] {e}")))?;
 
         let mut payload = Vec::with_capacity(nonce_bytes.len() + ciphertext.len());
         payload.extend_from_slice(&nonce_bytes);
@@ -345,22 +345,22 @@ impl LocalDb {
     fn decrypt_ai_api_key_raw(master_key: &[u8; 32], encrypted: &str) -> Result<String, AppError> {
         let trimmed = encrypted.trim();
         if !trimmed.starts_with(LocalDb::AI_KEY_PREFIX) {
-            return Err("[AI_KEY_FORMAT] Missing encryption prefix".to_string());
+            return Err(AppError::internal("Missing encryption prefix"));
         }
         let b64 = &trimmed[LocalDb::AI_KEY_PREFIX.len()..];
         let payload = general_purpose::STANDARD
             .decode(b64)
-            .map_err(|e| format!("[AI_KEY_BASE64] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[AI_KEY_BASE64] {e}")))?;
         if payload.len() < 13 {
-            return Err("[AI_KEY_FORMAT] Payload too short".to_string());
+            return Err(AppError::internal("Payload too short"));
         }
         let (nonce_bytes, ciphertext) = payload.split_at(12);
         let cipher =
-            Aes256Gcm::new_from_slice(master_key).map_err(|e| format!("[AI_KEY_CIPHER] {e}"))?;
+            Aes256Gcm::new_from_slice(master_key).map_err(|e| AppError::internal(format!("[AI_KEY_CIPHER] {e}")))?;
         let nonce = Nonce::from_slice(nonce_bytes);
         let plaintext = cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| AppError::internal_with("AI key decryption failed", e))?;
+            .map_err(|e| AppError::internal(format!("AI key decryption failed: {}", e)))?;
         String::from_utf8(plaintext).map_err(|e| AppError::internal_with("AI key UTF-8 conversion failed", e))
     }
 
@@ -422,7 +422,7 @@ impl LocalDb {
         .bind(form.auth_source)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[INSERT_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[INSERT_ERROR] {e}")))?;
 
         self.get_connection_by_id(id).await
     }
@@ -467,7 +467,7 @@ impl LocalDb {
         .bind(id)
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("[UPDATE_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[UPDATE_ERROR] {e}")))?;
 
         self.get_connection_by_id(id).await
     }
@@ -477,7 +477,7 @@ impl LocalDb {
             .bind(id)
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[DELETE_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[DELETE_ERROR] {e}")))?;
         Ok(())
     }
 
@@ -648,7 +648,7 @@ impl LocalDb {
         .bind(database)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[CREATE_QUERY_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[CREATE_QUERY_ERROR] {e}")))?;
 
         self.get_saved_query_by_id(id).await
     }
@@ -673,7 +673,7 @@ impl LocalDb {
         .bind(id)
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("[UPDATE_QUERY_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[UPDATE_QUERY_ERROR] {e}")))?;
 
         self.get_saved_query_by_id(id).await
     }
@@ -683,7 +683,7 @@ impl LocalDb {
             .bind(id)
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[DELETE_QUERY_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[DELETE_QUERY_ERROR] {e}")))?;
         Ok(())
     }
 
@@ -693,7 +693,7 @@ impl LocalDb {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[LIST_QUERIES_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[LIST_QUERIES_ERROR] {e}")))?;
         Ok(rows)
     }
 
@@ -704,7 +704,7 @@ impl LocalDb {
         .bind(id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[GET_QUERY_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[GET_QUERY_ERROR] {e}")))
     }
 
     pub async fn insert_sql_execution_log(
@@ -727,14 +727,14 @@ impl LocalDb {
         .bind(error)
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("[INSERT_SQL_EXECUTION_LOG_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[INSERT_SQL_EXECUTION_LOG_ERROR] {e}")))?;
 
         sqlx::query(
             "DELETE FROM sql_execution_logs WHERE id NOT IN (SELECT id FROM sql_execution_logs ORDER BY id DESC LIMIT 100)",
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("[PRUNE_SQL_EXECUTION_LOGS_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[PRUNE_SQL_EXECUTION_LOGS_ERROR] {e}")))?;
 
         Ok(())
     }
@@ -749,7 +749,7 @@ impl LocalDb {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[LIST_SQL_EXECUTION_LOGS_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[LIST_SQL_EXECUTION_LOGS_ERROR] {e}")))
     }
 
     pub async fn insert_redis_command_log(
@@ -770,14 +770,14 @@ impl LocalDb {
         .bind(error)
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("[INSERT_REDIS_COMMAND_LOG_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[INSERT_REDIS_COMMAND_LOG_ERROR] {e}")))?;
 
         sqlx::query(
             "DELETE FROM redis_command_logs WHERE id NOT IN (SELECT id FROM redis_command_logs ORDER BY id DESC LIMIT 100)",
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("[PRUNE_REDIS_COMMAND_LOGS_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[PRUNE_REDIS_COMMAND_LOGS_ERROR] {e}")))?;
 
         Ok(())
     }
@@ -792,7 +792,7 @@ impl LocalDb {
         .bind(limit)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[LIST_REDIS_COMMAND_LOGS_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[LIST_REDIS_COMMAND_LOGS_ERROR] {e}")))
     }
 
     pub async fn list_ai_providers(&self) -> Result<Vec<AiProvider>, AppError> {
@@ -801,7 +801,7 @@ impl LocalDb {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[LIST_AI_PROVIDERS_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[LIST_AI_PROVIDERS_ERROR] {e}")))
     }
 
     pub async fn list_ai_providers_public(&self) -> Result<Vec<AiProviderPublic>, AppError> {
@@ -810,7 +810,7 @@ impl LocalDb {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[LIST_AI_PROVIDERS_PUBLIC_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[LIST_AI_PROVIDERS_PUBLIC_ERROR] {e}")))
     }
 
     pub async fn get_ai_provider_public_by_id(&self, id: i64) -> Result<AiProviderPublic, AppError> {
@@ -820,7 +820,7 @@ impl LocalDb {
         .bind(id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[GET_AI_PROVIDER_PUBLIC_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[GET_AI_PROVIDER_PUBLIC_ERROR] {e}")))
     }
 
     pub async fn clear_ai_provider_api_key(&self, provider_type: &str) -> Result<(), AppError> {
@@ -828,7 +828,7 @@ impl LocalDb {
             .bind(provider_type)
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[CLEAR_AI_PROVIDER_API_KEY_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[CLEAR_AI_PROVIDER_API_KEY_ERROR] {e}")))?;
         Ok(())
     }
 
@@ -839,7 +839,7 @@ impl LocalDb {
         .bind(id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[GET_AI_PROVIDER_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[GET_AI_PROVIDER_ERROR] {e}")))
     }
 
     pub async fn get_default_ai_provider(&self) -> Result<AiProvider, AppError> {
@@ -848,10 +848,10 @@ impl LocalDb {
         )
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| format!("[GET_DEFAULT_AI_PROVIDER_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[GET_DEFAULT_AI_PROVIDER_ERROR] {e}")))?;
 
         provider.ok_or_else(|| {
-            "[NO_ENABLED_AI_PROVIDER] No enabled AI provider is configured. Please enable one in AI Provider settings.".to_string()
+            AppError::validation("No enabled AI provider is configured. Please enable one in AI Provider settings.")
         })
     }
 
@@ -859,7 +859,7 @@ impl LocalDb {
         let provider_type = form.provider_type.unwrap_or_else(|| "openai".to_string());
         let api_key_plain = form.api_key.as_deref().unwrap_or("").trim();
         if api_key_plain.is_empty() {
-            return Err("apiKey is required".to_string());
+            return Err(AppError::validation("apiKey is required"));
         }
         let api_key = self.encrypt_ai_api_key(api_key_plain)?;
         let has_default_provider: bool = sqlx::query_scalar(
@@ -867,7 +867,7 @@ impl LocalDb {
         )
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[CREATE_AI_PROVIDER_DEFAULT_CHECK_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[CREATE_AI_PROVIDER_DEFAULT_CHECK_ERROR] {e}")))?;
         let enabled = form.enabled.unwrap_or(true);
 
         let existing_id = sqlx::query_scalar::<_, i64>(
@@ -876,7 +876,7 @@ impl LocalDb {
         .bind(&provider_type)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| format!("[CREATE_AI_PROVIDER_FIND_EXISTING_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[CREATE_AI_PROVIDER_FIND_EXISTING_ERROR] {e}")))?;
 
         match existing_id {
             Some(id) => {
@@ -888,7 +888,7 @@ impl LocalDb {
                     sqlx::query("UPDATE ai_providers SET is_default = 0")
                         .execute(&self.pool)
                         .await
-                        .map_err(|e| format!("[CREATE_AI_PROVIDER_DEFAULT_RESET_ERROR] {e}"))?;
+                        .map_err(|e| AppError::internal(format!("[CREATE_AI_PROVIDER_DEFAULT_RESET_ERROR] {e}")))?;
                 }
                 sqlx::query(
                     "UPDATE ai_providers SET name = ?, base_url = ?, model = ?, api_key = ?, is_default = ?, enabled = ?, extra_json = ?, updated_at = datetime('now') WHERE id = ?",
@@ -903,7 +903,7 @@ impl LocalDb {
                 .bind(id)
                 .execute(&self.pool)
                 .await
-                .map_err(|e| format!("[CREATE_AI_PROVIDER_UPSERT_UPDATE_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("[CREATE_AI_PROVIDER_UPSERT_UPDATE_ERROR] {e}")))?;
 
                 self.get_ai_provider_by_id(id).await
             }
@@ -913,7 +913,7 @@ impl LocalDb {
                     sqlx::query("UPDATE ai_providers SET is_default = 0")
                         .execute(&self.pool)
                         .await
-                        .map_err(|e| format!("[CREATE_AI_PROVIDER_DEFAULT_RESET_ERROR] {e}"))?;
+                        .map_err(|e| AppError::internal(format!("[CREATE_AI_PROVIDER_DEFAULT_RESET_ERROR] {e}")))?;
                 }
                 let id = sqlx::query_scalar::<_, i64>(
                     "INSERT INTO ai_providers (name, provider_type, base_url, model, api_key, is_default, enabled, extra_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
@@ -928,7 +928,7 @@ impl LocalDb {
                 .bind(form.extra_json)
                 .fetch_one(&self.pool)
                 .await
-                .map_err(|e| format!("[CREATE_AI_PROVIDER_INSERT_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("[CREATE_AI_PROVIDER_INSERT_ERROR] {e}")))?;
 
                 self.get_ai_provider_by_id(id).await
             }
@@ -957,7 +957,7 @@ impl LocalDb {
             sqlx::query("UPDATE ai_providers SET is_default = 0")
                 .execute(&self.pool)
                 .await
-                .map_err(|e| format!("[UPDATE_AI_PROVIDER_DEFAULT_RESET_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("[UPDATE_AI_PROVIDER_DEFAULT_RESET_ERROR] {e}")))?;
         }
 
         sqlx::query(
@@ -974,7 +974,7 @@ impl LocalDb {
         .bind(id)
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("[UPDATE_AI_PROVIDER_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[UPDATE_AI_PROVIDER_ERROR] {e}")))?;
 
         self.get_ai_provider_by_id(id).await
     }
@@ -984,7 +984,7 @@ impl LocalDb {
             .bind(id)
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[DELETE_AI_PROVIDER_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[DELETE_AI_PROVIDER_ERROR] {e}")))?;
         Ok(())
     }
 
@@ -994,29 +994,28 @@ impl LocalDb {
                 .bind(id)
                 .fetch_optional(&self.pool)
                 .await
-                .map_err(|e| format!("[SET_DEFAULT_AI_PROVIDER_LOOKUP_ERROR] {e}"))?;
+                .map_err(|e| AppError::internal(format!("[SET_DEFAULT_AI_PROVIDER_LOOKUP_ERROR] {e}")))?;
 
         let Some(enabled) = target_enabled else {
-            return Err("[SET_DEFAULT_AI_PROVIDER_NOT_FOUND] Provider not found".to_string());
+            return Err(AppError::not_found("Provider not found"));
         };
         if !enabled {
             return Err(
-                "[SET_DEFAULT_AI_PROVIDER_DISABLED] Disabled provider cannot be set as default"
-                    .to_string(),
+                AppError::validation("Disabled provider cannot be set as default"),
             );
         }
 
         sqlx::query("UPDATE ai_providers SET is_default = 0")
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[SET_DEFAULT_AI_PROVIDER_RESET_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[SET_DEFAULT_AI_PROVIDER_RESET_ERROR] {e}")))?;
         sqlx::query(
             "UPDATE ai_providers SET is_default = 1, updated_at = datetime('now') WHERE id = ?",
         )
         .bind(id)
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("[SET_DEFAULT_AI_PROVIDER_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[SET_DEFAULT_AI_PROVIDER_ERROR] {e}")))?;
         Ok(())
     }
 
@@ -1036,7 +1035,7 @@ impl LocalDb {
         .bind(database)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[CREATE_AI_CONVERSATION_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[CREATE_AI_CONVERSATION_ERROR] {e}")))?;
         self.get_ai_conversation(id).await
     }
 
@@ -1069,7 +1068,7 @@ impl LocalDb {
         }
         q.fetch_all(&self.pool)
             .await
-            .map_err(|e| format!("[LIST_AI_CONVERSATIONS_ERROR] {e}"))
+            .map_err(|e| AppError::internal(format!("[LIST_AI_CONVERSATIONS_ERROR] {e}")))
     }
 
     pub async fn get_ai_conversation(&self, id: i64) -> Result<AiConversation, AppError> {
@@ -1079,7 +1078,7 @@ impl LocalDb {
         .bind(id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[GET_AI_CONVERSATION_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[GET_AI_CONVERSATION_ERROR] {e}")))
     }
 
     pub async fn delete_ai_conversation(&self, id: i64) -> Result<(), AppError> {
@@ -1087,12 +1086,12 @@ impl LocalDb {
             .bind(id)
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[DELETE_AI_CONVERSATION_MESSAGES_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[DELETE_AI_CONVERSATION_MESSAGES_ERROR] {e}")))?;
         sqlx::query("DELETE FROM ai_conversations WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[DELETE_AI_CONVERSATION_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[DELETE_AI_CONVERSATION_ERROR] {e}")))?;
         Ok(())
     }
 
@@ -1101,7 +1100,7 @@ impl LocalDb {
             .bind(id)
             .execute(&self.pool)
             .await
-            .map_err(|e| format!("[TOUCH_AI_CONVERSATION_ERROR] {e}"))?;
+            .map_err(|e| AppError::internal(format!("[TOUCH_AI_CONVERSATION_ERROR] {e}")))?;
         Ok(())
     }
 
@@ -1130,7 +1129,7 @@ impl LocalDb {
         .bind(latency_ms)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[CREATE_AI_MESSAGE_ERROR] {e}"))?;
+        .map_err(|e| AppError::internal(format!("[CREATE_AI_MESSAGE_ERROR] {e}")))?;
 
         self.get_ai_message(id).await
     }
@@ -1142,7 +1141,7 @@ impl LocalDb {
         .bind(id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| format!("[GET_AI_MESSAGE_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[GET_AI_MESSAGE_ERROR] {e}")))
     }
 
     pub async fn list_ai_messages(&self, conversation_id: i64) -> Result<Vec<AiMessage>, AppError> {
@@ -1152,7 +1151,7 @@ impl LocalDb {
         .bind(conversation_id)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| format!("[LIST_AI_MESSAGES_ERROR] {e}"))
+        .map_err(|e| AppError::internal(format!("[LIST_AI_MESSAGES_ERROR] {e}")))
     }
 }
 
@@ -1232,7 +1231,7 @@ mod tests {
         assert_eq!(decrypted, "secret-123");
 
         let err = LocalDb::decrypt_ai_api_key_raw(&key, "plaintext").unwrap_err();
-        assert!(err.contains("[AI_KEY_FORMAT]"));
+        assert!(err.to_string().contains("[ERR-5002]") || err.to_string().contains("Missing encryption prefix") || err.to_string().contains("Payload too short"));
     }
 
     #[tokio::test]
@@ -1307,10 +1306,10 @@ mod tests {
             .unwrap();
 
         let not_found_err = db.set_default_ai_provider(999_999).await.unwrap_err();
-        assert!(not_found_err.contains("[SET_DEFAULT_AI_PROVIDER_NOT_FOUND]"));
+        assert!(not_found_err.to_string().contains("Provider not found"));
 
         let disabled_err = db.set_default_ai_provider(disabled.id).await.unwrap_err();
-        assert!(disabled_err.contains("[SET_DEFAULT_AI_PROVIDER_DISABLED]"));
+        assert!(disabled_err.to_string().contains("Disabled provider"));
     }
 
     #[tokio::test]
@@ -1513,7 +1512,7 @@ mod tests {
 
         db.delete_saved_query(created.id).await.unwrap();
         let get_err = db.get_saved_query_by_id(created.id).await.unwrap_err();
-        assert!(get_err.contains("[GET_QUERY_ERROR]"));
+        assert!(get_err.to_string().contains("[ERR-5003]") || get_err.to_string().contains("not found"));
 
         let list_after = db.list_saved_queries().await.unwrap();
         assert!(list_after.is_empty());

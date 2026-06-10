@@ -47,6 +47,7 @@ pub async fn redis_list_databases(
         })
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -67,5 +68,6 @@ pub async fn redis_scan_keys(
         ))
     })
     .await
+    .map_err(String::from)
 }
 

@@ -115,7 +115,7 @@ async fn append_sql_execution_log(
             .insert_sql_execution_log(sql, source, connection_id, database, success, error)
             .await
         {
-            eprintln!("[SQL_LOG_APPEND_ERROR] {}", e);
+            tracing::error!(error = %e, "Failed to append SQL execution log");
         }
     }
 }
@@ -139,7 +139,7 @@ async fn append_sql_execution_log_direct(
             .insert_sql_execution_log(sql, source, connection_id, database, success, error)
             .await
         {
-            eprintln!("[SQL_LOG_APPEND_ERROR] {}", e);
+            tracing::error!(error = %e, "Failed to append SQL execution log");
         }
     }
 }
@@ -499,7 +499,7 @@ pub async fn list_sql_execution_logs(
     };
 
     if let Some(db) = local_db {
-        db.list_sql_execution_logs(safe_limit).await
+        db.list_sql_execution_logs(safe_limit).await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -516,7 +516,7 @@ pub async fn list_sql_execution_logs_direct(
     };
 
     if let Some(db) = local_db {
-        db.list_sql_execution_logs(safe_limit).await
+        db.list_sql_execution_logs(safe_limit).await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }

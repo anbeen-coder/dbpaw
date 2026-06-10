@@ -375,7 +375,7 @@ pub async fn create_database_by_id(
         _ => Err(AppError::unsupported(format!(
             "Driver {} not supported for create database",
             driver
-        )).to_string()),
+        ))),
     };
 
     exec_res.map_err(|e| normalize_create_database_error(e, &db_name)).map_err(String::from)
@@ -467,7 +467,7 @@ pub async fn create_database_by_id_direct(
         _ => Err(AppError::unsupported(format!(
             "Driver {} not supported for create database",
             driver
-        )).to_string()),
+        ))),
     };
 
     exec_res.map_err(|e| normalize_create_database_error(e, &db_name)).map_err(String::from)
@@ -628,7 +628,7 @@ pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<Connectio
         lock.clone()
     };
     if let Some(db) = local_db {
-        db.list_connections().await
+        db.list_connections().await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -640,7 +640,7 @@ pub async fn get_connections_direct(state: &AppState) -> Result<Vec<Connection>,
         lock.clone()
     };
     if let Some(db) = local_db {
-        db.list_connections().await
+        db.list_connections().await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -657,7 +657,7 @@ pub async fn create_connection(
         lock.clone()
     };
     if let Some(db) = local_db {
-        db.create_connection(form).await
+        db.create_connection(form).await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -673,7 +673,7 @@ pub async fn create_connection_direct(
         lock.clone()
     };
     if let Some(db) = local_db {
-        db.create_connection(form).await
+        db.create_connection(form).await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -694,7 +694,7 @@ pub async fn update_connection(
         // If connection is updated, we should remove it from pool so next usage reconnects with new config
         state.pool_manager.remove_by_prefix(&id.to_string()).await;
 
-        db.update_connection(id, form).await
+        db.update_connection(id, form).await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -712,7 +712,7 @@ pub async fn update_connection_direct(
     };
     if let Some(db) = local_db {
         state.pool_manager.remove_by_prefix(&id.to_string()).await;
-        db.update_connection(id, form).await
+        db.update_connection(id, form).await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -731,7 +731,7 @@ pub async fn delete_connection_direct(state: &AppState, id: i64) -> Result<(), S
     if let Some(db) = local_db {
         state.pool_manager.remove_by_prefix(&id.to_string()).await;
         state.redis_cache.lock().await.remove_by_connection_id(id);
-        db.delete_connection(id).await
+        db.delete_connection(id).await.map_err(String::from)
     } else {
         Err("Local DB not initialized".to_string())
     }
@@ -749,6 +749,7 @@ mod tests {
         quote_clickhouse_ident, quote_mssql_ident, quote_mysql_ident, quote_pg_ident,
     };
     use crate::connection_input::normalize_connection_form;
+    use crate::error::AppError;
     use crate::models::ConnectionForm;
 
     #[test]

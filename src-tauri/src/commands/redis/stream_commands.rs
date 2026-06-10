@@ -19,6 +19,7 @@ pub async fn redis_xgroup_create(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -33,6 +34,7 @@ pub async fn redis_xgroup_del(
         Box::pin(redis::xgroup_del(conn, key.clone(), group.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -53,6 +55,7 @@ pub async fn redis_xgroup_setid(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -68,6 +71,7 @@ pub async fn redis_xack(
         Box::pin(redis::xack(conn, key.clone(), group.clone(), ids.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -94,6 +98,7 @@ pub async fn redis_xpending(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -118,6 +123,7 @@ pub async fn redis_xclaim(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -140,6 +146,7 @@ pub async fn redis_xtrim(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -164,6 +171,7 @@ pub async fn redis_xreadgroup(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 // ── Batch operations ────────────────────────────────────────────────────────

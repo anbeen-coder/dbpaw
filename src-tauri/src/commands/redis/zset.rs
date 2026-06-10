@@ -20,6 +20,7 @@ pub async fn redis_zrangebyscore(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -36,6 +37,7 @@ pub async fn redis_zrank(
         Box::pin(redis::zrank(conn, key.clone(), member.clone(), rev))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -50,6 +52,7 @@ pub async fn redis_zscore(
         Box::pin(redis::zscore(conn, key.clone(), member.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -64,6 +67,7 @@ pub async fn redis_zmscore(
         Box::pin(redis::zmscore(conn, key.clone(), members.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -88,6 +92,7 @@ pub async fn redis_zrangebylex(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -108,6 +113,7 @@ pub async fn redis_zlexcount(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -122,6 +128,7 @@ pub async fn redis_zpopmin(
         Box::pin(redis::zpopmin(conn, key.clone(), count))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -136,4 +143,5 @@ pub async fn redis_zpopmax(
         Box::pin(redis::zpopmax(conn, key.clone(), count))
     })
     .await
+    .map_err(String::from)
 }

@@ -10,26 +10,24 @@ use tauri::State;
 async fn connection_form(
     state: &State<'_, AppState>,
     id: i64,
-) -> Result<crate::models::ConnectionForm, String> {
+) -> Result<crate::models::ConnectionForm, AppError> {
     let local_db = {
         let lock = state.local_db.lock().await;
         lock.clone()
     };
-    let db = local_db.ok_or("Local DB not initialized")?;
+    let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
     let form = db.get_connection_form_by_id(id).await?;
     if form.driver != "mongodb" {
         return Err(AppError::unsupported(format!(
             "Connection {} is not a MongoDB connection",
             id
-        )).to_string());
+        )));
     }
     Ok(form)
 }
 
-async fn driver_from_id(state: &State<'_, AppState>, id: i64) -> Result<MongoDBDriver, String> {
-    MongoDBDriver::connect(&connection_form(state, id).await?)
-        .await
-        .map_err(String::from)
+async fn driver_from_id(state: &State<'_, AppState>, id: i64) -> Result<MongoDBDriver, AppError> {
+    MongoDBDriver::connect(&connection_form(state, id).await?).await
 }
 
 #[tauri::command]

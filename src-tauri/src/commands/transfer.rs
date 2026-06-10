@@ -573,7 +573,7 @@ mod tests {
                 "postgres",
             )
             .unwrap_err();
-        assert_eq!(err, "[ERR-3001] row is not a JSON object");
+        assert_eq!(err.to_string(), "[ERR-3001] row is not a JSON object");
         let _ = fs::remove_file(path);
     }
 
@@ -598,7 +598,7 @@ mod tests {
     #[test]
     fn parse_sql_statements_rejects_unterminated_block_comment() {
         let err = parse_sql_statements("INSERT INTO t VALUES (1); /*", "mysql").unwrap_err();
-        assert!(err.contains("Unterminated block comment"));
+        assert!(err.to_string().contains("Unterminated block comment"));
     }
 
     #[test]

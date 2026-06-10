@@ -10,6 +10,7 @@ pub async fn redis_set_operation(
         Box::pin(redis::set_operation(conn, keys.clone(), op.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -24,6 +25,7 @@ pub async fn redis_sismember(
         Box::pin(redis::sismember(conn, key.clone(), member.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -44,6 +46,7 @@ pub async fn redis_smove(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 // ── Stream Consumer Group commands ──────────────────────────────────────────
@@ -59,6 +62,7 @@ pub async fn redis_batch_key_ops(
         Box::pin(redis::batch_key_ops(conn, operations.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -72,6 +76,7 @@ pub async fn redis_mget(
         Box::pin(redis::mget_keys(conn, keys.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -86,6 +91,7 @@ pub async fn redis_mset(
         Box::pin(redis::mset_keys(conn, pairs.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -100,6 +106,7 @@ pub async fn redis_lindex(
         Box::pin(redis::lindex(conn, key.clone(), index))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -124,6 +131,7 @@ pub async fn redis_lpos(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -139,6 +147,7 @@ pub async fn redis_ltrim(
         Box::pin(redis::ltrim(conn, key.clone(), start, stop))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -161,6 +170,7 @@ pub async fn redis_linsert(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -183,4 +193,5 @@ pub async fn redis_lmove(
         ))
     })
     .await
+    .map_err(String::from)
 }

@@ -100,7 +100,7 @@ async fn with_redis_conn<T, F>(
     id: i64,
     database: Option<&str>,
     operation: F,
-) -> Result<T, String>
+) -> Result<T, AppError>
 where
     F: for<'a> FnOnce(&'a ConnectionForm, &'a mut RedisConnection) -> RedisCommandFuture<'a, T>,
 {
@@ -108,7 +108,7 @@ where
         .await?;
     let mut conn = acquire(state, id, &form, database)
         .await?;
-    operation(&form, &mut conn).await.map_err(String::from)
+    operation(&form, &mut conn).await
 }
 
 async fn with_redis_retry<T, F>(
@@ -116,7 +116,7 @@ async fn with_redis_retry<T, F>(
     id: i64,
     database: Option<&str>,
     operation: F,
-) -> Result<T, String>
+) -> Result<T, AppError>
 where
     F: for<'a> Fn(&'a ConnectionForm, &'a mut RedisConnection) -> RedisCommandFuture<'a, T>,
 {
@@ -140,5 +140,4 @@ where
         },
     )
     .await
-    .map_err(String::from)
 }

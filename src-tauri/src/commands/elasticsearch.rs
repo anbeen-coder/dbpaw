@@ -4,6 +4,7 @@ use crate::datasources::elasticsearch::{
     ElasticsearchIndexOperationResult, ElasticsearchMutationResult, ElasticsearchRawResponse,
     ElasticsearchSearchResponse,
 };
+use crate::error::AppError;
 use crate::models::TestConnectionResult;
 use crate::state::AppState;
 use serde_json::Value;
@@ -13,7 +14,7 @@ use tauri::State;
 async fn client_from_id(
     state: &State<'_, AppState>,
     id: i64,
-) -> Result<ElasticsearchClient, String> {
+) -> Result<ElasticsearchClient, AppError> {
     ElasticsearchClient::connect(
         &super::get_connection_form_by_id_with_driver_check(state, id, "elasticsearch").await?,
     )
@@ -24,7 +25,7 @@ pub async fn elasticsearch_test_connection(
     state: State<'_, AppState>,
     id: i64,
 ) -> Result<ElasticsearchConnectionInfo, String> {
-    client_from_id(&state, id).await?.test_connection().await
+    client_from_id(&state, id).await?.test_connection().await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -32,7 +33,7 @@ pub async fn elasticsearch_test_connection_ephemeral(
     form: crate::models::ConnectionForm,
 ) -> Result<TestConnectionResult, String> {
     let started = Instant::now();
-    let client = ElasticsearchClient::connect(&form)?;
+    let client = ElasticsearchClient::connect(&form).map_err(String::from)?;
     match client.test_connection().await {
         Ok(info) => Ok(TestConnectionResult {
             success: true,
@@ -42,7 +43,7 @@ pub async fn elasticsearch_test_connection_ephemeral(
             ),
             latency_ms: Some(started.elapsed().as_millis() as i64),
         }),
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -51,7 +52,7 @@ pub async fn elasticsearch_list_indices(
     state: State<'_, AppState>,
     id: i64,
 ) -> Result<Vec<ElasticsearchIndexInfo>, String> {
-    client_from_id(&state, id).await?.list_indices().await
+    client_from_id(&state, id).await?.list_indices().await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -64,6 +65,7 @@ pub async fn elasticsearch_get_index_mapping(
         .await?
         .get_index_mapping(index)
         .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -77,6 +79,7 @@ pub async fn elasticsearch_create_index(
         .await?
         .create_index(index, body)
         .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -85,7 +88,7 @@ pub async fn elasticsearch_delete_index(
     id: i64,
     index: String,
 ) -> Result<ElasticsearchIndexOperationResult, String> {
-    client_from_id(&state, id).await?.delete_index(index).await
+    client_from_id(&state, id).await?.delete_index(index).await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -94,7 +97,7 @@ pub async fn elasticsearch_refresh_index(
     id: i64,
     index: String,
 ) -> Result<ElasticsearchIndexOperationResult, String> {
-    client_from_id(&state, id).await?.refresh_index(index).await
+    client_from_id(&state, id).await?.refresh_index(index).await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -103,7 +106,7 @@ pub async fn elasticsearch_open_index(
     id: i64,
     index: String,
 ) -> Result<ElasticsearchIndexOperationResult, String> {
-    client_from_id(&state, id).await?.open_index(index).await
+    client_from_id(&state, id).await?.open_index(index).await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -112,7 +115,7 @@ pub async fn elasticsearch_close_index(
     id: i64,
     index: String,
 ) -> Result<ElasticsearchIndexOperationResult, String> {
-    client_from_id(&state, id).await?.close_index(index).await
+    client_from_id(&state, id).await?.close_index(index).await.map_err(String::from)
 }
 
 #[tauri::command]
@@ -129,6 +132,7 @@ pub async fn elasticsearch_search_documents(
         .await?
         .search_documents(index, query, dsl, from, size)
         .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -142,6 +146,7 @@ pub async fn elasticsearch_get_document(
         .await?
         .get_document(index, document_id)
         .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -157,6 +162,7 @@ pub async fn elasticsearch_upsert_document(
         .await?
         .upsert_document(index, document_id, source, refresh.unwrap_or(true))
         .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -171,6 +177,7 @@ pub async fn elasticsearch_delete_document(
         .await?
         .delete_document(index, document_id, refresh.unwrap_or(true))
         .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -187,6 +194,7 @@ pub async fn elasticsearch_export_documents(
         .await?
         .export_documents(index, query, dsl, file_path, batch_size)
         .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -202,6 +210,7 @@ pub async fn elasticsearch_import_documents(
         .await?
         .import_documents(index, file_path, batch_size, refresh.unwrap_or(true))
         .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -216,6 +225,7 @@ pub async fn elasticsearch_execute_raw(
         .await?
         .execute_raw(method, path, body)
         .await
+        .map_err(String::from)
 }
 
 #[macro_export]

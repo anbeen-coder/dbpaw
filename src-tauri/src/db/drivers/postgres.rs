@@ -1877,7 +1877,7 @@ impl DatabaseDriver for PostgresDriver {
         };
 
         let rows = rows.map_err(|e| {
-            eprintln!("Postgres schema overview query failed: {}", e);
+            tracing::error!(error = %e, "Postgres schema overview query failed");
             query_error("Failed to fetch schema overview")
         })?;
 

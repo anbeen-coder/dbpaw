@@ -42,7 +42,7 @@ pub(super) fn import_transaction_sql<'a>(
         "starrocks" | "doris" => Err(AppError::unsupported(format!(
             "Driver {} does not support transactional SQL import in this flow",
             original_driver
-        ))),
+        )).to_string()),
         "postgres" | "sqlite" | "duckdb" => Ok(("BEGIN", "COMMIT", "ROLLBACK")),
         "mssql" => Ok((
             "BEGIN TRANSACTION",
@@ -52,12 +52,12 @@ pub(super) fn import_transaction_sql<'a>(
         "oracle" => Ok(("SELECT 1 FROM DUAL", "COMMIT", "ROLLBACK")),
         "db2" => Ok(("BEGIN", "COMMIT", "ROLLBACK")),
         "clickhouse" => {
-            Err(AppError::unsupported("Driver clickhouse is read-only in this import flow"))
+            Err(AppError::unsupported("Driver clickhouse is read-only in this import flow").to_string())
         }
         _ => Err(AppError::unsupported(format!(
             "Driver {} is not supported for SQL import",
             original_driver
-        ))),
+        )).to_string()),
     }
 }
 
@@ -303,7 +303,7 @@ pub(super) fn parse_mssql_batches(sql: &str) -> Result<Vec<String>, AppError> {
                 let statement = current.trim();
                 if !statement.is_empty() {
                     for _ in 0..go_count {
-                        out.push(statement);
+                        out.push(statement.to_string());
                     }
                 }
                 current.clear();
@@ -330,7 +330,7 @@ pub(super) fn parse_mssql_batches(sql: &str) -> Result<Vec<String>, AppError> {
 
     let tail = current.trim();
     if !tail.is_empty() {
-        out.push(tail);
+        out.push(tail.to_string());
     }
     Ok(out)
 }
@@ -826,7 +826,7 @@ pub(super) fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String
                         if is_block && ready_to_terminate {
                             let statement = current.trim();
                             if !statement.is_empty() {
-                                out.push(statement);
+                                out.push(statement.to_string());
                             }
                             current.clear();
                             i = next_idx;
@@ -857,7 +857,7 @@ pub(super) fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String
                     }
                     let statement = current.trim();
                     if !statement.is_empty() {
-                        out.push(statement);
+                        out.push(statement.to_string());
                     }
                     current.clear();
                     i += delimiter_chars.len();
@@ -997,7 +997,7 @@ pub(super) fn parse_sql_statements(sql: &str, driver: &str) -> Result<Vec<String
 
     let tail = current.trim();
     if !tail.is_empty() {
-        out.push(tail);
+        out.push(tail.to_string());
     }
     Ok(out)
 }

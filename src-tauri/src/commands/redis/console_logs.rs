@@ -16,7 +16,7 @@ async fn append_redis_command_log(
             .insert_redis_command_log(command, Some(connection_id), database, success, error)
             .await
         {
-            eprintln!("[REDIS_LOG_APPEND_ERROR] {}", e);
+            tracing::error!(error = %e, "Failed to append Redis command log");
         }
     }
 }
@@ -31,7 +31,8 @@ pub async fn redis_execute_raw(
     let result = with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::execute_raw(conn, command.clone()))
     })
-    .await;
+    .await
+    .map_err(String::from);
 
     match &result {
         Ok(_) => {
@@ -54,6 +55,7 @@ pub async fn redis_server_info(
         Box::pin(redis::server_info(conn))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -66,6 +68,7 @@ pub async fn redis_server_config(
         Box::pin(redis::server_config(conn))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -80,6 +83,7 @@ pub async fn redis_slowlog_get(
         Box::pin(redis::slowlog_get(conn, n))
     })
     .await
+    .map_err(String::from)
 }
 
 fn clamp_redis_command_logs_limit(limit: Option<i64>) -> i64 {
@@ -98,8 +102,8 @@ pub async fn list_redis_command_logs(
     };
 
     if let Some(db) = local_db {
-        db.list_redis_command_logs(safe_limit).await
+        db.list_redis_command_logs(safe_limit).await.map_err(String::from)
     } else {
-        Err("Local DB not initialized".to_string())
+        Err(AppError::internal("Local DB not initialized").into())
     }
 }

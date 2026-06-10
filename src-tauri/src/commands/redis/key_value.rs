@@ -9,6 +9,7 @@ pub async fn redis_get_key(
         Box::pin(redis::get_key(conn, key.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -22,6 +23,7 @@ pub async fn redis_set_key(
         Box::pin(redis::set_key(conn, payload.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -35,6 +37,7 @@ pub async fn redis_update_key(
         Box::pin(redis::set_key(conn, payload.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -48,6 +51,7 @@ pub async fn redis_delete_key(
         Box::pin(redis::delete_key(conn, key.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -61,6 +65,7 @@ pub async fn redis_patch_key(
         Box::pin(redis::patch_key(conn, payload.clone()))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -82,6 +87,7 @@ pub async fn redis_rename_key(
         ))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -97,6 +103,7 @@ pub async fn redis_get_key_page(
         Box::pin(redis::get_key_page(conn, key.clone(), offset, limit))
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -111,4 +118,5 @@ pub async fn redis_set_ttl(
         Box::pin(redis::set_ttl(conn, key.clone(), ttl_seconds))
     })
     .await
+    .map_err(String::from)
 }

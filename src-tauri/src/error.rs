@@ -110,7 +110,6 @@ impl From<AppError> for String {
     }
 }
 
-#[deprecated(note = "Use AppError constructors directly. This impl will be removed in a future version.")]
 #[allow(deprecated)]
 impl From<String> for AppError {
     fn from(err: String) -> Self {

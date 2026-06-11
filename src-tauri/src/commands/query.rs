@@ -97,30 +97,6 @@ async fn is_running_query(connection_id: i64, query_id: &str) -> bool {
 }
 
 async fn append_sql_execution_log(
-    state: &State<'_, AppState>,
-    sql: String,
-    source: Option<String>,
-    connection_id: Option<i64>,
-    database: Option<String>,
-    success: bool,
-    error: Option<String>,
-) {
-    let db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-
-    if let Some(local_db) = db {
-        if let Err(e) = local_db
-            .insert_sql_execution_log(sql, source, connection_id, database, success, error)
-            .await
-        {
-            tracing::error!(error = %e, "Failed to append SQL execution log");
-        }
-    }
-}
-
-async fn append_sql_execution_log_direct(
     state: &AppState,
     sql: String,
     source: Option<String>,
@@ -236,7 +212,7 @@ pub async fn execute_query(
         }
 
         append_sql_execution_log(
-            &state,
+            state.inner(),
             guarded_query.clone(),
             source,
             Some(id),
@@ -247,7 +223,7 @@ pub async fn execute_query(
         .await;
     } else if let Err(err) = &result {
         append_sql_execution_log(
-            &state,
+            state.inner(),
             guarded_query.clone(),
             source,
             Some(id),
@@ -302,7 +278,7 @@ pub async fn execute_query_by_id_direct(
     }
 
     if result.is_ok() {
-        append_sql_execution_log_direct(
+        append_sql_execution_log(
             state,
             guarded_query.clone(),
             source,
@@ -313,7 +289,7 @@ pub async fn execute_query_by_id_direct(
         )
         .await;
     } else if let Err(err) = &result {
-        append_sql_execution_log_direct(
+        append_sql_execution_log(
             state,
             guarded_query.clone(),
             source,
@@ -448,7 +424,7 @@ pub async fn execute_by_conn(
         }
 
         append_sql_execution_log(
-            &state,
+            state.inner(),
             guarded_sql.clone(),
             Some("execute_by_conn".to_string()),
             None,
@@ -459,7 +435,7 @@ pub async fn execute_by_conn(
         .await;
     } else if let Err(err) = &result {
         append_sql_execution_log(
-            &state,
+            state.inner(),
             guarded_sql.clone(),
             Some("execute_by_conn".to_string()),
             None,

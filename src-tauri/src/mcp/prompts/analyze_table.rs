@@ -47,12 +47,12 @@ pub async fn execute(
         .ok_or(format!("Connection {} not found", connection_id))?;
     let schema = super::super::tools::default_schema_for_driver(&conn.db_type);
 
-    let metadata = crate::commands::metadata::get_table_metadata_direct(
+    let metadata = crate::services::metadata_service::get_table_metadata(
         state,
         connection_id,
-        Some(database.clone()),
         schema,
         table.clone(),
+        Some(database.clone()),
     )
     .await?;
 

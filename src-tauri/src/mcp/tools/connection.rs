@@ -176,12 +176,12 @@ pub async fn describe_table(state: &AppState, args: Value) -> Result<ToolResult,
 
     let schema = get_schema_for_connection(state, connection_id).await?;
 
-    let metadata = crate::commands::metadata::get_table_metadata_direct(
+    let metadata = crate::services::metadata_service::get_table_metadata(
         state,
         connection_id,
-        Some(database),
         schema,
         table.clone(),
+        Some(database),
     )
     .await?;
 
@@ -251,12 +251,12 @@ pub async fn get_ddl(state: &AppState, args: Value) -> Result<ToolResult, String
 
     let schema = get_schema_for_connection(state, connection_id).await?;
 
-    let ddl = crate::commands::metadata::get_table_ddl_direct(
+    let ddl = crate::services::metadata_service::get_table_ddl(
         state,
         connection_id,
-        Some(database),
         schema,
         table,
+        Some(database),
     )
     .await?;
 

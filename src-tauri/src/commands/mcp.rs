@@ -1,4 +1,3 @@
-use crate::error::AppError;
 use crate::mcp::tools::get_tool_definitions;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
@@ -126,7 +125,7 @@ pub async fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus, String>
                 status.pid = child.id();
             }
             Err(e) => {
-                return Err(AppError::internal(format!("Failed to check process status: {}", e)).into());
+                return Err(format!("Failed to check process status: {}", e));
             }
         }
     }
@@ -149,17 +148,17 @@ pub async fn mcp_start(
                     *lock = None;
                 }
                 Ok(None) => {
-                    return Err(AppError::already_exists("MCP server is already running").into());
+                    return Err("MCP server is already running".to_string());
                 }
                 Err(e) => {
-                    return Err(AppError::internal(format!("Failed to check process status: {}", e)).into());
+                    return Err(format!("Failed to check process status: {}", e));
                 }
             }
         }
     }
 
     let binary_path =
-        find_mcp_binary(&app_handle).ok_or_else(|| AppError::not_found("MCP server binary not found"))?;
+        find_mcp_binary(&app_handle).ok_or("MCP server binary not found".to_string())?;
 
     let child = tokio::process::Command::new(&binary_path)
         .arg("--port")
@@ -169,7 +168,7 @@ pub async fn mcp_start(
         .arg("--transport")
         .arg(&config.transport)
         .spawn()
-        .map_err(|e| AppError::internal(format!("Failed to start MCP server: {}", e)))?;
+        .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
     let mut lock = state.mcp_process.lock().await;
     let pid = child.id().unwrap_or(0);
@@ -191,7 +190,7 @@ pub async fn mcp_stop(state: State<'_, AppState>) -> Result<McpStatus, String> {
         child
             .kill()
             .await
-            .map_err(|e| AppError::internal(format!("Failed to stop MCP server: {}", e)))?;
+            .map_err(|e| format!("Failed to stop MCP server: {}", e))?;
         // Wait for the process to be reaped (prevents zombie processes)
         let _ = child.wait().await;
     }
@@ -254,27 +253,27 @@ pub async fn mcp_configure_client(
     client_name: String,
 ) -> Result<String, String> {
     let binary_path =
-        find_mcp_binary(&app_handle).ok_or_else(|| AppError::not_found("MCP server binary not found"))?;
+        find_mcp_binary(&app_handle).ok_or("MCP server binary not found".to_string())?;
     let binary_str = binary_path.to_string_lossy().to_string();
 
     let config_path = match client_name.as_str() {
         "Claude Desktop" => get_claude_config_path(),
         "Cursor" => get_cursor_config_path(),
         "Windsurf" => get_windsurf_config_path(),
-        _ => return Err(AppError::validation(format!("Unknown MCP client: {}", client_name)).into()),
+        _ => return Err(format!("Unknown client: {}", client_name)),
     };
 
     // Ensure parent directory exists
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::internal(format!("Failed to create config directory: {}", e)))?;
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
     }
 
     // Read existing config or start fresh
     let mut json: serde_json::Value = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path)
-            .map_err(|e| AppError::internal(format!("Failed to read MCP config: {}", e)))?;
-        serde_json::from_str(&content).map_err(|e| AppError::internal(format!("Failed to parse MCP config: {}", e)))?
+            .map_err(|e| format!("Failed to read config file: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse config file: {}", e))?
     } else {
         serde_json::json!({})
     };
@@ -291,10 +290,10 @@ pub async fn mcp_configure_client(
     });
 
     let content = serde_json::to_string_pretty(&json)
-        .map_err(|e| AppError::internal(format!("Failed to serialize MCP config: {}", e)))?;
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
     std::fs::write(&config_path, content)
-        .map_err(|e| AppError::internal(format!("Failed to write MCP config: {}", e)))?;
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
 
     Ok(format!("Configured {} for DbPaw MCP", client_name))
 }

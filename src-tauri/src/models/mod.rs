@@ -150,6 +150,13 @@ pub struct AiMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AiConversationDetail {
+    pub conversation: AiConversation,
+    pub messages: Vec<AiMessage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TableInfo {
     pub schema: String,
     pub name: String,

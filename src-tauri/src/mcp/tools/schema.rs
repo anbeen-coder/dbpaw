@@ -83,12 +83,12 @@ pub async fn get_schema_context(state: &AppState, args: Value) -> Result<ToolRes
     );
 
     for table in &selected_tables {
-        match crate::commands::metadata::get_table_metadata_direct(
+        match crate::services::metadata_service::get_table_metadata(
             state,
             connection_id,
-            database.clone(),
             schema.clone(),
             table.name.clone(),
+            database.clone(),
         )
         .await
         {

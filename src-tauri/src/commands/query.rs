@@ -443,39 +443,37 @@ fn clamp_sql_execution_logs_limit(limit: Option<i64>) -> i64 {
     limit.unwrap_or(100).clamp(1, 100)
 }
 
-#[tauri::command]
-pub async fn list_sql_execution_logs(
-    state: State<'_, AppState>,
+async fn list_sql_execution_logs_core(
+    state: &AppState,
     limit: Option<i64>,
-) -> Result<Vec<SqlExecutionLog>, String> {
+) -> Result<Vec<SqlExecutionLog>, AppError> {
     let safe_limit = clamp_sql_execution_logs_limit(limit);
     let local_db = {
         let lock = state.local_db.lock().await;
         lock.clone()
     };
 
-    if let Some(db) = local_db {
-        db.list_sql_execution_logs(safe_limit).await.map_err(String::from)
-    } else {
-        Err("Local DB not initialized".to_string())
-    }
+    let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
+    db.list_sql_execution_logs(safe_limit).await
+}
+
+#[tauri::command]
+pub async fn list_sql_execution_logs(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+) -> Result<Vec<SqlExecutionLog>, String> {
+    list_sql_execution_logs_core(state.inner(), limit)
+        .await
+        .map_err(String::from)
 }
 
 pub async fn list_sql_execution_logs_direct(
     state: &AppState,
     limit: Option<i64>,
 ) -> Result<Vec<SqlExecutionLog>, String> {
-    let safe_limit = clamp_sql_execution_logs_limit(limit);
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-
-    if let Some(db) = local_db {
-        db.list_sql_execution_logs(safe_limit).await.map_err(String::from)
-    } else {
-        Err("Local DB not initialized".to_string())
-    }
+    list_sql_execution_logs_core(state, limit)
+        .await
+        .map_err(String::from)
 }
 
 pub async fn cancel_query_direct(

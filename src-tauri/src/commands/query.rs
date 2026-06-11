@@ -130,123 +130,30 @@ fn validate_page_limit(page: i64, limit: i64) -> Result<(), AppError> {
     Ok(())
 }
 
-#[tauri::command]
-pub async fn get_table_data_by_conn(
-    form: ConnectionForm,
-    schema: String,
-    table: String,
-    page: i64,
-    limit: i64,
-) -> Result<TableDataResponse, String> {
-    validate_page_limit(page, limit)?;
-    let driver = crate::db::drivers::connect(&form).await.map_err(String::from)?;
-    driver
-        .get_table_data(schema, table, page, limit, None, None, None, None)
-        .await
-        .map_err(String::from)
-}
-
-#[tauri::command]
-pub async fn execute_query(
-    app_handle: tauri::AppHandle,
-    state: State<'_, AppState>,
-    id: i64,
-    query: String,
-    database: Option<String>,
-    source: Option<String>,
-    query_id: Option<String>,
-) -> Result<QueryResult, String> {
-    let query_id = make_query_id(id, query_id);
-    let _ = app_handle.emit(
-        "query.progress",
-        serde_json::json!({"queryId": query_id.clone(), "phase": "prepare"}),
-    );
-    let driver = resolve_driver(state.inner(), id).await;
-    if driver
-        .as_deref()
-        .map(|d| d.eq_ignore_ascii_case("redis"))
-        .unwrap_or(false)
-    {
-        return Err(AppError::unsupported("Redis connections do not support SQL queries. Use the Redis key view to browse and edit keys.").to_string());
-    }
-    let cancellation_supported = driver
-        .as_deref()
-        .map(supports_query_cancellation)
-        .unwrap_or(false);
-    let guarded_query = apply_default_limit(&query, driver.as_deref());
-    if cancellation_supported {
-        register_running_query(id, &query_id).await;
-    }
-
-    let result = super::execute_with_retry(&state, id, database.clone(), |driver| {
-        let query_clone = guarded_query.clone();
-        let query_id_clone = query_id.clone();
-        async move {
-            driver
-                .execute_query_with_id(
-                    query_clone,
-                    if cancellation_supported {
-                        Some(query_id_clone.as_str())
-                    } else {
-                        None
-                    },
-                )
-                .await
-        }
-    })
-    .await;
-    if cancellation_supported {
-        unregister_running_query(id, &query_id).await;
-    }
-
-    if let Ok(res) = &result {
-        // Stream first chunk for UX (simulated)
-        if !res.data.is_empty() {
-            let _ = app_handle.emit(
-                "query.chunk",
-                serde_json::json!({
-                    "queryId": query_id,
-                    "rows": res.data.iter().take(50).collect::<Vec<_>>()
-                }),
-            );
-        }
-
-        append_sql_execution_log(
-            state.inner(),
-            guarded_query.clone(),
-            source,
-            Some(id),
-            database,
-            true,
-            None,
-        )
-        .await;
-    } else if let Err(err) = &result {
-        append_sql_execution_log(
-            state.inner(),
-            guarded_query.clone(),
-            source,
-            Some(id),
-            database,
-            false,
-            Some(err.to_string()),
-        )
-        .await;
-    }
-
-    result.map_err(String::from)
-}
-
-pub async fn execute_query_by_id_direct(
+async fn execute_query_core(
     state: &AppState,
     id: i64,
     query: String,
     database: Option<String>,
     source: Option<String>,
     query_id: Option<String>,
-) -> Result<QueryResult, String> {
+    emitter: Option<&tauri::AppHandle>,
+) -> Result<QueryResult, AppError> {
     let query_id = make_query_id(id, query_id);
+    if let Some(handle) = emitter {
+        let _ = handle.emit(
+            "query.progress",
+            serde_json::json!({"queryId": query_id.clone(), "phase": "prepare"}),
+        );
+    }
     let driver = resolve_driver(state, id).await;
+    if driver
+        .as_deref()
+        .map(|d| d.eq_ignore_ascii_case("redis"))
+        .unwrap_or(false)
+    {
+        return Err(AppError::unsupported("Redis connections do not support SQL queries. Use the Redis key view to browse and edit keys."));
+    }
     let cancellation_supported = driver
         .as_deref()
         .map(supports_query_cancellation)
@@ -277,7 +184,19 @@ pub async fn execute_query_by_id_direct(
         unregister_running_query(id, &query_id).await;
     }
 
-    if result.is_ok() {
+    if let Ok(res) = &result {
+        if let Some(handle) = emitter {
+            if !res.data.is_empty() {
+                let _ = handle.emit(
+                    "query.chunk",
+                    serde_json::json!({
+                        "queryId": query_id,
+                        "rows": res.data.iter().take(50).collect::<Vec<_>>()
+                    }),
+                );
+            }
+        }
+
         append_sql_execution_log(
             state,
             guarded_query.clone(),
@@ -301,7 +220,51 @@ pub async fn execute_query_by_id_direct(
         .await;
     }
 
-    result.map_err(String::from)
+    result
+}
+
+#[tauri::command]
+pub async fn get_table_data_by_conn(
+    form: ConnectionForm,
+    schema: String,
+    table: String,
+    page: i64,
+    limit: i64,
+) -> Result<TableDataResponse, String> {
+    validate_page_limit(page, limit)?;
+    let driver = crate::db::drivers::connect(&form).await.map_err(String::from)?;
+    driver
+        .get_table_data(schema, table, page, limit, None, None, None, None)
+        .await
+        .map_err(String::from)
+}
+
+#[tauri::command]
+pub async fn execute_query(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    query: String,
+    database: Option<String>,
+    source: Option<String>,
+    query_id: Option<String>,
+) -> Result<QueryResult, String> {
+    execute_query_core(state.inner(), id, query, database, source, query_id, Some(&app_handle))
+        .await
+        .map_err(String::from)
+}
+
+pub async fn execute_query_by_id_direct(
+    state: &AppState,
+    id: i64,
+    query: String,
+    database: Option<String>,
+    source: Option<String>,
+    query_id: Option<String>,
+) -> Result<QueryResult, String> {
+    execute_query_core(state, id, query, database, source, query_id, None)
+        .await
+        .map_err(String::from)
 }
 
 pub async fn execute_by_conn_direct(

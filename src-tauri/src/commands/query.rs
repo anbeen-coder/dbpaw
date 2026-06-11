@@ -348,22 +348,23 @@ pub async fn cancel_query(
     execute_cancel_query(connection_id, &query_id, &form).await
 }
 
-#[tauri::command]
-pub async fn execute_by_conn(
-    app_handle: tauri::AppHandle,
-    state: State<'_, AppState>,
+async fn execute_by_conn_core(
+    state: &AppState,
     form: ConnectionForm,
     sql: String,
-) -> Result<QueryResult, String> {
+    emitter: Option<&tauri::AppHandle>,
+) -> Result<QueryResult, AppError> {
     let query_id = make_query_id(-1, None);
-    let _ = app_handle.emit(
-        "query.progress",
-        serde_json::json!({"queryId": query_id.clone(), "phase": "prepare"}),
-    );
+    if let Some(handle) = emitter {
+        let _ = handle.emit(
+            "query.progress",
+            serde_json::json!({"queryId": query_id.clone(), "phase": "prepare"}),
+        );
+    }
     let guarded_sql = apply_default_limit(&sql, Some(&form.driver));
 
     let database = form.database.clone();
-    let driver = crate::db::drivers::connect(&form).await.map_err(String::from)?;
+    let driver = crate::db::drivers::connect(&form).await?;
     let result = driver
         .execute_query_with_id(
             guarded_sql.clone(),
@@ -376,18 +377,20 @@ pub async fn execute_by_conn(
         .await;
 
     if let Ok(res) = &result {
-        if !res.data.is_empty() {
-            let _ = app_handle.emit(
-                "query.chunk",
-                serde_json::json!({
-                    "queryId": query_id,
-                    "rows": res.data.iter().take(50).collect::<Vec<_>>()
-                }),
-            );
+        if let Some(handle) = emitter {
+            if !res.data.is_empty() {
+                let _ = handle.emit(
+                    "query.chunk",
+                    serde_json::json!({
+                        "queryId": query_id,
+                        "rows": res.data.iter().take(50).collect::<Vec<_>>()
+                    }),
+                );
+            }
         }
 
         append_sql_execution_log(
-            state.inner(),
+            state,
             guarded_sql.clone(),
             Some("execute_by_conn".to_string()),
             None,
@@ -398,7 +401,7 @@ pub async fn execute_by_conn(
         .await;
     } else if let Err(err) = &result {
         append_sql_execution_log(
-            state.inner(),
+            state,
             guarded_sql.clone(),
             Some("execute_by_conn".to_string()),
             None,
@@ -408,7 +411,20 @@ pub async fn execute_by_conn(
         )
         .await;
     }
-    result.map_err(String::from)
+
+    result
+}
+
+#[tauri::command]
+pub async fn execute_by_conn(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    form: ConnectionForm,
+    sql: String,
+) -> Result<QueryResult, String> {
+    execute_by_conn_core(state.inner(), form, sql, Some(&app_handle))
+        .await
+        .map_err(String::from)
 }
 
 fn clamp_sql_execution_logs_limit(limit: Option<i64>) -> i64 {

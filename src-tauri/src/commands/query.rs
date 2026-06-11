@@ -28,7 +28,7 @@ fn make_query_id(connection_id: i64, provided: Option<String>) -> String {
     format!("q-{}-{}", connection_id, ts)
 }
 
-async fn resolve_driver(state: &State<'_, AppState>, id: i64) -> Option<String> {
+async fn resolve_driver(state: &AppState, id: i64) -> Option<String> {
     let db = {
         let lock = state.local_db.lock().await;
         lock.clone()
@@ -185,7 +185,7 @@ pub async fn execute_query(
         "query.progress",
         serde_json::json!({"queryId": query_id.clone(), "phase": "prepare"}),
     );
-    let driver = resolve_driver(&state, id).await;
+    let driver = resolve_driver(state.inner(), id).await;
     if driver
         .as_deref()
         .map(|d| d.eq_ignore_ascii_case("redis"))
@@ -261,17 +261,6 @@ pub async fn execute_query(
     result.map_err(String::from)
 }
 
-async fn resolve_driver_from_app_state(state: &AppState, id: i64) -> Option<String> {
-    let db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    }?;
-    db.get_connection_form_by_id(id)
-        .await
-        .ok()
-        .map(|f| f.driver)
-}
-
 pub async fn execute_query_by_id_direct(
     state: &AppState,
     id: i64,
@@ -281,7 +270,7 @@ pub async fn execute_query_by_id_direct(
     query_id: Option<String>,
 ) -> Result<QueryResult, String> {
     let query_id = make_query_id(id, query_id);
-    let driver = resolve_driver_from_app_state(state, id).await;
+    let driver = resolve_driver(state, id).await;
     let cancellation_supported = driver
         .as_deref()
         .map(supports_query_cancellation)

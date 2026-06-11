@@ -320,19 +320,18 @@ pub async fn get_table_data(
     .map_err(String::from)
 }
 
-#[tauri::command]
-pub async fn cancel_query(
-    state: State<'_, AppState>,
+async fn cancel_query_core(
+    state: &AppState,
     uuid: String,
     query_id: String,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     let connection_id = uuid
         .trim()
         .parse::<i64>()
-        .map_err(|_| AppError::validation("Invalid connection id for cancellation").to_string())?;
+        .map_err(|_| AppError::validation("Invalid connection id for cancellation"))?;
     let query_id = query_id.trim().to_string();
     if query_id.is_empty() {
-        return Err(AppError::validation("query_id cannot be empty").to_string());
+        return Err(AppError::validation("query_id cannot be empty"));
     }
     if !is_running_query(connection_id, &query_id).await {
         return Ok(false);
@@ -342,10 +341,23 @@ pub async fn cancel_query(
         let lock = state.local_db.lock().await;
         lock.clone()
     };
-    let db = local_db.ok_or("Local DB not initialized".to_string())?;
+    let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
     let form = db.get_connection_form_by_id(connection_id).await?;
 
-    execute_cancel_query(connection_id, &query_id, &form).await
+    execute_cancel_query(connection_id, &query_id, &form)
+        .await
+        .map_err(AppError::internal)
+}
+
+#[tauri::command]
+pub async fn cancel_query(
+    state: State<'_, AppState>,
+    uuid: String,
+    query_id: String,
+) -> Result<bool, String> {
+    cancel_query_core(state.inner(), uuid, query_id)
+        .await
+        .map_err(String::from)
 }
 
 async fn execute_by_conn_core(
@@ -471,26 +483,9 @@ pub async fn cancel_query_direct(
     uuid: String,
     query_id: String,
 ) -> Result<bool, String> {
-    let connection_id = uuid
-        .trim()
-        .parse::<i64>()
-        .map_err(|_| AppError::validation("Invalid connection id for cancellation").to_string())?;
-    let query_id = query_id.trim().to_string();
-    if query_id.is_empty() {
-        return Err(AppError::validation("query_id cannot be empty").to_string());
-    }
-    if !is_running_query(connection_id, &query_id).await {
-        return Ok(false);
-    }
-
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    let db = local_db.ok_or("Local DB not initialized".to_string())?;
-    let form = db.get_connection_form_by_id(connection_id).await?;
-
-    execute_cancel_query(connection_id, &query_id, &form).await
+    cancel_query_core(state, uuid, query_id)
+        .await
+        .map_err(String::from)
 }
 
 #[cfg(test)]

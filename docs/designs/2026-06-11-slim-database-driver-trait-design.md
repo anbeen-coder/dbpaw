@@ -79,15 +79,28 @@ pub trait DatabaseDriver: Send + Sync {
 }
 ```
 
-消费方使用模式：
+消费方使用辅助函数进行 downcast：
 
 ```rust
-// 先检查能力
+fn as_routine_driver(driver: &dyn DatabaseDriver) -> Option<&dyn RoutineDriver> {
+    if let Some(pg) = driver.as_any().downcast_ref::<PostgresDriver>() {
+        return Some(pg);
+    }
+    if let Some(mysql) = driver.as_any().downcast_ref::<MysqlDriver>() {
+        return Some(mysql);
+    }
+    // ... 其他支持 routines 的驱动
+    None
+}
+```
+
+消费方调用模式：
+
+```rust
+// 先检查能力，然后 downcast
 if driver.capabilities().contains(DriverCapabilities::ROUTINES) {
-    // downcast 到子 trait
-    let routine_driver = driver.as_any()
-        .downcast_ref::<dyn RoutineDriver>()
-        .ok_or_else(|| AppError::unsupported("Driver claims ROUTINES but doesn't implement RoutineDriver"))?;
+    let routine_driver = as_routine_driver(driver.as_ref())
+        .ok_or_else(|| AppError::unsupported("Driver doesn't implement RoutineDriver"))?;
     routine_driver.list_routines(schema).await
 } else {
     Err(AppError::unsupported("Routines not supported for this driver"))

@@ -261,7 +261,7 @@ pub async fn mcp_configure_client(
         "Claude Desktop" => get_claude_config_path(),
         "Cursor" => get_cursor_config_path(),
         "Windsurf" => get_windsurf_config_path(),
-        _ => return Err(AppError::not_found(format!("Unknown MCP client: {}", client_name)).into()),
+        _ => return Err(AppError::validation(format!("Unknown MCP client: {}", client_name)).into()),
     };
 
     // Ensure parent directory exists

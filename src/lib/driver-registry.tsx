@@ -84,7 +84,6 @@ export interface DriverConfig {
   supportsSSLCA: boolean;
   supportsSchemaBrowsing: boolean;
   supportsCreateDatabase: boolean;
-  supportsRoutines: boolean;
   importCapability: ImportDriverCapability;
   icon: () => ReactNode;
   treeConfig?: TreeConfig | ((callbacks: TreeCallbacks) => TreeConfig);
@@ -105,7 +104,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: true,
     supportsSchemaBrowsing: true,
     supportsCreateDatabase: true,
-    supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siPostgresql),
     treeConfig: (callbacks) =>
@@ -125,7 +123,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: true,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
-    supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siMysql),
     treeConfig: (callbacks) =>
@@ -145,7 +142,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: true,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
-    supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siMariadb),
     treeConfig: (callbacks) =>
@@ -165,7 +161,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: true,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
-    supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siTidb),
     treeConfig: (callbacks) =>
@@ -185,7 +180,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: true,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
-    supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderLocalIcon("/icons/db/starrocks.svg"),
     treeConfig: (callbacks) =>
@@ -205,7 +199,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: true,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
-    supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siApachedoris),
     treeConfig: (callbacks) =>
@@ -225,7 +218,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: false,
-    supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siSqlite),
     treeConfig: (callbacks) =>
@@ -245,7 +237,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: false,
-    supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderSimpleIcon(siDuckdb),
     treeConfig: (callbacks) =>
@@ -265,7 +256,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
-    supportsRoutines: false,
     importCapability: "read_only_not_supported",
     icon: () => renderSimpleIcon(siClickhouse),
     treeConfig: (callbacks) => createSqlTreeConfig(callbacks),
@@ -284,7 +274,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: true,
     supportsCreateDatabase: true,
-    supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderLocalIcon("/icons/db/mssql.svg"),
     treeConfig: (callbacks) =>
@@ -304,7 +293,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: true,
     supportsCreateDatabase: false,
-    supportsRoutines: false,
     importCapability: "supported",
     icon: () => renderLocalIcon("/icons/db/oracle.svg"),
     treeConfig: (callbacks) =>
@@ -324,7 +312,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: true,
     supportsCreateDatabase: false,
-    supportsRoutines: true,
     importCapability: "supported",
     icon: () => renderLocalIcon("/icons/db/db2.svg"),
     treeConfig: (callbacks) =>
@@ -344,7 +331,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: false,
-    supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siRedis),
     treeConfig: (callbacks) => createRedisTreeConfig(callbacks),
@@ -363,7 +349,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: true,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: false,
-    supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siElasticsearch),
     treeConfig: (callbacks) => createElasticsearchTreeConfig(callbacks),
@@ -382,7 +367,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: false,
-    supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siMongodb),
     treeConfig: (callbacks) => createMongodbTreeConfig(callbacks),
@@ -401,7 +385,6 @@ export const DRIVER_REGISTRY: DriverConfig[] = [
     supportsSSLCA: false,
     supportsSchemaBrowsing: false,
     supportsCreateDatabase: true,
-    supportsRoutines: false,
     importCapability: "unsupported",
     icon: () => renderSimpleIcon(siApachecassandra),
     treeConfig: (callbacks) => createCassandraTreeConfig(callbacks),
@@ -500,9 +483,6 @@ export const supportsCreateDatabase = (driver: Driver): boolean =>
 
 export const supportsSchemaBrowsing = (driver: Driver): boolean =>
   getDriverConfig(driver).supportsSchemaBrowsing;
-
-export const supportsRoutines = (driver: Driver): boolean =>
-  getDriverConfig(driver).supportsRoutines;
 
 export const getDriverKind = (driver: Driver): DriverKind =>
   getDriverConfig(driver).kind;

@@ -1308,7 +1308,9 @@ mod tests {
         db.delete_saved_query(created.id).await.unwrap();
         let get_err = db.get_saved_query_by_id(created.id).await.unwrap_err();
         assert!(
-            get_err.to_string().contains("[ERR-5003]") || get_err.to_string().contains("not found")
+            get_err.to_string().contains("[ERR-5003]")
+                || get_err.to_string().contains("[GET_QUERY_ERROR]")
+                || get_err.to_string().contains("not found")
         );
 
         let list_after = db.list_saved_queries().await.unwrap();

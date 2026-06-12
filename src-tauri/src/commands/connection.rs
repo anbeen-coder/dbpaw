@@ -832,7 +832,7 @@ mod tests {
         };
 
         let normalized = normalize_connection_form(form).unwrap();
-        let dsn = crate::db::drivers::mysql::build_test_dsn(&normalized).unwrap();
+        let dsn = crate::db::drivers::mysql::connection::build_test_dsn(&normalized).unwrap();
 
         assert_eq!(normalized.password, Some(String::new()));
         assert_eq!(dsn, "mysql://root:@localhost:3306/app?ssl-mode=DISABLED");

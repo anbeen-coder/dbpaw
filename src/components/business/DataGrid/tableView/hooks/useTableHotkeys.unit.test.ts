@@ -18,6 +18,7 @@ const shortcutMatcher = (
 ): boolean => {
   const combo = BINDINGS[id];
   if (!combo) return false;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { matchShortcut } = require("@/lib/shortcuts/match");
   return matchShortcut(e, combo, { isMacOS: true });
 };

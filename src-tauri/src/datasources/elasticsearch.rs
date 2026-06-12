@@ -1296,7 +1296,7 @@ mod tests {
     fn build_base_url_uses_http_by_default() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            host: Some(" localhost "),
+            host: Some(" localhost ".to_string()),
             port: Some(9201),
             ..Default::default()
         };
@@ -1307,7 +1307,7 @@ mod tests {
     fn build_base_url_strips_scheme_and_uses_https_when_ssl_enabled() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            host: Some("http://es.local/"),
+            host: Some("http://es.local/".to_string()),
             port: None,
             ssl: Some(true),
             ..Default::default()
@@ -1320,7 +1320,7 @@ mod tests {
         let encoded = general_purpose::STANDARD.encode("example.es.io$abc123$kibana123");
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            host: Some("ignored.local"),
+            host: Some("ignored.local".to_string()),
             port: Some(9200),
             cloud_id: Some(format!("deployment:{encoded}")),
             ..Default::default()
@@ -1335,7 +1335,7 @@ mod tests {
     fn build_base_url_rejects_invalid_cloud_id() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            cloud_id: Some("not-base64"),
+            cloud_id: Some("not-base64".to_string()),
             ..Default::default()
         };
         assert!(build_base_url(&form).is_err());
@@ -1345,7 +1345,7 @@ mod tests {
     fn build_api_key_supports_encoded_and_id_secret() {
         let encoded_form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            api_key_encoded: Some("already-encoded"),
+            api_key_encoded: Some("already-encoded".to_string()),
             ..Default::default()
         };
         assert_eq!(
@@ -1355,8 +1355,8 @@ mod tests {
 
         let split_form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            api_key_id: Some("id"),
-            api_key_secret: Some("secret"),
+            api_key_id: Some("id".to_string()),
+            api_key_secret: Some("secret".to_string()),
             ..Default::default()
         };
         assert_eq!(
@@ -1369,9 +1369,9 @@ mod tests {
     fn verify_ca_requires_certificate() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            host: Some("localhost"),
+            host: Some("localhost".to_string()),
             ssl: Some(true),
-            ssl_mode: Some("verify_ca"),
+            ssl_mode: Some("verify_ca".to_string()),
             ..Default::default()
         };
         assert!(build_reqwest_client(&form, 5000).is_err());
@@ -1498,8 +1498,8 @@ mod tests {
     fn build_auth_auto_mode_detects_basic_from_username() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            username: Some("user"),
-            password: Some("pass"),
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
             ..Default::default()
         };
         match build_auth(&form).unwrap() {
@@ -1515,7 +1515,7 @@ mod tests {
     fn build_auth_auto_mode_detects_api_key() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            api_key_encoded: Some("mykey"),
+            api_key_encoded: Some("mykey".to_string()),
             ..Default::default()
         };
         match build_auth(&form).unwrap() {
@@ -1528,7 +1528,7 @@ mod tests {
     fn build_auth_unsupported_mode_returns_error() {
         let form = ConnectionForm {
             driver: "elasticsearch".to_string(),
-            auth_mode: Some("oauth"),
+            auth_mode: Some("oauth".to_string()),
             ..Default::default()
         };
         assert!(build_auth(&form).is_err());
@@ -1549,7 +1549,7 @@ mod tests {
     #[test]
     fn build_search_body_dsl_takes_priority() {
         let result =
-            build_search_body(Some("ignored"), Some(r#"{"match":{"title":"hello"}}"#)).unwrap();
+            build_search_body(Some("ignored".to_string()), Some(r#"{"match":{"title":"hello"}}"#.to_string())).unwrap();
         assert_eq!(result["match"]["title"], "hello");
     }
 

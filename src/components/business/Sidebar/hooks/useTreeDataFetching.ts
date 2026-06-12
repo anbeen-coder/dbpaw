@@ -12,9 +12,8 @@ import type {
   TypeInfo,
   SynonymInfo,
   PackageInfo,
-  Driver,
 } from "@/services/api";
-import { supportsRoutines } from "@/lib/driver-registry";
+import { decodeCapabilities } from "@/lib/driver-capabilities";
 import { groupSqlObjectsBySchema } from "../connection-list/helpers";
 import { errorMessage } from "@/lib/errors";
 
@@ -74,9 +73,15 @@ export function useTreeDataFetching(params: {
   const fetchSqlRoutinesAsRoutineInfo = async (
     connectionId: string,
     databaseName: string,
-    driver: Driver,
   ): Promise<RoutineInfo[]> => {
-    if (!supportsRoutines(driver)) return [];
+    try {
+      const caps = decodeCapabilities(
+        await api.metadata.getCapabilities(Number(connectionId)),
+      );
+      if (!caps.routines) return [];
+    } catch {
+      return [];
+    }
     try {
       const routines = await api.metadata.listRoutines(
         Number(connectionId),
@@ -178,7 +183,6 @@ export function useTreeDataFetching(params: {
         fetchSqlRoutinesAsRoutineInfo(
           connectionId,
           databaseName,
-          targetConnection.type,
         ),
       ]);
 

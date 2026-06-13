@@ -111,6 +111,7 @@ export function ShortcutRecorder({ id, def }: ShortcutRecorderProps) {
     armedRef.current = true;
     const onKeyDown = (e: KeyboardEvent) => {
       if (!armedRef.current) return;
+      if (MODIFIER_KEYS.has(e.key) || MODIFIER_KEYS.has(e.code)) return;
       armedRef.current = false;
       e.preventDefault();
       e.stopPropagation();
@@ -198,7 +199,6 @@ export function ShortcutRecorder({ id, def }: ShortcutRecorderProps) {
             {t("settings.shortcuts.cancel")}
           </Button>
         </div>
-        {state.mode === "recording" && null}
         <span className="text-xs text-muted-foreground">
           {t("settings.shortcuts.recordingHint")}
         </span>
@@ -310,6 +310,14 @@ export function ShortcutRecorder({ id, def }: ShortcutRecorderProps) {
     </div>
   );
 }
+
+const MODIFIER_KEYS = new Set([
+  "Shift", "ShiftLeft", "ShiftRight",
+  "Control", "ControlLeft", "ControlRight",
+  "Alt", "AltLeft", "AltRight",
+  "Meta", "MetaLeft", "MetaRight",
+  "OS",
+]);
 
 export function isShortcutDisabled(combo: KeyCombo): boolean {
   return combo === DISABLED_BINDING;

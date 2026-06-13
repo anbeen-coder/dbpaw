@@ -14,9 +14,6 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 pub use client::build_base_url;
-pub use search::search_documents;
-pub use index::list_indices;
-pub use bulk::import_documents;
 
 pub(crate) const DEFAULT_ELASTICSEARCH_PORT: i64 = 9200;
 pub(crate) const DEFAULT_CONNECT_TIMEOUT_MS: i64 = 5000;
@@ -354,7 +351,7 @@ impl ElasticsearchClient {
             .await
             .map_err(|e| AppError::internal(format!("{e}")))?;
         if !status.is_success() {
-            return Err(normalize_error(status, &text));
+            return Err(client::normalize_error(status, &text));
         }
         Ok(ElasticsearchRawResponse {
             status: status_code,

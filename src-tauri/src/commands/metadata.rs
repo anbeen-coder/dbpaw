@@ -31,7 +31,6 @@ pub async fn get_schema_overview(
         async move { driver.get_schema_overview(schema_clone).await }
     })
     .await
-    
 }
 
 pub async fn get_schema_overview_direct(
@@ -45,14 +44,11 @@ pub async fn get_schema_overview_direct(
         async move { driver.get_schema_overview(schema_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
 pub async fn list_tables_by_conn(form: ConnectionForm) -> Result<Vec<TableInfo>, AppError> {
-    let driver = crate::db::drivers::connect(&form)
-        .await
-        ?;
+    let driver = crate::db::drivers::connect(&form).await?;
     driver.list_tables(form.schema).await
 }
 
@@ -71,7 +67,6 @@ pub async fn list_tables(
         async move { driver.list_tables(schema_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -86,7 +81,6 @@ pub async fn list_routines(
         async move { driver.list_routines(schema_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -109,7 +103,6 @@ pub async fn get_routine_ddl(
         }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -124,7 +117,6 @@ pub async fn list_events(
         async move { driver.list_events(schema_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -139,7 +131,6 @@ pub async fn list_sequences(
         async move { driver.list_sequences(schema_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -154,7 +145,6 @@ pub async fn list_types(
         async move { driver.list_types(schema_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -169,7 +159,6 @@ pub async fn list_synonyms(
         async move { driver.list_synonyms(schema_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -184,7 +173,6 @@ pub async fn list_packages(
         async move { driver.list_packages(schema_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -201,7 +189,6 @@ pub async fn get_table_structure(
         async move { driver.get_table_structure(schema_clone, table_clone).await }
     })
     .await
-    
     .and_then(|structure| ensure_table_structure_found(structure, &table_name))
 }
 
@@ -218,7 +205,6 @@ pub async fn get_table_structure_direct(
         async move { driver.get_table_structure(schema_clone, table_clone).await }
     })
     .await
-    
     .and_then(|structure| ensure_table_structure_found(structure, &table_name))
 }
 
@@ -236,7 +222,6 @@ pub async fn get_table_ddl(
         async move { driver.get_table_ddl(schema_clone, table_clone).await }
     })
     .await
-    
 }
 
 pub async fn get_table_ddl_direct(
@@ -252,7 +237,6 @@ pub async fn get_table_ddl_direct(
         async move { driver.get_table_ddl(schema_clone, table_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -269,7 +253,6 @@ pub async fn get_table_metadata(
         async move { driver.get_table_metadata(schema_clone, table_clone).await }
     })
     .await
-    
 }
 
 pub async fn get_table_metadata_direct(
@@ -285,7 +268,6 @@ pub async fn get_table_metadata_direct(
         async move { driver.get_table_metadata(schema_clone, table_clone).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -304,7 +286,6 @@ pub async fn get_schema_foreign_keys(
         }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -313,7 +294,6 @@ pub async fn get_driver_capabilities(state: State<'_, AppState>, id: i64) -> Res
         Ok::<u32, AppError>(driver.capabilities().bits())
     })
     .await
-    
 }
 
 #[cfg(test)]

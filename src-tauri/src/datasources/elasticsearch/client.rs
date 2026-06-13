@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use super::{
     ElasticsearchAuth, ElasticsearchClient, ElasticsearchConnectionInfo,
-    ElasticsearchIndexOperationResult, ElasticsearchMutationResult,
-    DEFAULT_CONNECT_TIMEOUT_MS, DEFAULT_ELASTICSEARCH_PORT,
+    ElasticsearchIndexOperationResult, ElasticsearchMutationResult, DEFAULT_CONNECT_TIMEOUT_MS,
+    DEFAULT_ELASTICSEARCH_PORT,
 };
 
 pub(crate) fn trim_to_option(value: Option<&String>) -> Option<String> {
@@ -234,10 +234,7 @@ impl ElasticsearchClient {
         }
     }
 
-    pub(crate) async fn read_json(
-        &self,
-        req: reqwest::RequestBuilder,
-    ) -> Result<Value, AppError> {
+    pub(crate) async fn read_json(&self, req: reqwest::RequestBuilder) -> Result<Value, AppError> {
         let response = req
             .send()
             .await

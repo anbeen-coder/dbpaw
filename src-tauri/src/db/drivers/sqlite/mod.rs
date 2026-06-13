@@ -3,9 +3,7 @@ pub mod metadata;
 pub mod query;
 pub mod table_data;
 
-use super::{
-    DatabaseDriver, DriverCapabilities, DriverResult, ForeignKeyDriver,
-};
+use super::{DatabaseDriver, DriverCapabilities, DriverResult, ForeignKeyDriver};
 use crate::error::AppError;
 use crate::models::{
     ConnectionForm, QueryResult, SchemaForeignKey, SchemaOverview, TableDataResponse, TableInfo,

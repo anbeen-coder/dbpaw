@@ -67,7 +67,7 @@ fn quote_pg_ident(ident: &str) -> String {
 }
 
 fn quote_mssql_ident(ident: &str) -> String {
-    format!("[{}]", ident.replace(']', "]]") )
+    format!("[{}]", ident.replace(']', "]]"))
 }
 
 fn quote_literal(value: &str) -> String {
@@ -260,8 +260,8 @@ pub fn normalize_create_database_error(err: AppError, db_name: &str) -> AppError
 }
 
 pub async fn list_databases(form: ConnectionForm) -> Result<Vec<String>, AppError> {
-    let form = crate::connection_input::normalize_connection_form(form)
-        .map_err(AppError::internal)?;
+    let form =
+        crate::connection_input::normalize_connection_form(form).map_err(AppError::internal)?;
     let driver = drivers::connect(&form).await?;
     driver.list_databases().await
 }
@@ -290,7 +290,8 @@ pub async fn create_database_by_id(
                     lock.clone()
                 };
                 let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
-                db.get_connection_form_by_id(id).await
+                db.get_connection_form_by_id(id)
+                    .await
                     .map_err(AppError::internal)?
             };
 
@@ -301,15 +302,9 @@ pub async fn create_database_by_id(
                 "postgresql" | "postgres" => {
                     build_postgres_create_database_sql(&payload, &db_name)?
                 }
-                "sqlserver" | "mssql" => {
-                    build_mssql_create_database_sql(&payload, &db_name)?
-                }
-                "clickhouse" => {
-                    build_clickhouse_create_database_sql(&payload, &db_name)?
-                }
-                "cassandra" => {
-                    build_cassandra_create_database_sql(&payload, &db_name)?
-                }
+                "sqlserver" | "mssql" => build_mssql_create_database_sql(&payload, &db_name)?,
+                "clickhouse" => build_clickhouse_create_database_sql(&payload, &db_name)?,
+                "cassandra" => build_cassandra_create_database_sql(&payload, &db_name)?,
                 _ => {
                     return Err(AppError::unsupported(format!(
                         "Create database not supported for driver: {}",
@@ -318,7 +313,9 @@ pub async fn create_database_by_id(
                 }
             };
 
-            driver.execute_query(sql).await
+            driver
+                .execute_query(sql)
+                .await
                 .map(|_| ())
                 .map_err(|e| normalize_create_database_error(e, &db_name))
         }
@@ -328,7 +325,9 @@ pub async fn create_database_by_id(
 
 pub async fn get_mysql_charsets_by_id(state: &AppState, id: i64) -> Result<Vec<String>, AppError> {
     crate::commands::execute_with_retry_from_app_state(state, id, None, |driver| async move {
-        let result = driver.execute_query("SHOW CHARACTER SET".to_string()).await?;
+        let result = driver
+            .execute_query("SHOW CHARACTER SET".to_string())
+            .await?;
         let mut charsets: Vec<String> = result
             .data
             .iter()
@@ -349,7 +348,10 @@ pub async fn get_mysql_collations_by_id(
     id: i64,
     charset: String,
 ) -> Result<Vec<String>, AppError> {
-    let sql = format!("SHOW COLLATION WHERE Charset = '{}'", charset.replace('\'', "''"));
+    let sql = format!(
+        "SHOW COLLATION WHERE Charset = '{}'",
+        charset.replace('\'', "''")
+    );
     crate::commands::execute_with_retry_from_app_state(state, id, None, |driver| {
         let sql = sql.clone();
         async move {
@@ -370,10 +372,12 @@ pub async fn get_mysql_collations_by_id(
     .await
 }
 
-pub async fn test_connection_ephemeral(form: ConnectionForm) -> Result<TestConnectionResult, AppError> {
+pub async fn test_connection_ephemeral(
+    form: ConnectionForm,
+) -> Result<TestConnectionResult, AppError> {
     let start = std::time::Instant::now();
-    let form = crate::connection_input::normalize_connection_form(form)
-        .map_err(AppError::internal)?;
+    let form =
+        crate::connection_input::normalize_connection_form(form).map_err(AppError::internal)?;
 
     match drivers::connect(&form).await {
         Ok(driver) => {
@@ -385,12 +389,10 @@ pub async fn test_connection_ephemeral(form: ConnectionForm) -> Result<TestConne
                 latency_ms: Some(latency),
             })
         }
-        Err(e) => {
-            Ok(TestConnectionResult {
-                success: false,
-                message: e.to_string(),
-                latency_ms: None,
-            })
-        }
+        Err(e) => Ok(TestConnectionResult {
+            success: false,
+            message: e.to_string(),
+            latency_ms: None,
+        }),
     }
 }

@@ -232,13 +232,10 @@ pub async fn get_table_data_by_conn(
     limit: i64,
 ) -> Result<TableDataResponse, AppError> {
     validate_page_limit(page, limit)?;
-    let driver = crate::db::drivers::connect(&form)
-        .await
-        ?;
+    let driver = crate::db::drivers::connect(&form).await?;
     driver
         .get_table_data(schema, table, page, limit, None, None, None, None)
         .await
-        
 }
 
 #[tauri::command]
@@ -261,7 +258,6 @@ pub async fn execute_query(
         Some(&app_handle),
     )
     .await
-    
 }
 
 pub async fn execute_query_by_id_direct(
@@ -272,9 +268,7 @@ pub async fn execute_query_by_id_direct(
     source: Option<String>,
     query_id: Option<String>,
 ) -> Result<QueryResult, AppError> {
-    execute_query_core(state, id, query, database, source, query_id, None)
-        .await
-        
+    execute_query_core(state, id, query, database, source, query_id, None).await
 }
 
 pub async fn execute_by_conn_direct(
@@ -282,13 +276,8 @@ pub async fn execute_by_conn_direct(
     sql: String,
 ) -> Result<QueryResult, AppError> {
     let guarded_sql = apply_default_limit(&sql, Some(&form.driver));
-    let driver = crate::db::drivers::connect(&form)
-        .await
-        ?;
-    driver
-        .execute_query_with_id(guarded_sql, None)
-        .await
-        
+    let driver = crate::db::drivers::connect(&form).await?;
+    driver.execute_query_with_id(guarded_sql, None).await
 }
 
 #[tauri::command]
@@ -329,7 +318,6 @@ pub async fn get_table_data(
         }
     })
     .await
-    
 }
 
 async fn cancel_query_core(
@@ -367,9 +355,7 @@ pub async fn cancel_query(
     uuid: String,
     query_id: String,
 ) -> Result<bool, AppError> {
-    cancel_query_core(state.inner(), uuid, query_id)
-        .await
-        
+    cancel_query_core(state.inner(), uuid, query_id).await
 }
 
 async fn execute_by_conn_core(
@@ -446,9 +432,7 @@ pub async fn execute_by_conn(
     form: ConnectionForm,
     sql: String,
 ) -> Result<QueryResult, AppError> {
-    execute_by_conn_core(state.inner(), form, sql, Some(&app_handle))
-        .await
-        
+    execute_by_conn_core(state.inner(), form, sql, Some(&app_handle)).await
 }
 
 fn clamp_sql_execution_logs_limit(limit: Option<i64>) -> i64 {
@@ -474,18 +458,14 @@ pub async fn list_sql_execution_logs(
     state: State<'_, AppState>,
     limit: Option<i64>,
 ) -> Result<Vec<SqlExecutionLog>, AppError> {
-    list_sql_execution_logs_core(state.inner(), limit)
-        .await
-        
+    list_sql_execution_logs_core(state.inner(), limit).await
 }
 
 pub async fn list_sql_execution_logs_direct(
     state: &AppState,
     limit: Option<i64>,
 ) -> Result<Vec<SqlExecutionLog>, AppError> {
-    list_sql_execution_logs_core(state, limit)
-        .await
-        
+    list_sql_execution_logs_core(state, limit).await
 }
 
 pub async fn cancel_query_direct(
@@ -493,9 +473,7 @@ pub async fn cancel_query_direct(
     uuid: String,
     query_id: String,
 ) -> Result<bool, AppError> {
-    cancel_query_core(state, uuid, query_id)
-        .await
-        
+    cancel_query_core(state, uuid, query_id).await
 }
 
 #[cfg(test)]

@@ -218,11 +218,7 @@ impl SqliteMetadata {
         })
     }
 
-    pub async fn get_table_ddl(
-        &self,
-        schema: String,
-        table: String,
-    ) -> Result<String, AppError> {
+    pub async fn get_table_ddl(&self, schema: String, table: String) -> Result<String, AppError> {
         let row = sqlx::query(&format!(
             "SELECT sql \
              FROM {} \
@@ -352,7 +348,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let metadata = SqliteMetadata { pool: conn.pool.clone() };
+        let metadata = SqliteMetadata {
+            pool: conn.pool.clone(),
+        };
         let dbs = metadata.list_databases().await.unwrap();
         assert_eq!(dbs, vec!["main".to_string()]);
         conn.close().await;
@@ -371,7 +369,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let metadata = SqliteMetadata { pool: conn.pool.clone() };
+        let metadata = SqliteMetadata {
+            pool: conn.pool.clone(),
+        };
 
         sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);")
             .execute(&conn.pool)
@@ -405,7 +405,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let metadata = SqliteMetadata { pool: conn.pool.clone() };
+        let metadata = SqliteMetadata {
+            pool: conn.pool.clone(),
+        };
 
         sqlx::query(
             "CREATE TABLE parents (id INTEGER PRIMARY KEY, name TEXT); \

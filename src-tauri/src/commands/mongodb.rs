@@ -39,7 +39,6 @@ pub async fn mongodb_test_connection(
         .await?
         .test_connection_info()
         .await
-        
 }
 
 #[tauri::command]
@@ -70,7 +69,6 @@ pub async fn mongodb_list_databases(
         .await?
         .list_databases_info()
         .await
-        
 }
 
 #[tauri::command]
@@ -83,7 +81,6 @@ pub async fn mongodb_list_collections(
         .await?
         .list_collections_info(&database)
         .await
-        
 }
 
 #[macro_export]

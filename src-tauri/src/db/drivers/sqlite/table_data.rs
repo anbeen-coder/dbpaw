@@ -168,7 +168,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let table_data = SqliteTableData { pool: conn.pool.clone() };
+        let table_data = SqliteTableData {
+            pool: conn.pool.clone(),
+        };
 
         sqlx::query(
             "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT); \
@@ -215,7 +217,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let table_data = SqliteTableData { pool: conn.pool.clone() };
+        let table_data = SqliteTableData {
+            pool: conn.pool.clone(),
+        };
 
         sqlx::query(
             "CREATE TABLE products (\

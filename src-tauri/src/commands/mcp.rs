@@ -126,7 +126,10 @@ pub async fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus, AppErro
                 status.pid = child.id();
             }
             Err(e) => {
-                return Err(AppError::internal(format!("Failed to check process status: {}", e)));
+                return Err(AppError::internal(format!(
+                    "Failed to check process status: {}",
+                    e
+                )));
             }
         }
     }
@@ -152,7 +155,10 @@ pub async fn mcp_start(
                     return Err(AppError::internal("MCP server is already running"));
                 }
                 Err(e) => {
-                    return Err(AppError::internal(format!("Failed to check process status: {}", e)));
+                    return Err(AppError::internal(format!(
+                        "Failed to check process status: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -261,7 +267,12 @@ pub async fn mcp_configure_client(
         "Claude Desktop" => get_claude_config_path(),
         "Cursor" => get_cursor_config_path(),
         "Windsurf" => get_windsurf_config_path(),
-        _ => return Err(AppError::internal(format!("Unknown client: {}", client_name))),
+        _ => {
+            return Err(AppError::internal(format!(
+                "Unknown client: {}",
+                client_name
+            )))
+        }
     };
 
     // Ensure parent directory exists

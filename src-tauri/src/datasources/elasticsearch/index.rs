@@ -1,9 +1,7 @@
 use crate::error::AppError;
 use serde_json::Value;
 
-use super::{
-    ElasticsearchClient, ElasticsearchIndexInfo, ElasticsearchIndexOperationResult,
-};
+use super::{ElasticsearchClient, ElasticsearchIndexInfo, ElasticsearchIndexOperationResult};
 
 pub(crate) fn parse_docs_count(raw: Option<&str>) -> Option<i64> {
     raw.and_then(|v| v.parse::<i64>().ok())

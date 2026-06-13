@@ -22,10 +22,18 @@ pub async fn export_table_data(
         let table = table.clone();
         let format = format.clone();
         async move {
-            let data = driver.get_table_data(
-                schema.clone(), table.clone(), 0, 10000,
-                None, None, None, None,
-            ).await?;
+            let data = driver
+                .get_table_data(
+                    schema.clone(),
+                    table.clone(),
+                    0,
+                    10000,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .await?;
 
             match format.as_str() {
                 "csv" => {
@@ -39,20 +47,20 @@ pub async fn export_table_data(
                     }
                     for row in &data.data {
                         if let Some(obj) = row.as_object() {
-                            let values: Vec<String> = obj.values()
-                                .map(|v| format!("{:?}", v))
-                                .collect();
+                            let values: Vec<String> =
+                                obj.values().map(|v| format!("{:?}", v)).collect();
                             csv.push_str(&values.join(","));
                             csv.push('\n');
                         }
                     }
                     Ok::<String, AppError>(csv)
                 }
-                "json" => {
-                    serde_json::to_string_pretty(&data.data)
-                        .map_err(|e| AppError::internal_with("JSON序列化失败", e))
-                }
-                _ => Err(AppError::unsupported(format!("不支持的导出格式: {}", format))),
+                "json" => serde_json::to_string_pretty(&data.data)
+                    .map_err(|e| AppError::internal_with("JSON序列化失败", e)),
+                _ => Err(AppError::unsupported(format!(
+                    "不支持的导出格式: {}",
+                    format
+                ))),
             }
         }
     })
@@ -72,9 +80,9 @@ pub async fn export_database_sql(
             let mut sql = String::new();
 
             for table in &tables {
-                let ddl = driver.get_table_ddl(
-                    table.schema.clone(), table.name.clone()
-                ).await?;
+                let ddl = driver
+                    .get_table_ddl(table.schema.clone(), table.name.clone())
+                    .await?;
                 sql.push_str(&ddl);
                 sql.push_str(";\n\n");
             }
@@ -110,20 +118,20 @@ pub async fn export_query_result(
                     }
                     for row in &result.data {
                         if let Some(obj) = row.as_object() {
-                            let values: Vec<String> = obj.values()
-                                .map(|v| format!("{:?}", v))
-                                .collect();
+                            let values: Vec<String> =
+                                obj.values().map(|v| format!("{:?}", v)).collect();
                             csv.push_str(&values.join(","));
                             csv.push('\n');
                         }
                     }
                     Ok::<String, AppError>(csv)
                 }
-                "json" => {
-                    serde_json::to_string_pretty(&result.data)
-                        .map_err(|e| AppError::internal_with("JSON序列化失败", e))
-                }
-                _ => Err(AppError::unsupported(format!("不支持的导出格式: {}", format))),
+                "json" => serde_json::to_string_pretty(&result.data)
+                    .map_err(|e| AppError::internal_with("JSON序列化失败", e)),
+                _ => Err(AppError::unsupported(format!(
+                    "不支持的导出格式: {}",
+                    format
+                ))),
             }
         }
     })
@@ -141,10 +149,11 @@ pub async fn import_sql_file(
         return Err(AppError::not_found(format!("文件不存在: {}", file_path)));
     }
 
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| AppError::internal_with("读取文件失败", e))?;
+    let content =
+        std::fs::read_to_string(&path).map_err(|e| AppError::internal_with("读取文件失败", e))?;
 
-    let statements: Vec<String> = content.split(';')
+    let statements: Vec<String> = content
+        .split(';')
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().to_string())
         .collect();

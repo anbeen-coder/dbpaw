@@ -53,11 +53,7 @@ pub async fn get_table_data(
     .await
 }
 
-pub async fn cancel_query(
-    state: &AppState,
-    id: i64,
-    query_id: String,
-) -> Result<(), AppError> {
+pub async fn cancel_query(state: &AppState, id: i64, query_id: String) -> Result<(), AppError> {
     let local_db = {
         let lock = state.local_db.lock().await;
         lock.clone()

@@ -382,7 +382,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let query = SqliteQuery { pool: conn.pool.clone() };
+        let query = SqliteQuery {
+            pool: conn.pool.clone(),
+        };
 
         query
             .execute_query("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT);".to_string())
@@ -428,7 +430,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let query = SqliteQuery { pool: conn.pool.clone() };
+        let query = SqliteQuery {
+            pool: conn.pool.clone(),
+        };
 
         query
             .execute_query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);".to_string())
@@ -468,7 +472,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let query = SqliteQuery { pool: conn.pool.clone() };
+        let query = SqliteQuery {
+            pool: conn.pool.clone(),
+        };
 
         query
             .execute_query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);".to_string())
@@ -518,7 +524,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let query = SqliteQuery { pool: conn.pool.clone() };
+        let query = SqliteQuery {
+            pool: conn.pool.clone(),
+        };
 
         query
             .execute_query(
@@ -579,7 +587,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let query = SqliteQuery { pool: conn.pool.clone() };
+        let query = SqliteQuery {
+            pool: conn.pool.clone(),
+        };
 
         query
             .execute_query("CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT);".to_string())
@@ -617,7 +627,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let query = SqliteQuery { pool: conn.pool.clone() };
+        let query = SqliteQuery {
+            pool: conn.pool.clone(),
+        };
 
         query
             .execute_query("CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT);".to_string())
@@ -668,7 +680,9 @@ mod tests {
         let conn = super::super::connection::SqliteConnection::connect(&form)
             .await
             .unwrap();
-        let query = SqliteQuery { pool: conn.pool.clone() };
+        let query = SqliteQuery {
+            pool: conn.pool.clone(),
+        };
 
         query
             .execute_query("CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT);".to_string())

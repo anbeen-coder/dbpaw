@@ -1,4 +1,5 @@
 mod client;
+mod search;
 
 use crate::error::AppError;
 use crate::models::ConnectionForm;
@@ -186,15 +187,23 @@ fn parse_docs_count(raw: Option<&str>) -> Option<i64> {
     raw.and_then(|v| v.parse::<i64>().ok())
 }
 
-fn clamp_search_size(size: i64) -> i64 {
+pub(crate) fn clamp_search_size(size: i64) -> i64 {
     size.clamp(1, MAX_SEARCH_SIZE)
 }
 
-fn clamp_bulk_batch_size(size: i64) -> i64 {
+pub(crate) fn clamp_bulk_batch_size(size: i64) -> i64 {
     size.clamp(1, MAX_BULK_BATCH_SIZE)
 }
 
-fn encode_path_segment(value: &str) -> String {
+pub(crate) fn validate_index_name(index: &str) -> Result<String, AppError> {
+    let trimmed = index.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::validation("index name cannot be empty"));
+    }
+    Ok(trimmed.to_string())
+}
+
+pub(crate) fn encode_path_segment(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
@@ -207,36 +216,10 @@ fn encode_path_segment(value: &str) -> String {
     out
 }
 
-fn validate_raw_path(path: &str) -> Result<String, AppError> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err(AppError::validation("request path cannot be empty"));
-    }
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        return Err(AppError::validation(
-            "raw requests must use a path, not a full URL",
-        ));
-    }
-    let path = if trimmed.starts_with('/') {
-        trimmed.to_string()
-    } else {
-        format!("/{trimmed}")
-    };
-    if path.contains("..") {
-        return Err(AppError::validation("request path cannot contain '..'"));
-    }
-    Ok(path)
-}
-
-fn validate_index_name(index: &str) -> Result<String, AppError> {
-    let trimmed = index.trim();
-    if trimmed.is_empty() {
-        return Err(AppError::validation("index name cannot be empty"));
-    }
-    Ok(trimmed.to_string())
-}
-
-fn build_search_body(query: Option<String>, dsl: Option<String>) -> Result<Value, AppError> {
+pub(crate) fn build_search_body(
+    query: Option<String>,
+    dsl: Option<String>,
+) -> Result<Value, AppError> {
     if let Some(raw) = dsl.and_then(|v| {
         let trimmed = v.trim().to_string();
         (!trimmed.is_empty()).then_some(trimmed)
@@ -253,7 +236,11 @@ fn build_search_body(query: Option<String>, dsl: Option<String>) -> Result<Value
     Ok(serde_json::json!({ "query": { "match_all": {} } }))
 }
 
-fn set_search_pagination(body: &mut Value, from: Option<i64>, size: i64) -> Result<(), AppError> {
+pub(crate) fn set_search_pagination(
+    body: &mut Value,
+    from: Option<i64>,
+    size: i64,
+) -> Result<(), AppError> {
     let obj = body
         .as_object_mut()
         .ok_or_else(|| AppError::validation("Elasticsearch DSL must be a JSON object"))?;
@@ -266,14 +253,41 @@ fn set_search_pagination(body: &mut Value, from: Option<i64>, size: i64) -> Resu
     Ok(())
 }
 
-fn validate_file_path(file_path: &str, operation: &str) -> Result<PathBuf, AppError> {
-    let trimmed = file_path.trim();
-    if trimmed.is_empty() {
-        return Err(AppError::validation(format!(
-            "Elasticsearch bulk {operation} file path cannot be empty"
-        )));
+pub(crate) fn parse_search_response(
+    value: Value,
+    elapsed_ms: i64,
+) -> ElasticsearchSearchResponse {
+    let took_ms = value
+        .get("took")
+        .and_then(Value::as_i64)
+        .unwrap_or(elapsed_ms);
+    let total = match value.pointer("/hits/total") {
+        Some(Value::Number(n)) => n.as_i64().unwrap_or(0),
+        Some(Value::Object(obj)) => obj.get("value").and_then(Value::as_i64).unwrap_or(0),
+        _ => 0,
+    };
+    let hits = value
+        .pointer("/hits/hits")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|hit| {
+            Some(ElasticsearchSearchHit {
+                index: hit.get("_index")?.as_str()?.to_string(),
+                id: hit.get("_id")?.as_str()?.to_string(),
+                score: hit.get("_score").and_then(Value::as_f64),
+                source: hit.get("_source").cloned().unwrap_or(Value::Null),
+                fields: hit.get("fields").cloned(),
+            })
+        })
+        .collect();
+    ElasticsearchSearchResponse {
+        hits,
+        total,
+        took_ms,
+        aggregations: value.get("aggregations").cloned(),
     }
-    Ok(PathBuf::from(trimmed))
 }
 
 fn parse_bulk_action_line(line: &str, line_number: usize) -> Result<BulkAction, AppError> {
@@ -322,60 +336,6 @@ fn build_bulk_action_line(index: &str, action: &BulkAction) -> Result<String, Ap
     };
     serde_json::to_string(&serde_json::json!({ action_name: metadata }))
         .map_err(|e| AppError::internal(format!("failed to encode bulk action: {e}")))
-}
-
-fn build_export_action_line(document_id: &str) -> Result<String, AppError> {
-    serde_json::to_string(&serde_json::json!({ "index": { "_id": document_id } }))
-        .map_err(|e| AppError::internal(format!("failed to encode bulk action: {e}")))
-}
-
-fn write_ndjson_pair(
-    writer: &mut BufWriter<File>,
-    action: &str,
-    source: &Value,
-) -> Result<(), AppError> {
-    let source = serde_json::to_string(source)
-        .map_err(|e| AppError::internal(format!("failed to encode document: {e}")))?;
-    writer
-        .write_all(action.as_bytes())
-        .and_then(|_| writer.write_all(b"\n"))
-        .and_then(|_| writer.write_all(source.as_bytes()))
-        .and_then(|_| writer.write_all(b"\n"))
-        .map_err(|e| AppError::internal(format!("write file failed: {e}")))
-}
-
-fn parse_search_response(value: Value, elapsed_ms: i64) -> ElasticsearchSearchResponse {
-    let took_ms = value
-        .get("took")
-        .and_then(Value::as_i64)
-        .unwrap_or(elapsed_ms);
-    let total = match value.pointer("/hits/total") {
-        Some(Value::Number(n)) => n.as_i64().unwrap_or(0),
-        Some(Value::Object(obj)) => obj.get("value").and_then(Value::as_i64).unwrap_or(0),
-        _ => 0,
-    };
-    let hits = value
-        .pointer("/hits/hits")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|hit| {
-            Some(ElasticsearchSearchHit {
-                index: hit.get("_index")?.as_str()?.to_string(),
-                id: hit.get("_id")?.as_str()?.to_string(),
-                score: hit.get("_score").and_then(Value::as_f64),
-                source: hit.get("_source").cloned().unwrap_or(Value::Null),
-                fields: hit.get("fields").cloned(),
-            })
-        })
-        .collect();
-    ElasticsearchSearchResponse {
-        hits,
-        total,
-        took_ms,
-        aggregations: value.get("aggregations").cloned(),
-    }
 }
 
 impl ElasticsearchClient {
@@ -504,65 +464,6 @@ impl ElasticsearchClient {
         .await
     }
 
-    pub async fn search_documents(
-        &self,
-        index: String,
-        query: Option<String>,
-        dsl: Option<String>,
-        from: i64,
-        size: i64,
-    ) -> Result<ElasticsearchSearchResponse, AppError> {
-        let mut body = build_search_body(query, dsl)?;
-        set_search_pagination(&mut body, Some(from), clamp_search_size(size))?;
-
-        let started = Instant::now();
-        let value = self
-            .read_json(
-                self.request(
-                    reqwest::Method::POST,
-                    &format!("/{}/_search", encode_path_segment(&index)),
-                )
-                .json(&body),
-            )
-            .await?;
-        Ok(parse_search_response(
-            value,
-            started.elapsed().as_millis() as i64,
-        ))
-    }
-
-    pub async fn get_document(
-        &self,
-        index: String,
-        document_id: String,
-    ) -> Result<ElasticsearchDocument, AppError> {
-        let value = self
-            .read_json(self.request(
-                reqwest::Method::GET,
-                &format!(
-                    "/{}/_doc/{}",
-                    encode_path_segment(&index),
-                    encode_path_segment(&document_id)
-                ),
-            ))
-            .await?;
-        Ok(ElasticsearchDocument {
-            index: value
-                .get("_index")
-                .and_then(Value::as_str)
-                .unwrap_or(&index)
-                .to_string(),
-            id: value
-                .get("_id")
-                .and_then(Value::as_str)
-                .unwrap_or(&document_id)
-                .to_string(),
-            found: value.get("found").and_then(Value::as_bool).unwrap_or(true),
-            source: value.get("_source").cloned(),
-            fields: value.get("fields").cloned(),
-        })
-    }
-
     pub async fn upsert_document(
         &self,
         index: String,
@@ -619,91 +520,6 @@ impl ElasticsearchClient {
             ),
         ))
         .await
-    }
-
-    pub async fn export_documents(
-        &self,
-        index: String,
-        query: Option<String>,
-        dsl: Option<String>,
-        file_path: String,
-        batch_size: Option<i64>,
-    ) -> Result<ElasticsearchBulkExportResult, AppError> {
-        let index = validate_index_name(&index)?;
-        let output_path = validate_file_path(&file_path, "export")?;
-        let batch_size = clamp_bulk_batch_size(batch_size.unwrap_or(DEFAULT_BULK_BATCH_SIZE));
-        let mut body = build_search_body(query, dsl)?;
-        set_search_pagination(&mut body, None, batch_size)?;
-
-        let file = File::create(&output_path).map_err(|e| AppError::internal(format!("{e}")))?;
-        let mut writer = BufWriter::new(file);
-        let started = Instant::now();
-        let mut documents = 0i64;
-        let mut batches = 0i64;
-        let mut scroll_id: Option<String> = None;
-
-        loop {
-            let value = if let Some(id) = scroll_id.as_deref() {
-                self.read_json(self.request(reqwest::Method::POST, "/_search/scroll").json(
-                    &serde_json::json!({
-                        "scroll": EXPORT_SCROLL_TTL,
-                        "scroll_id": id
-                    }),
-                ))
-                .await?
-            } else {
-                self.read_json(
-                    self.request(
-                        reqwest::Method::POST,
-                        &format!(
-                            "/{}/_search?scroll={}",
-                            encode_path_segment(&index),
-                            EXPORT_SCROLL_TTL
-                        ),
-                    )
-                    .json(&body),
-                )
-                .await?
-            };
-
-            scroll_id = value
-                .get("_scroll_id")
-                .and_then(Value::as_str)
-                .map(str::to_string);
-            let hits = value
-                .pointer("/hits/hits")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            if hits.is_empty() {
-                break;
-            }
-
-            batches += 1;
-            for hit in hits {
-                let document_id = hit
-                    .get("_id")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| AppError::internal("Elasticsearch hit is missing _id"))?;
-                let source = hit.get("_source").cloned().unwrap_or(Value::Null);
-                let action = build_export_action_line(document_id)?;
-                write_ndjson_pair(&mut writer, &action, &source)?;
-                documents += 1;
-            }
-        }
-
-        self.clear_scroll(scroll_id).await;
-        writer
-            .flush()
-            .map_err(|e| AppError::internal(format!("{e}")))?;
-
-        Ok(ElasticsearchBulkExportResult {
-            file_path: output_path.to_string_lossy().to_string(),
-            index,
-            documents,
-            batches,
-            time_taken_ms: started.elapsed().as_millis() as i64,
-        })
     }
 
     pub async fn import_documents(
@@ -897,16 +713,6 @@ impl ElasticsearchClient {
             failed,
             errors,
         })
-    }
-
-    async fn clear_scroll(&self, scroll_id: Option<String>) {
-        if let Some(id) = scroll_id {
-            let _ = self
-                .request(reqwest::Method::DELETE, "/_search/scroll")
-                .json(&serde_json::json!({ "scroll_id": [id] }))
-                .send()
-                .await;
-        }
     }
 
     pub async fn execute_raw(

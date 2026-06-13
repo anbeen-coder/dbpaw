@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::mcp::tools::get_tool_definitions;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
@@ -104,7 +105,7 @@ fn check_client_config(path: &PathBuf, configured: bool) -> bool {
 }
 
 #[tauri::command]
-pub async fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus, String> {
+pub async fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus, AppError> {
     let mut status = McpStatus {
         running: false,
         pid: None,
@@ -125,7 +126,7 @@ pub async fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus, String>
                 status.pid = child.id();
             }
             Err(e) => {
-                return Err(format!("Failed to check process status: {}", e));
+                return Err(AppError::internal(format!("Failed to check process status: {}", e)));
             }
         }
     }
@@ -138,7 +139,7 @@ pub async fn mcp_start(
     app_handle: AppHandle,
     state: State<'_, AppState>,
     config: McpConfig,
-) -> Result<McpStatus, String> {
+) -> Result<McpStatus, AppError> {
     // Check if already running
     {
         let mut lock = state.mcp_process.lock().await;
@@ -148,17 +149,17 @@ pub async fn mcp_start(
                     *lock = None;
                 }
                 Ok(None) => {
-                    return Err("MCP server is already running".to_string());
+                    return Err(AppError::internal("MCP server is already running"));
                 }
                 Err(e) => {
-                    return Err(format!("Failed to check process status: {}", e));
+                    return Err(AppError::internal(format!("Failed to check process status: {}", e)));
                 }
             }
         }
     }
 
     let binary_path =
-        find_mcp_binary(&app_handle).ok_or("MCP server binary not found".to_string())?;
+        find_mcp_binary(&app_handle).ok_or(AppError::internal("MCP server binary not found"))?;
 
     let child = tokio::process::Command::new(&binary_path)
         .arg("--port")
@@ -168,7 +169,7 @@ pub async fn mcp_start(
         .arg("--transport")
         .arg(&config.transport)
         .spawn()
-        .map_err(|e| format!("Failed to start MCP server: {}", e))?;
+        .map_err(|e| AppError::internal(format!("Failed to start MCP server: {}", e)))?;
 
     let mut lock = state.mcp_process.lock().await;
     let pid = child.id().unwrap_or(0);
@@ -184,7 +185,7 @@ pub async fn mcp_start(
 }
 
 #[tauri::command]
-pub async fn mcp_stop(state: State<'_, AppState>) -> Result<McpStatus, String> {
+pub async fn mcp_stop(state: State<'_, AppState>) -> Result<McpStatus, AppError> {
     let mut lock = state.mcp_process.lock().await;
     if let Some(mut child) = lock.take() {
         child
@@ -205,7 +206,7 @@ pub async fn mcp_stop(state: State<'_, AppState>) -> Result<McpStatus, String> {
 }
 
 #[tauri::command]
-pub async fn mcp_get_tools() -> Result<Vec<ToolInfo>, String> {
+pub async fn mcp_get_tools() -> Result<Vec<ToolInfo>, AppError> {
     let definitions = get_tool_definitions();
     let tools = definitions
         .into_iter()
@@ -218,7 +219,7 @@ pub async fn mcp_get_tools() -> Result<Vec<ToolInfo>, String> {
 }
 
 #[tauri::command]
-pub async fn mcp_detect_clients() -> Result<Vec<DetectedClient>, String> {
+pub async fn mcp_detect_clients() -> Result<Vec<DetectedClient>, AppError> {
     let claude_path = get_claude_config_path();
     let cursor_path = get_cursor_config_path();
     let windsurf_path = get_windsurf_config_path();
@@ -251,16 +252,16 @@ pub async fn mcp_detect_clients() -> Result<Vec<DetectedClient>, String> {
 pub async fn mcp_configure_client(
     app_handle: AppHandle,
     client_name: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let binary_path =
-        find_mcp_binary(&app_handle).ok_or("MCP server binary not found".to_string())?;
+        find_mcp_binary(&app_handle).ok_or(AppError::internal("MCP server binary not found"))?;
     let binary_str = binary_path.to_string_lossy().to_string();
 
     let config_path = match client_name.as_str() {
         "Claude Desktop" => get_claude_config_path(),
         "Cursor" => get_cursor_config_path(),
         "Windsurf" => get_windsurf_config_path(),
-        _ => return Err(format!("Unknown client: {}", client_name)),
+        _ => return Err(AppError::internal(format!("Unknown client: {}", client_name))),
     };
 
     // Ensure parent directory exists

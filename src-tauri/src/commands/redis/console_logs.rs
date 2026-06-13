@@ -27,19 +27,18 @@ pub async fn redis_execute_raw(
     id: i64,
     database: Option<String>,
     command: String,
-) -> Result<RedisRawResult, String> {
+) -> Result<RedisRawResult, AppError> {
     let result = with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::execute_raw(conn, command.clone()))
     })
-    .await
-    .map_err(String::from);
+    .await;
 
     match &result {
         Ok(_) => {
             append_redis_command_log(&state, command, id, database, true, None).await;
         }
         Err(e) => {
-            append_redis_command_log(&state, command, id, database, false, Some(e.clone())).await;
+            append_redis_command_log(&state, command, id, database, false, Some(e.to_string())).await;
         }
     }
 
@@ -50,12 +49,12 @@ pub async fn redis_server_info(
     state: State<'_, AppState>,
     id: i64,
     database: Option<String>,
-) -> Result<RedisServerInfo, String> {
+) -> Result<RedisServerInfo, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::server_info(conn))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -63,12 +62,12 @@ pub async fn redis_server_config(
     state: State<'_, AppState>,
     id: i64,
     database: Option<String>,
-) -> Result<HashMap<String, String>, String> {
+) -> Result<HashMap<String, String>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::server_config(conn))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -77,13 +76,13 @@ pub async fn redis_slowlog_get(
     id: i64,
     database: Option<String>,
     count: Option<i64>,
-) -> Result<Vec<RedisSlowlogEntry>, String> {
+) -> Result<Vec<RedisSlowlogEntry>, AppError> {
     let n = count.unwrap_or(50);
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::slowlog_get(conn, n))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 fn clamp_redis_command_logs_limit(limit: Option<i64>) -> i64 {
@@ -94,7 +93,7 @@ fn clamp_redis_command_logs_limit(limit: Option<i64>) -> i64 {
 pub async fn list_redis_command_logs(
     state: State<'_, AppState>,
     limit: Option<i64>,
-) -> Result<Vec<RedisCommandLog>, String> {
+) -> Result<Vec<RedisCommandLog>, AppError> {
     let safe_limit = clamp_redis_command_logs_limit(limit);
     let local_db = {
         let lock = state.local_db.lock().await;
@@ -102,7 +101,7 @@ pub async fn list_redis_command_logs(
     };
 
     if let Some(db) = local_db {
-        db.list_redis_command_logs(safe_limit).await.map_err(String::from)
+        db.list_redis_command_logs(safe_limit).await
     } else {
         Err(AppError::internal("Local DB not initialized").into())
     }

@@ -8,7 +8,7 @@ pub async fn redis_zrangebyscore(
     max: String,
     offset: Option<u64>,
     limit: Option<u64>,
-) -> Result<RedisZRangeByScoreResult, String> {
+) -> Result<RedisZRangeByScoreResult, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::zrangebyscore(
             conn,
@@ -20,7 +20,7 @@ pub async fn redis_zrangebyscore(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -31,13 +31,13 @@ pub async fn redis_zrank(
     key: String,
     member: String,
     reverse: Option<bool>,
-) -> Result<Option<i64>, String> {
+) -> Result<Option<i64>, AppError> {
     let rev = reverse.unwrap_or(false);
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::zrank(conn, key.clone(), member.clone(), rev))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -47,12 +47,12 @@ pub async fn redis_zscore(
     database: Option<String>,
     key: String,
     member: String,
-) -> Result<Option<f64>, String> {
+) -> Result<Option<f64>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::zscore(conn, key.clone(), member.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -62,12 +62,12 @@ pub async fn redis_zmscore(
     database: Option<String>,
     key: String,
     members: Vec<String>,
-) -> Result<Vec<Option<f64>>, String> {
+) -> Result<Vec<Option<f64>>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::zmscore(conn, key.clone(), members.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -80,7 +80,7 @@ pub async fn redis_zrangebylex(
     max: String,
     offset: Option<u64>,
     limit: Option<u64>,
-) -> Result<RedisZRangeByLexResult, String> {
+) -> Result<RedisZRangeByLexResult, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::zrangebylex(
             conn,
@@ -92,7 +92,7 @@ pub async fn redis_zrangebylex(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -103,7 +103,7 @@ pub async fn redis_zlexcount(
     key: String,
     min: String,
     max: String,
-) -> Result<u64, String> {
+) -> Result<u64, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::zlexcount(
             conn,
@@ -113,7 +113,7 @@ pub async fn redis_zlexcount(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -123,12 +123,12 @@ pub async fn redis_zpopmin(
     database: Option<String>,
     key: String,
     count: Option<u64>,
-) -> Result<Vec<RedisZSetMember>, String> {
+) -> Result<Vec<RedisZSetMember>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::zpopmin(conn, key.clone(), count))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -138,10 +138,10 @@ pub async fn redis_zpopmax(
     database: Option<String>,
     key: String,
     count: Option<u64>,
-) -> Result<Vec<RedisZSetMember>, String> {
+) -> Result<Vec<RedisZSetMember>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::zpopmax(conn, key.clone(), count))
     })
     .await
-    .map_err(String::from)
+    
 }

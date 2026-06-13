@@ -83,7 +83,7 @@ pub async fn export_table_data(
     limit: Option<i64>,
     file_path: Option<String>,
     chunk_size: Option<i64>,
-) -> Result<ExportResult, String> {
+) -> Result<ExportResult, AppError> {
     let output_path = resolve_output_path(file_path, &table, extension_for_format(&format))?;
     let chunk = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE).max(1);
     super::execute_with_retry(&state, id, database, |db_driver| {
@@ -118,7 +118,7 @@ pub async fn export_table_data(
         }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 pub async fn export_table_data_direct(
@@ -138,7 +138,7 @@ pub async fn export_table_data_direct(
     limit: Option<i64>,
     file_path: Option<String>,
     chunk_size: Option<i64>,
-) -> Result<ExportResult, String> {
+) -> Result<ExportResult, AppError> {
     let output_path = resolve_output_path(file_path, &table, extension_for_format(&format))?;
     let chunk = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE).max(1);
     super::execute_with_retry_from_app_state(state, id, database, |db_driver| {
@@ -173,7 +173,7 @@ pub async fn export_table_data_direct(
         }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -185,7 +185,7 @@ pub async fn export_database_sql(
     format: ExportFormat,
     file_path: Option<String>,
     chunk_size: Option<i64>,
-) -> Result<ExportResult, String> {
+) -> Result<ExportResult, AppError> {
     let output_path = resolve_output_path(file_path, &database, "sql")?;
     let chunk = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE).max(1);
     super::execute_with_retry(&state, id, Some(database), |db_driver| {
@@ -195,7 +195,7 @@ pub async fn export_database_sql(
         async move { do_database_export(db_driver, output_path, driver, format, chunk).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 pub async fn export_database_sql_direct(
@@ -206,7 +206,7 @@ pub async fn export_database_sql_direct(
     format: ExportFormat,
     file_path: Option<String>,
     chunk_size: Option<i64>,
-) -> Result<ExportResult, String> {
+) -> Result<ExportResult, AppError> {
     let output_path = resolve_output_path(file_path, &database, "sql")?;
     let chunk = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE).max(1);
     super::execute_with_retry_from_app_state(state, id, Some(database), |db_driver| {
@@ -216,7 +216,7 @@ pub async fn export_database_sql_direct(
         async move { do_database_export(db_driver, output_path, driver, format, chunk).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -228,7 +228,7 @@ pub async fn export_query_result(
     driver: String,
     format: ExportFormat,
     file_path: Option<String>,
-) -> Result<ExportResult, String> {
+) -> Result<ExportResult, AppError> {
     if matches!(format, ExportFormat::SqlDdl) {
         return Err(
             AppError::unsupported("SqlDdl format is not supported for query exports")
@@ -247,7 +247,7 @@ pub async fn export_query_result(
         async move { do_query_export(db_driver, output_path, sql, driver, format).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 pub async fn export_query_result_direct(
@@ -258,7 +258,7 @@ pub async fn export_query_result_direct(
     driver: String,
     format: ExportFormat,
     file_path: Option<String>,
-) -> Result<ExportResult, String> {
+) -> Result<ExportResult, AppError> {
     if matches!(format, ExportFormat::SqlDdl) {
         return Err(
             AppError::unsupported("SqlDdl format is not supported for query exports")
@@ -277,7 +277,7 @@ pub async fn export_query_result_direct(
         async move { do_query_export(db_driver, output_path, sql, driver, format).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -287,7 +287,7 @@ pub async fn import_sql_file(
     database: Option<String>,
     file_path: String,
     driver: String,
-) -> Result<ImportSqlResult, String> {
+) -> Result<ImportSqlResult, AppError> {
     let prepared = prepare_sql_import(file_path, &driver)?;
     let started_at = std::time::Instant::now();
     super::execute_with_retry(&state, id, database, |db_driver| {
@@ -295,7 +295,7 @@ pub async fn import_sql_file(
         async move { execute_sql_import(db_driver, prepared, started_at).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 pub async fn import_sql_file_direct(
@@ -304,7 +304,7 @@ pub async fn import_sql_file_direct(
     database: Option<String>,
     file_path: String,
     driver: String,
-) -> Result<ImportSqlResult, String> {
+) -> Result<ImportSqlResult, AppError> {
     let prepared = prepare_sql_import(file_path, &driver)?;
     let started_at = std::time::Instant::now();
     super::execute_with_retry_from_app_state(state, id, database, |db_driver| {
@@ -312,7 +312,7 @@ pub async fn import_sql_file_direct(
         async move { execute_sql_import(db_driver, prepared, started_at).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[cfg(test)]

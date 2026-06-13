@@ -7,19 +7,42 @@ export interface ParsedError {
   category: 'connection' | 'query' | 'validation' | 'ai' | 'unsupported' | 'internal';
 }
 
+function isStructuredError(e: unknown): e is ParsedError {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'code' in e &&
+    'message' in e &&
+    'category' in e &&
+    typeof (e as ParsedError).code === 'number' &&
+    typeof (e as ParsedError).message === 'string'
+  );
+}
+
 /**
- * Parse an AppError string into structured error data.
- * 
- * Expected format: [ERR-XXXX] message (hint)
- * 
+ * Parse an error into structured error data.
+ *
+ * Accepts either:
+ * - A structured error object from the backend (direct pass-through)
+ * - A legacy string format: [ERR-XXXX] message (hint)
+ *
  * @example
+ * parseError({ code: 1001, message: 'connection refused', hint: 'check network', category: 'connection' })
+ * // { code: 1001, message: 'connection refused', hint: 'check network', category: 'connection' }
+ *
  * parseError('[ERR-1001] connection refused (check network)')
  * // { code: 1001, message: 'connection refused', hint: 'check network', category: 'connection' }
  */
-export function parseError(error: string): ParsedError {
-  const match = error.match(/\[ERR-(\d+)\]\s*(.+?)(?:\s*\((.+)\))?$/);
+export function parseError(error: unknown): ParsedError {
+  if (isStructuredError(error)) {
+    return error;
+  }
+
+  const str = typeof error === 'string' ? error : String(error);
+
+  const match = str.match(/\[ERR-(\d+)\]\s*(.+?)(?:\s*\((.+)\))?$/);
   if (!match) {
-    return { code: 0, message: error, category: 'internal' };
+    return { code: 0, message: str, category: 'internal' };
   }
 
   const code = parseInt(match[1]);
@@ -48,23 +71,29 @@ function getErrorCategory(code: number): ParsedError['category'] {
 
 /**
  * Extract error message from unknown error value.
- * Use this in catch blocks instead of `e instanceof Error ? e.message : String(e)`.
+ * Handles structured error objects from the backend, Error instances, and plain strings.
  *
  * @example
  * try { ... } catch (e) { console.error(errorMessage(e)); }
  */
 export function errorMessage(e: unknown): string {
+  if (isStructuredError(e)) {
+    return e.message;
+  }
   return e instanceof Error ? e.message : String(e);
 }
 
 /**
- * Get user-friendly error message from error string.
+ * Get user-friendly error message from error value.
  *
  * @example
+ * getFriendlyErrorMessage({ code: 1001, message: 'timeout', hint: 'check network', category: 'connection' })
+ * // 'Connection failed: timeout. check network'
+ *
  * getFriendlyErrorMessage('[ERR-1001] timeout (check network)')
  * // 'Connection failed: timeout. check network'
  */
-export function getFriendlyErrorMessage(error: string): string {
+export function getFriendlyErrorMessage(error: unknown): string {
   const parsed = parseError(error);
 
   switch (parsed.category) {

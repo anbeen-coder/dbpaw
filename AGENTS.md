@@ -13,8 +13,10 @@ it never happens again.
   rewritten.
 - Structured errors must cross the backend from the inside out. New or modified
   service/internal code should return `Result<T, AppError>` from
-  `src-tauri/src/error.rs`; Tauri commands should convert to `String` only at
-  the final command boundary with `map_err(String::from)`. Database drivers are
+  `src-tauri/src/error.rs`; Tauri commands return `Result<T, AppError>` directly
+  — `AppError` implements `Serialize` and is sent as a structured JSON object
+  `{code, message, hint, category}` to the frontend. Do **not** use
+  `.map_err(String::from)` at the command boundary. Database drivers are
   still migrating, so do not introduce new string-tag protocols like
   `[VALIDATION_ERROR]`, `[UNSUPPORTED]`, or `[ERR-1001]`; when touching driver
   code, migrate toward `DbError` or `AppError` instead of parsing strings.

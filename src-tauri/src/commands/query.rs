@@ -48,7 +48,7 @@ async fn execute_cancel_query(
     connection_id: i64,
     query_id: &str,
     form: &crate::models::ConnectionForm,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     if form.driver.eq_ignore_ascii_case("clickhouse") {
         let driver = crate::db::drivers::clickhouse::ClickHouseDriver::connect(form).await?;
         driver.kill_query(query_id).await?;
@@ -230,15 +230,15 @@ pub async fn get_table_data_by_conn(
     table: String,
     page: i64,
     limit: i64,
-) -> Result<TableDataResponse, String> {
+) -> Result<TableDataResponse, AppError> {
     validate_page_limit(page, limit)?;
     let driver = crate::db::drivers::connect(&form)
         .await
-        .map_err(String::from)?;
+        ?;
     driver
         .get_table_data(schema, table, page, limit, None, None, None, None)
         .await
-        .map_err(String::from)
+        
 }
 
 #[tauri::command]
@@ -250,7 +250,7 @@ pub async fn execute_query(
     database: Option<String>,
     source: Option<String>,
     query_id: Option<String>,
-) -> Result<QueryResult, String> {
+) -> Result<QueryResult, AppError> {
     execute_query_core(
         state.inner(),
         id,
@@ -261,7 +261,7 @@ pub async fn execute_query(
         Some(&app_handle),
     )
     .await
-    .map_err(String::from)
+    
 }
 
 pub async fn execute_query_by_id_direct(
@@ -271,24 +271,24 @@ pub async fn execute_query_by_id_direct(
     database: Option<String>,
     source: Option<String>,
     query_id: Option<String>,
-) -> Result<QueryResult, String> {
+) -> Result<QueryResult, AppError> {
     execute_query_core(state, id, query, database, source, query_id, None)
         .await
-        .map_err(String::from)
+        
 }
 
 pub async fn execute_by_conn_direct(
     form: ConnectionForm,
     sql: String,
-) -> Result<QueryResult, String> {
+) -> Result<QueryResult, AppError> {
     let guarded_sql = apply_default_limit(&sql, Some(&form.driver));
     let driver = crate::db::drivers::connect(&form)
         .await
-        .map_err(String::from)?;
+        ?;
     driver
         .execute_query_with_id(guarded_sql, None)
         .await
-        .map_err(String::from)
+        
 }
 
 #[tauri::command]
@@ -304,7 +304,7 @@ pub async fn get_table_data(
     sort_column: Option<String>,
     sort_direction: Option<String>,
     order_by: Option<String>,
-) -> Result<TableDataResponse, String> {
+) -> Result<TableDataResponse, AppError> {
     validate_page_limit(page, limit)?;
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
@@ -329,7 +329,7 @@ pub async fn get_table_data(
         }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 async fn cancel_query_core(
@@ -366,10 +366,10 @@ pub async fn cancel_query(
     state: State<'_, AppState>,
     uuid: String,
     query_id: String,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     cancel_query_core(state.inner(), uuid, query_id)
         .await
-        .map_err(String::from)
+        
 }
 
 async fn execute_by_conn_core(
@@ -445,10 +445,10 @@ pub async fn execute_by_conn(
     state: State<'_, AppState>,
     form: ConnectionForm,
     sql: String,
-) -> Result<QueryResult, String> {
+) -> Result<QueryResult, AppError> {
     execute_by_conn_core(state.inner(), form, sql, Some(&app_handle))
         .await
-        .map_err(String::from)
+        
 }
 
 fn clamp_sql_execution_logs_limit(limit: Option<i64>) -> i64 {
@@ -473,29 +473,29 @@ async fn list_sql_execution_logs_core(
 pub async fn list_sql_execution_logs(
     state: State<'_, AppState>,
     limit: Option<i64>,
-) -> Result<Vec<SqlExecutionLog>, String> {
+) -> Result<Vec<SqlExecutionLog>, AppError> {
     list_sql_execution_logs_core(state.inner(), limit)
         .await
-        .map_err(String::from)
+        
 }
 
 pub async fn list_sql_execution_logs_direct(
     state: &AppState,
     limit: Option<i64>,
-) -> Result<Vec<SqlExecutionLog>, String> {
+) -> Result<Vec<SqlExecutionLog>, AppError> {
     list_sql_execution_logs_core(state, limit)
         .await
-        .map_err(String::from)
+        
 }
 
 pub async fn cancel_query_direct(
     state: &AppState,
     uuid: String,
     query_id: String,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     cancel_query_core(state, uuid, query_id)
         .await
-        .map_err(String::from)
+        
 }
 
 #[cfg(test)]

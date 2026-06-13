@@ -5,12 +5,12 @@ pub async fn redis_set_operation(
     database: Option<String>,
     keys: Vec<String>,
     op: RedisSetOperation,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::set_operation(conn, keys.clone(), op.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -20,12 +20,12 @@ pub async fn redis_sismember(
     database: Option<String>,
     key: String,
     member: String,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::sismember(conn, key.clone(), member.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -36,7 +36,7 @@ pub async fn redis_smove(
     source: String,
     destination: String,
     member: String,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::smove(
             conn,
@@ -46,7 +46,7 @@ pub async fn redis_smove(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 // ── Stream Consumer Group commands ──────────────────────────────────────────
@@ -57,12 +57,12 @@ pub async fn redis_batch_key_ops(
     id: i64,
     database: Option<String>,
     operations: Vec<RedisBatchKeyOp>,
-) -> Result<Vec<RedisBatchKeyOpResult>, String> {
+) -> Result<Vec<RedisBatchKeyOpResult>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::batch_key_ops(conn, operations.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -71,12 +71,12 @@ pub async fn redis_mget(
     id: i64,
     database: Option<String>,
     keys: Vec<String>,
-) -> Result<Vec<RedisMgetEntry>, String> {
+) -> Result<Vec<RedisMgetEntry>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::mget_keys(conn, keys.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -85,13 +85,13 @@ pub async fn redis_mset(
     id: i64,
     database: Option<String>,
     entries: HashMap<String, String>,
-) -> Result<RedisMutationResult, String> {
+) -> Result<RedisMutationResult, AppError> {
     let pairs: Vec<(String, String)> = entries.into_iter().collect();
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::mset_keys(conn, pairs.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -101,12 +101,12 @@ pub async fn redis_lindex(
     database: Option<String>,
     key: String,
     index: i64,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::lindex(conn, key.clone(), index))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -119,7 +119,7 @@ pub async fn redis_lpos(
     rank: Option<i64>,
     count: Option<u64>,
     maxlen: Option<u64>,
-) -> Result<Vec<i64>, String> {
+) -> Result<Vec<i64>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::lpos(
             conn,
@@ -131,7 +131,7 @@ pub async fn redis_lpos(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -142,12 +142,12 @@ pub async fn redis_ltrim(
     key: String,
     start: i64,
     stop: i64,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::ltrim(conn, key.clone(), start, stop))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -159,7 +159,7 @@ pub async fn redis_linsert(
     position: RedisLInsertPosition,
     pivot: String,
     element: String,
-) -> Result<i64, String> {
+) -> Result<i64, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::linsert(
             conn,
@@ -170,7 +170,7 @@ pub async fn redis_linsert(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -182,7 +182,7 @@ pub async fn redis_lmove(
     destination: String,
     src_direction: RedisLMoveDirection,
     dst_direction: RedisLMoveDirection,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::lmove(
             conn,
@@ -193,5 +193,5 @@ pub async fn redis_lmove(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }

@@ -9,13 +9,12 @@ use tauri::State;
 fn ensure_table_structure_found(
     structure: TableStructure,
     table: &str,
-) -> Result<TableStructure, String> {
+) -> Result<TableStructure, AppError> {
     if structure.columns.is_empty() {
         return Err(AppError::not_found(format!(
             "Table '{}' does not exist or has no visible columns",
             table
-        ))
-        .to_string());
+        )));
     }
     Ok(structure)
 }
@@ -26,13 +25,13 @@ pub async fn get_schema_overview(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<SchemaOverview, String> {
+) -> Result<SchemaOverview, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.get_schema_overview(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 pub async fn get_schema_overview_direct(
@@ -40,21 +39,21 @@ pub async fn get_schema_overview_direct(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<SchemaOverview, String> {
+) -> Result<SchemaOverview, AppError> {
     super::execute_with_retry_from_app_state(state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.get_schema_overview(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
-pub async fn list_tables_by_conn(form: ConnectionForm) -> Result<Vec<TableInfo>, String> {
+pub async fn list_tables_by_conn(form: ConnectionForm) -> Result<Vec<TableInfo>, AppError> {
     let driver = crate::db::drivers::connect(&form)
         .await
-        .map_err(String::from)?;
-    driver.list_tables(form.schema).await.map_err(String::from)
+        ?;
+    driver.list_tables(form.schema).await
 }
 
 #[tauri::command]
@@ -63,7 +62,7 @@ pub async fn list_tables(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<Vec<TableInfo>, String> {
+) -> Result<Vec<TableInfo>, AppError> {
     // Note: For MySQL, schema param in list_tables usually maps to database if not null.
     // For Postgres, it maps to schema.
     // Our execute_with_retry uses database param for connection key.
@@ -72,7 +71,7 @@ pub async fn list_tables(
         async move { driver.list_tables(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -81,13 +80,13 @@ pub async fn list_routines(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<Vec<RoutineInfo>, String> {
+) -> Result<Vec<RoutineInfo>, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.list_routines(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -98,7 +97,7 @@ pub async fn get_routine_ddl(
     schema: String,
     name: String,
     routine_type: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         let name_clone = name.clone();
@@ -110,7 +109,7 @@ pub async fn get_routine_ddl(
         }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -119,13 +118,13 @@ pub async fn list_events(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<Vec<EventInfo>, String> {
+) -> Result<Vec<EventInfo>, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.list_events(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -134,13 +133,13 @@ pub async fn list_sequences(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<Vec<SequenceInfo>, String> {
+) -> Result<Vec<SequenceInfo>, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.list_sequences(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -149,13 +148,13 @@ pub async fn list_types(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<Vec<TypeInfo>, String> {
+) -> Result<Vec<TypeInfo>, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.list_types(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -164,13 +163,13 @@ pub async fn list_synonyms(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<Vec<SynonymInfo>, String> {
+) -> Result<Vec<SynonymInfo>, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.list_synonyms(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -179,13 +178,13 @@ pub async fn list_packages(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<Vec<PackageInfo>, String> {
+) -> Result<Vec<PackageInfo>, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move { driver.list_packages(schema_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -194,7 +193,7 @@ pub async fn get_table_structure(
     id: i64,
     schema: String,
     table: String,
-) -> Result<TableStructure, String> {
+) -> Result<TableStructure, AppError> {
     let table_name = table.clone();
     super::execute_with_retry(&state, id, None, |driver| {
         let schema_clone = schema.clone();
@@ -202,7 +201,7 @@ pub async fn get_table_structure(
         async move { driver.get_table_structure(schema_clone, table_clone).await }
     })
     .await
-    .map_err(String::from)
+    
     .and_then(|structure| ensure_table_structure_found(structure, &table_name))
 }
 
@@ -211,7 +210,7 @@ pub async fn get_table_structure_direct(
     id: i64,
     schema: String,
     table: String,
-) -> Result<TableStructure, String> {
+) -> Result<TableStructure, AppError> {
     let table_name = table.clone();
     super::execute_with_retry_from_app_state(state, id, None, |driver| {
         let schema_clone = schema.clone();
@@ -219,7 +218,7 @@ pub async fn get_table_structure_direct(
         async move { driver.get_table_structure(schema_clone, table_clone).await }
     })
     .await
-    .map_err(String::from)
+    
     .and_then(|structure| ensure_table_structure_found(structure, &table_name))
 }
 
@@ -230,14 +229,14 @@ pub async fn get_table_ddl(
     database: Option<String>,
     schema: String,
     table: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         let table_clone = table.clone();
         async move { driver.get_table_ddl(schema_clone, table_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 pub async fn get_table_ddl_direct(
@@ -246,14 +245,14 @@ pub async fn get_table_ddl_direct(
     database: Option<String>,
     schema: String,
     table: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     super::execute_with_retry_from_app_state(state, id, database, |driver| {
         let schema_clone = schema.clone();
         let table_clone = table.clone();
         async move { driver.get_table_ddl(schema_clone, table_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -263,14 +262,14 @@ pub async fn get_table_metadata(
     database: Option<String>,
     schema: String,
     table: String,
-) -> Result<TableMetadata, String> {
+) -> Result<TableMetadata, AppError> {
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         let table_clone = table.clone();
         async move { driver.get_table_metadata(schema_clone, table_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 pub async fn get_table_metadata_direct(
@@ -279,14 +278,14 @@ pub async fn get_table_metadata_direct(
     database: Option<String>,
     schema: String,
     table: String,
-) -> Result<TableMetadata, String> {
+) -> Result<TableMetadata, AppError> {
     super::execute_with_retry_from_app_state(state, id, database, |driver| {
         let schema_clone = schema.clone();
         let table_clone = table.clone();
         async move { driver.get_table_metadata(schema_clone, table_clone).await }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -295,7 +294,7 @@ pub async fn get_schema_foreign_keys(
     id: i64,
     database: Option<String>,
     schema: Option<String>,
-) -> Result<Vec<SchemaForeignKey>, String> {
+) -> Result<Vec<SchemaForeignKey>, AppError> {
     super::execute_with_retry_from_app_state(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         async move {
@@ -305,16 +304,16 @@ pub async fn get_schema_foreign_keys(
         }
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
-pub async fn get_driver_capabilities(state: State<'_, AppState>, id: i64) -> Result<u32, String> {
+pub async fn get_driver_capabilities(state: State<'_, AppState>, id: i64) -> Result<u32, AppError> {
     super::execute_with_retry(&state, id, None, |driver| async move {
         Ok::<u32, AppError>(driver.capabilities().bits())
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[cfg(test)]
@@ -346,15 +345,15 @@ mod tests {
         let result = ensure_table_structure_found(structure, "users");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("[ERR-5003]"));
-        assert!(err.contains("users"));
+        assert!(err.to_string().contains("[ERR-5003]"));
+        assert!(err.to_string().contains("users"));
     }
 
     #[test]
     fn ensure_table_structure_error_includes_table_name() {
         let structure = make_structure(vec![]);
         let err = ensure_table_structure_found(structure, "orders").unwrap_err();
-        assert!(err.contains("orders"));
+        assert!(err.to_string().contains("orders"));
     }
 }
 

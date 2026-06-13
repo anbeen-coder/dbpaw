@@ -11,14 +11,14 @@ pub async fn save_query(
     description: Option<String>,
     connection_id: Option<i64>,
     database: Option<String>,
-) -> Result<SavedQuery, String> {
+) -> Result<SavedQuery, AppError> {
     let local_db = state.local_db.lock().await;
     if let Some(db) = local_db.as_ref() {
         db.create_saved_query(name, query, description, connection_id, database)
             .await
-            .map_err(String::from)
+            
     } else {
-        Err("Local DB not initialized".to_string())
+        Err(AppError::internal("Local DB not initialized"))
     }
 }
 
@@ -48,14 +48,14 @@ pub async fn update_saved_query(
     description: Option<String>,
     connection_id: Option<i64>,
     database: Option<String>,
-) -> Result<SavedQuery, String> {
+) -> Result<SavedQuery, AppError> {
     let local_db = state.local_db.lock().await;
     if let Some(db) = local_db.as_ref() {
         db.update_saved_query(id, name, query, description, connection_id, database)
             .await
-            .map_err(String::from)
+            
     } else {
-        Err("Local DB not initialized".to_string())
+        Err(AppError::internal("Local DB not initialized"))
     }
 }
 
@@ -78,12 +78,12 @@ pub async fn update_saved_query_direct(
 }
 
 #[tauri::command]
-pub async fn delete_saved_query(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+pub async fn delete_saved_query(state: State<'_, AppState>, id: i64) -> Result<(), AppError> {
     let local_db = state.local_db.lock().await;
     if let Some(db) = local_db.as_ref() {
-        db.delete_saved_query(id).await.map_err(String::from)
+        db.delete_saved_query(id).await
     } else {
-        Err("Local DB not initialized".to_string())
+        Err(AppError::internal("Local DB not initialized"))
     }
 }
 
@@ -97,12 +97,12 @@ pub async fn delete_saved_query_direct(state: &AppState, id: i64) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn get_saved_queries(state: State<'_, AppState>) -> Result<Vec<SavedQuery>, String> {
+pub async fn get_saved_queries(state: State<'_, AppState>) -> Result<Vec<SavedQuery>, AppError> {
     let local_db = state.local_db.lock().await;
     if let Some(db) = local_db.as_ref() {
-        db.list_saved_queries().await.map_err(String::from)
+        db.list_saved_queries().await
     } else {
-        Err("Local DB not initialized".to_string())
+        Err(AppError::internal("Local DB not initialized"))
     }
 }
 

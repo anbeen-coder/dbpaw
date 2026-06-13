@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::fmt;
 
 /// Error code ranges by module
@@ -117,6 +118,21 @@ impl From<String> for AppError {
     }
 }
 
+impl Serialize for AppError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("AppError", 4)?;
+        state.serialize_field("code", &self.code())?;
+        state.serialize_field("message", &self.message())?;
+        state.serialize_field("hint", &self.hint())?;
+        state.serialize_field("category", &self.category())?;
+        state.end()
+    }
+}
+
 impl std::error::Error for AppError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -143,6 +159,55 @@ impl std::error::Error for AppError {
 }
 
 impl AppError {
+    pub fn code(&self) -> u16 {
+        match self {
+            AppError::ConnectionFailed { code, .. } => *code,
+            AppError::Query { code, .. } => *code,
+            AppError::Validation { code, .. } => *code,
+            AppError::Ai { code, .. } => *code,
+            AppError::Unsupported { code, .. } => *code,
+            AppError::Internal { code, .. } => *code,
+            AppError::NotFound { code, .. } => *code,
+            AppError::AlreadyExists { code, .. } => *code,
+            AppError::PermissionDenied { code, .. } => *code,
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        match self {
+            AppError::ConnectionFailed { message, .. } => message,
+            AppError::Query { message, .. } => message,
+            AppError::Validation { message, .. } => message,
+            AppError::Ai { message, .. } => message,
+            AppError::Unsupported { message, .. } => message,
+            AppError::Internal { message, .. } => message,
+            AppError::NotFound { message, .. } => message,
+            AppError::AlreadyExists { message, .. } => message,
+            AppError::PermissionDenied { message, .. } => message,
+        }
+    }
+
+    pub fn hint(&self) -> Option<&str> {
+        match self {
+            AppError::ConnectionFailed { hint, .. } => hint.as_deref(),
+            _ => None,
+        }
+    }
+
+    pub fn category(&self) -> &'static str {
+        match self {
+            AppError::ConnectionFailed { .. } => "connection",
+            AppError::Query { .. } => "query",
+            AppError::Validation { .. } => "validation",
+            AppError::Ai { .. } => "ai",
+            AppError::Unsupported { .. } => "unsupported",
+            AppError::Internal { .. } => "internal",
+            AppError::NotFound { .. } => "internal",
+            AppError::AlreadyExists { .. } => "validation",
+            AppError::PermissionDenied { .. } => "validation",
+        }
+    }
+
     pub fn conn_failed(message: impl Into<String>, hint: impl Into<String>) -> Self {
         AppError::ConnectionFailed {
             code: codes::CONN_FAILED,

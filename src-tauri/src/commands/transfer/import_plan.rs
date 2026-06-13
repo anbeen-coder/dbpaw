@@ -36,14 +36,13 @@ pub(super) fn should_use_outer_import_transaction(
 pub(super) fn import_transaction_sql<'a>(
     normalized_driver: &'a str,
     original_driver: &str,
-) -> Result<(&'a str, &'a str, &'a str), String> {
+) -> Result<(&'a str, &'a str, &'a str), AppError> {
     match normalized_driver {
         "mysql" | "mariadb" | "tidb" => Ok(("START TRANSACTION", "COMMIT", "ROLLBACK")),
         "starrocks" | "doris" => Err(AppError::unsupported(format!(
             "Driver {} does not support transactional SQL import in this flow",
             original_driver
-        ))
-        .to_string()),
+        ))),
         "postgres" | "sqlite" | "duckdb" => Ok(("BEGIN", "COMMIT", "ROLLBACK")),
         "mssql" => Ok((
             "BEGIN TRANSACTION",
@@ -54,13 +53,11 @@ pub(super) fn import_transaction_sql<'a>(
         "db2" => Ok(("BEGIN", "COMMIT", "ROLLBACK")),
         "clickhouse" => Err(AppError::unsupported(
             "Driver clickhouse is read-only in this import flow",
-        )
-        .to_string()),
+        )),
         _ => Err(AppError::unsupported(format!(
             "Driver {} is not supported for SQL import",
             original_driver
-        ))
-        .to_string()),
+        ))),
     }
 }
 

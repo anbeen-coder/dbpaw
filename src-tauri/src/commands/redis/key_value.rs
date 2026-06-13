@@ -4,12 +4,12 @@ pub async fn redis_get_key(
     id: i64,
     database: Option<String>,
     key: String,
-) -> Result<RedisKeyValue, String> {
+) -> Result<RedisKeyValue, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::get_key(conn, key.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -18,12 +18,12 @@ pub async fn redis_set_key(
     id: i64,
     database: Option<String>,
     payload: RedisSetKeyPayload,
-) -> Result<RedisMutationResult, String> {
+) -> Result<RedisMutationResult, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::set_key(conn, payload.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -32,12 +32,12 @@ pub async fn redis_update_key(
     id: i64,
     database: Option<String>,
     payload: RedisSetKeyPayload,
-) -> Result<RedisMutationResult, String> {
+) -> Result<RedisMutationResult, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::set_key(conn, payload.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -46,12 +46,12 @@ pub async fn redis_delete_key(
     id: i64,
     database: Option<String>,
     key: String,
-) -> Result<RedisMutationResult, String> {
+) -> Result<RedisMutationResult, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::delete_key(conn, key.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -60,12 +60,12 @@ pub async fn redis_patch_key(
     id: i64,
     database: Option<String>,
     payload: RedisKeyPatchPayload,
-) -> Result<RedisMutationResult, String> {
+) -> Result<RedisMutationResult, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::patch_key(conn, payload.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -76,7 +76,7 @@ pub async fn redis_rename_key(
     old_key: String,
     new_key: String,
     force: Option<bool>,
-) -> Result<RedisMutationResult, String> {
+) -> Result<RedisMutationResult, AppError> {
     let force = force.unwrap_or(false);
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::rename_key(
@@ -87,7 +87,7 @@ pub async fn redis_rename_key(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -98,12 +98,12 @@ pub async fn redis_get_key_page(
     key: String,
     offset: u64,
     limit: u32,
-) -> Result<RedisKeyValue, String> {
+) -> Result<RedisKeyValue, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::get_key_page(conn, key.clone(), offset, limit))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -113,10 +113,10 @@ pub async fn redis_set_ttl(
     database: Option<String>,
     key: String,
     ttl_seconds: Option<i64>,
-) -> Result<RedisMutationResult, String> {
+) -> Result<RedisMutationResult, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::set_ttl(conn, key.clone(), ttl_seconds))
     })
     .await
-    .map_err(String::from)
+    
 }

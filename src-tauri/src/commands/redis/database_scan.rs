@@ -2,7 +2,7 @@
 pub async fn redis_list_databases(
     state: State<'_, AppState>,
     id: i64,
-) -> Result<Vec<RedisDatabaseInfo>, String> {
+) -> Result<Vec<RedisDatabaseInfo>, AppError> {
     with_redis_retry(&state, id, None, |form, conn| {
         Box::pin(async move {
             redis::ping(conn).await?;
@@ -47,7 +47,7 @@ pub async fn redis_list_databases(
         })
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -58,7 +58,7 @@ pub async fn redis_scan_keys(
     cursor: Option<String>,
     pattern: Option<String>,
     limit: Option<u32>,
-) -> Result<RedisScanResponse, String> {
+) -> Result<RedisScanResponse, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::scan_keys(
             conn,
@@ -68,6 +68,6 @@ pub async fn redis_scan_keys(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 

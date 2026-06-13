@@ -6,7 +6,7 @@ pub async fn redis_get_stream_range(
     key: String,
     start_id: String,
     count: u32,
-) -> Result<Vec<RedisStreamEntry>, String> {
+) -> Result<Vec<RedisStreamEntry>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::get_stream_range(
             conn,
@@ -16,7 +16,7 @@ pub async fn redis_get_stream_range(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -28,7 +28,7 @@ pub async fn redis_get_stream_view(
     start_id: String,
     end_id: String,
     count: u32,
-) -> Result<RedisStreamView, String> {
+) -> Result<RedisStreamView, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::get_stream_view(
             conn,
@@ -39,5 +39,5 @@ pub async fn redis_get_stream_view(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }

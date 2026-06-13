@@ -71,10 +71,10 @@ fn validate_conversation_requirement(
     }
 }
 
-fn map_history_load_error(conversation_id: i64, e: &str) -> AppError {
+fn map_history_load_error(conversation_id: i64, e: &AppError) -> AppError {
     tracing::error!(
         conversation_id = conversation_id,
-        error = e,
+        error = %e,
         "Failed to load conversation messages"
     );
     AppError::internal("Failed to load conversation history")
@@ -139,39 +139,39 @@ fn emit_ai_error(
 #[tauri::command]
 pub async fn ai_list_providers(
     state: State<'_, AppState>,
-) -> Result<Vec<AiProviderPublic>, String> {
+) -> Result<Vec<AiProviderPublic>, AppError> {
     let db = get_db(&state).await?;
-    db.list_ai_providers_public().await.map_err(String::from)
+    db.list_ai_providers_public().await
 }
 
-pub async fn ai_list_providers_direct(state: &AppState) -> Result<Vec<AiProviderPublic>, String> {
+pub async fn ai_list_providers_direct(state: &AppState) -> Result<Vec<AiProviderPublic>, AppError> {
     let db = get_db_from_app_state(state).await?;
-    db.list_ai_providers_public().await.map_err(String::from)
+    db.list_ai_providers_public().await
 }
 
 #[tauri::command]
 pub async fn ai_create_provider(
     state: State<'_, AppState>,
     mut config: AiProviderForm,
-) -> Result<AiProviderPublic, String> {
+) -> Result<AiProviderPublic, AppError> {
     normalize_provider_form(&mut config, Some("openai"))?;
     let db = get_db(&state).await?;
     let created = db.create_ai_provider(config).await?;
     db.get_ai_provider_public_by_id(created.id)
         .await
-        .map_err(String::from)
+        
 }
 
 pub async fn ai_create_provider_direct(
     state: &AppState,
     mut config: AiProviderForm,
-) -> Result<AiProviderPublic, String> {
+) -> Result<AiProviderPublic, AppError> {
     normalize_provider_form(&mut config, Some("openai"))?;
     let db = get_db_from_app_state(state).await?;
     let created = db.create_ai_provider(config).await?;
     db.get_ai_provider_public_by_id(created.id)
         .await
-        .map_err(String::from)
+        
 }
 
 #[tauri::command]
@@ -179,71 +179,71 @@ pub async fn ai_update_provider(
     state: State<'_, AppState>,
     id: i64,
     mut config: AiProviderForm,
-) -> Result<AiProviderPublic, String> {
+) -> Result<AiProviderPublic, AppError> {
     normalize_provider_form(&mut config, None)?;
     let db = get_db(&state).await?;
     let updated = db.update_ai_provider(id, config).await?;
     db.get_ai_provider_public_by_id(updated.id)
         .await
-        .map_err(String::from)
+        
 }
 
 pub async fn ai_update_provider_direct(
     state: &AppState,
     id: i64,
     mut config: AiProviderForm,
-) -> Result<AiProviderPublic, String> {
+) -> Result<AiProviderPublic, AppError> {
     normalize_provider_form(&mut config, None)?;
     let db = get_db_from_app_state(state).await?;
     let updated = db.update_ai_provider(id, config).await?;
     db.get_ai_provider_public_by_id(updated.id)
         .await
-        .map_err(String::from)
+        
 }
 
 #[tauri::command]
-pub async fn ai_delete_provider(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+pub async fn ai_delete_provider(state: State<'_, AppState>, id: i64) -> Result<(), AppError> {
     let db = get_db(&state).await?;
-    db.delete_ai_provider(id).await.map_err(String::from)
+    db.delete_ai_provider(id).await
 }
 
-pub async fn ai_delete_provider_direct(state: &AppState, id: i64) -> Result<(), String> {
+pub async fn ai_delete_provider_direct(state: &AppState, id: i64) -> Result<(), AppError> {
     let db = get_db_from_app_state(state).await?;
-    db.delete_ai_provider(id).await.map_err(String::from)
+    db.delete_ai_provider(id).await
 }
 
 #[tauri::command]
-pub async fn ai_set_default_provider(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+pub async fn ai_set_default_provider(state: State<'_, AppState>, id: i64) -> Result<(), AppError> {
     let db = get_db(&state).await?;
-    db.set_default_ai_provider(id).await.map_err(String::from)
+    db.set_default_ai_provider(id).await
 }
 
-pub async fn ai_set_default_provider_direct(state: &AppState, id: i64) -> Result<(), String> {
+pub async fn ai_set_default_provider_direct(state: &AppState, id: i64) -> Result<(), AppError> {
     let db = get_db_from_app_state(state).await?;
-    db.set_default_ai_provider(id).await.map_err(String::from)
+    db.set_default_ai_provider(id).await
 }
 
 #[tauri::command]
 pub async fn ai_clear_provider_api_key(
     state: State<'_, AppState>,
     provider_type: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let provider_type = normalize_provider_type(&provider_type)?;
     let db = get_db(&state).await?;
     db.clear_ai_provider_api_key(&provider_type)
         .await
-        .map_err(String::from)
+        
 }
 
 pub async fn ai_clear_provider_api_key_direct(
     state: &AppState,
     provider_type: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let provider_type = normalize_provider_type(&provider_type)?;
     let db = get_db_from_app_state(state).await?;
     db.clear_ai_provider_api_key(&provider_type)
         .await
-        .map_err(String::from)
+        
 }
 
 #[tauri::command]
@@ -251,7 +251,7 @@ pub async fn ai_chat_start(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: AiChatRequest,
-) -> Result<AiStartResponse, String> {
+) -> Result<AiStartResponse, AppError> {
     run_chat(app, state, request, true).await
 }
 
@@ -260,7 +260,7 @@ pub async fn ai_chat_continue(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: AiChatRequest,
-) -> Result<AiStartResponse, String> {
+) -> Result<AiStartResponse, AppError> {
     run_chat(app, state, request, false).await
 }
 
@@ -269,7 +269,7 @@ async fn run_chat(
     state: State<'_, AppState>,
     request: AiChatRequest,
     create_if_missing: bool,
-) -> Result<AiStartResponse, String> {
+) -> Result<AiStartResponse, AppError> {
     let db = get_db(&state).await?;
 
     let provider_record = if let Some(provider_id) = request.provider_id {
@@ -326,7 +326,7 @@ async fn run_chat(
     let provider = provider_from_model(provider_record.clone(), api_key);
     if let Err(e) = provider.validate_config() {
         emit_ai_error(&app, request.request_id, request.conversation_id, e.clone());
-        return Err(e);
+        return Err(AppError::ai_provider(e));
     }
 
     let conversation = match request.conversation_id {
@@ -415,7 +415,7 @@ async fn run_chat(
     let mut existing = match db.list_ai_messages(conversation.id).await {
         Ok(messages) => messages,
         Err(e) => {
-            let client_error = map_history_load_error(conversation.id, &e.to_string());
+            let client_error = map_history_load_error(conversation.id, &e);
             emit_ai_error(
                 &app,
                 request.request_id.clone(),
@@ -465,7 +465,7 @@ async fn run_chat(
         Ok(r) => r,
         Err(e) => {
             emit_ai_error(&app, request.request_id, Some(conversation.id), e.clone());
-            return Err(e);
+            return Err(AppError::ai_provider(e));
         }
     };
     let latency_ms = start.elapsed().as_millis() as i64;
@@ -508,7 +508,7 @@ async fn run_chat_direct(
     state: &AppState,
     request: AiChatRequest,
     create_if_missing: bool,
-) -> Result<AiStartResponse, String> {
+) -> Result<AiStartResponse, AppError> {
     let db = get_db_from_app_state(state).await?;
 
     let provider_record = if let Some(provider_id) = request.provider_id {
@@ -626,7 +626,7 @@ async fn run_chat_direct(
     let mut existing = db
         .list_ai_messages(conversation.id)
         .await
-        .map_err(|e| map_history_load_error(conversation.id, &e.to_string()))?;
+        .map_err(|e| map_history_load_error(conversation.id, &e))?;
     if existing.len() > 16 {
         existing = existing.split_off(existing.len() - 16);
     }
@@ -668,14 +668,14 @@ async fn run_chat_direct(
 pub async fn ai_chat_start_direct(
     state: &AppState,
     request: AiChatRequest,
-) -> Result<AiStartResponse, String> {
+) -> Result<AiStartResponse, AppError> {
     run_chat_direct(state, request, true).await
 }
 
 pub async fn ai_chat_continue_direct(
     state: &AppState,
     request: AiChatRequest,
-) -> Result<AiStartResponse, String> {
+) -> Result<AiStartResponse, AppError> {
     run_chat_direct(state, request, false).await
 }
 
@@ -684,29 +684,29 @@ pub async fn ai_list_conversations(
     state: State<'_, AppState>,
     connection_id: Option<i64>,
     database: Option<String>,
-) -> Result<Vec<AiConversation>, String> {
+) -> Result<Vec<AiConversation>, AppError> {
     let db = get_db(&state).await?;
     db.list_ai_conversations(connection_id, database)
         .await
-        .map_err(String::from)
+        
 }
 
 pub async fn ai_list_conversations_direct(
     state: &AppState,
     connection_id: Option<i64>,
     database: Option<String>,
-) -> Result<Vec<AiConversation>, String> {
+) -> Result<Vec<AiConversation>, AppError> {
     let db = get_db_from_app_state(state).await?;
     db.list_ai_conversations(connection_id, database)
         .await
-        .map_err(String::from)
+        
 }
 
 #[tauri::command]
 pub async fn ai_get_conversation(
     state: State<'_, AppState>,
     conversation_id: i64,
-) -> Result<AiConversationDetail, String> {
+) -> Result<AiConversationDetail, AppError> {
     let db = get_db(&state).await?;
     let conversation = db.get_ai_conversation(conversation_id).await?;
     let messages = db.list_ai_messages(conversation_id).await?;
@@ -719,7 +719,7 @@ pub async fn ai_get_conversation(
 pub async fn ai_get_conversation_direct(
     state: &AppState,
     conversation_id: i64,
-) -> Result<AiConversationDetail, String> {
+) -> Result<AiConversationDetail, AppError> {
     let db = get_db_from_app_state(state).await?;
     let conversation = db.get_ai_conversation(conversation_id).await?;
     let messages = db.list_ai_messages(conversation_id).await?;
@@ -733,21 +733,21 @@ pub async fn ai_get_conversation_direct(
 pub async fn ai_delete_conversation(
     state: State<'_, AppState>,
     conversation_id: i64,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let db = get_db(&state).await?;
     db.delete_ai_conversation(conversation_id)
         .await
-        .map_err(String::from)
+        
 }
 
 pub async fn ai_delete_conversation_direct(
     state: &AppState,
     conversation_id: i64,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let db = get_db_from_app_state(state).await?;
     db.delete_ai_conversation(conversation_id)
         .await
-        .map_err(String::from)
+        
 }
 
 #[cfg(test)]
@@ -757,6 +757,7 @@ mod tests {
         normalize_provider_type, validate_conversation_requirement,
     };
     use crate::ai::types::AiChatMessage;
+    use crate::error::AppError;
 
     #[test]
     fn normalize_provider_type_rejects_empty_value() {
@@ -812,8 +813,9 @@ mod tests {
 
     #[test]
     fn history_load_error_maps_to_client_message() {
+        let err = AppError::internal("[ERR-5002] broken");
         assert_eq!(
-            map_history_load_error(42, "[ERR-5002] broken").to_string(),
+            map_history_load_error(42, &err).to_string(),
             "[ERR-5002] Failed to load conversation history"
         );
     }

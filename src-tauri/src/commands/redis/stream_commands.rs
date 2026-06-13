@@ -7,7 +7,7 @@ pub async fn redis_xgroup_create(
     group: String,
     start_id: String,
     mkstream: Option<bool>,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     let ms = mkstream.unwrap_or(false);
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::xgroup_create(
@@ -19,7 +19,7 @@ pub async fn redis_xgroup_create(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -29,12 +29,12 @@ pub async fn redis_xgroup_del(
     database: Option<String>,
     key: String,
     group: String,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::xgroup_del(conn, key.clone(), group.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -45,7 +45,7 @@ pub async fn redis_xgroup_setid(
     key: String,
     group: String,
     start_id: String,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::xgroup_setid(
             conn,
@@ -55,7 +55,7 @@ pub async fn redis_xgroup_setid(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -66,12 +66,12 @@ pub async fn redis_xack(
     key: String,
     group: String,
     ids: Vec<String>,
-) -> Result<i64, String> {
+) -> Result<i64, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::xack(conn, key.clone(), group.clone(), ids.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -85,7 +85,7 @@ pub async fn redis_xpending(
     end: Option<String>,
     count: Option<i64>,
     consumer: Option<String>,
-) -> Result<RedisXPendingResult, String> {
+) -> Result<RedisXPendingResult, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::xpending(
             conn,
@@ -98,7 +98,7 @@ pub async fn redis_xpending(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -111,7 +111,7 @@ pub async fn redis_xclaim(
     consumer: String,
     min_idle_ms: i64,
     ids: Vec<String>,
-) -> Result<Vec<RedisXClaimEntry>, String> {
+) -> Result<Vec<RedisXClaimEntry>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::xclaim(
             conn,
@@ -123,7 +123,7 @@ pub async fn redis_xclaim(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -135,7 +135,7 @@ pub async fn redis_xtrim(
     strategy: String,
     threshold: String,
     approximate: Option<bool>,
-) -> Result<i64, String> {
+) -> Result<i64, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::xtrim(
             conn,
@@ -146,7 +146,7 @@ pub async fn redis_xtrim(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -159,7 +159,7 @@ pub async fn redis_xreadgroup(
     consumer: String,
     start_id: String,
     count: Option<i64>,
-) -> Result<Vec<RedisStreamEntry>, String> {
+) -> Result<Vec<RedisStreamEntry>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::xreadgroup(
             conn,
@@ -171,7 +171,7 @@ pub async fn redis_xreadgroup(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 // ── Batch operations ────────────────────────────────────────────────────────

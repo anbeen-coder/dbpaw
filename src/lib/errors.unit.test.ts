@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parseError, getFriendlyErrorMessage } from "./errors";
+import { parseError, getFriendlyErrorMessage, errorMessage } from "./errors";
 
 describe("parseError", () => {
   it("should parse connection error with hint", () => {
@@ -55,6 +55,21 @@ describe("parseError", () => {
     expect(result.message).toBe("");
     expect(result.category).toBe("internal");
   });
+
+  it("should pass through structured error objects", () => {
+    const structured = { code: 1001, message: "connection refused", hint: "check network", category: "connection" as const };
+    const result = parseError(structured);
+    expect(result).toBe(structured);
+  });
+
+  it("should handle structured error without hint", () => {
+    const structured = { code: 2001, message: "syntax error", category: "query" as const };
+    const result = parseError(structured);
+    expect(result.code).toBe(2001);
+    expect(result.message).toBe("syntax error");
+    expect(result.hint).toBeUndefined();
+    expect(result.category).toBe("query");
+  });
 });
 
 describe("getFriendlyErrorMessage", () => {
@@ -81,5 +96,27 @@ describe("getFriendlyErrorMessage", () => {
   it("should return original message for non-AppError", () => {
     const msg = getFriendlyErrorMessage("something went wrong");
     expect(msg).toBe("something went wrong");
+  });
+
+  it("should format structured error objects", () => {
+    const msg = getFriendlyErrorMessage({ code: 1001, message: "timeout", hint: "check network", category: "connection" });
+    expect(msg).toBe("Connection failed: timeout. check network");
+  });
+});
+
+describe("errorMessage", () => {
+  it("should extract message from structured error", () => {
+    const msg = errorMessage({ code: 1001, message: "connection refused", category: "connection" });
+    expect(msg).toBe("connection refused");
+  });
+
+  it("should extract message from Error instance", () => {
+    const msg = errorMessage(new Error("test error"));
+    expect(msg).toBe("test error");
+  });
+
+  it("should convert string to message", () => {
+    const msg = errorMessage("plain string error");
+    expect(msg).toBe("plain string error");
   });
 });

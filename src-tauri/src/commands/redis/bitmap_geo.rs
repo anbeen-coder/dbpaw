@@ -5,12 +5,12 @@ pub async fn redis_bitmap_get_bit(
     database: Option<String>,
     key: String,
     offset: u64,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::bitmap_get_bit(conn, key.clone(), offset))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -21,12 +21,12 @@ pub async fn redis_bitmap_count(
     key: String,
     start: Option<i64>,
     end: Option<i64>,
-) -> Result<u64, String> {
+) -> Result<u64, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::bitmap_count(conn, key.clone(), start, end))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -39,12 +39,12 @@ pub async fn redis_bitmap_pos(
     start: Option<u64>,
     end: Option<u64>,
     count: Option<u64>,
-) -> Result<Vec<u64>, String> {
+) -> Result<Vec<u64>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::bitmap_pos(conn, key.clone(), bit, start, end, count))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -54,12 +54,12 @@ pub async fn redis_hll_pfadd(
     database: Option<String>,
     key: String,
     elements: Vec<String>,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::hll_pfadd(conn, key.clone(), elements.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -69,12 +69,12 @@ pub async fn redis_geo_add(
     database: Option<String>,
     key: String,
     members: Vec<RedisGeoMember>,
-) -> Result<i64, String> {
+) -> Result<i64, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::geo_add(conn, key.clone(), members.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -84,12 +84,12 @@ pub async fn redis_geo_pos(
     database: Option<String>,
     key: String,
     members: Vec<String>,
-) -> Result<Vec<Option<RedisGeoPosition>>, String> {
+) -> Result<Vec<Option<RedisGeoPosition>>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::geo_pos(conn, key.clone(), members.clone()))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -101,7 +101,7 @@ pub async fn redis_geo_dist(
     member1: String,
     member2: String,
     unit: Option<String>,
-) -> Result<f64, String> {
+) -> Result<f64, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::geo_dist(
             conn,
@@ -112,7 +112,7 @@ pub async fn redis_geo_dist(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 
 #[tauri::command]
@@ -130,7 +130,7 @@ pub async fn redis_geo_search(
     with_dist: bool,
     with_hash: bool,
     count: Option<u64>,
-) -> Result<Vec<RedisGeoSearchResult>, String> {
+) -> Result<Vec<RedisGeoSearchResult>, AppError> {
     with_redis_retry(&state, id, database.as_deref(), |_, conn| {
         Box::pin(redis::geo_search(
             conn,
@@ -147,6 +147,6 @@ pub async fn redis_geo_search(
         ))
     })
     .await
-    .map_err(String::from)
+    
 }
 

@@ -34,20 +34,20 @@ async fn driver_from_id(state: &State<'_, AppState>, id: i64) -> Result<MongoDBD
 pub async fn mongodb_test_connection(
     state: State<'_, AppState>,
     id: i64,
-) -> Result<MongodbConnectionInfo, String> {
+) -> Result<MongodbConnectionInfo, AppError> {
     driver_from_id(&state, id)
         .await?
         .test_connection_info()
         .await
-        .map_err(String::from)
+        
 }
 
 #[tauri::command]
 pub async fn mongodb_test_connection_ephemeral(
     form: crate::models::ConnectionForm,
-) -> Result<TestConnectionResult, String> {
+) -> Result<TestConnectionResult, AppError> {
     let started = Instant::now();
-    let driver = MongoDBDriver::connect(&form).await.map_err(String::from)?;
+    let driver = MongoDBDriver::connect(&form).await?;
     match driver.test_connection_info().await {
         Ok(info) => Ok(TestConnectionResult {
             success: true,
@@ -57,7 +57,7 @@ pub async fn mongodb_test_connection_ephemeral(
             ),
             latency_ms: Some(started.elapsed().as_millis() as i64),
         }),
-        Err(e) => Err(String::from(e)),
+        Err(e) => Err(e),
     }
 }
 
@@ -65,12 +65,12 @@ pub async fn mongodb_test_connection_ephemeral(
 pub async fn mongodb_list_databases(
     state: State<'_, AppState>,
     id: i64,
-) -> Result<Vec<MongodbDatabaseInfo>, String> {
+) -> Result<Vec<MongodbDatabaseInfo>, AppError> {
     driver_from_id(&state, id)
         .await?
         .list_databases_info()
         .await
-        .map_err(String::from)
+        
 }
 
 #[tauri::command]
@@ -78,12 +78,12 @@ pub async fn mongodb_list_collections(
     state: State<'_, AppState>,
     id: i64,
     database: String,
-) -> Result<Vec<MongodbCollectionInfo>, String> {
+) -> Result<Vec<MongodbCollectionInfo>, AppError> {
     driver_from_id(&state, id)
         .await?
         .list_collections_info(&database)
         .await
-        .map_err(String::from)
+        
 }
 
 #[macro_export]

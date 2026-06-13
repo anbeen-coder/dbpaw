@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import type { Driver } from "@/services/api";
 
 interface ConnectionSummaryHeaderProps {
   driverConfig: { icon: () => React.ReactNode; label: string };

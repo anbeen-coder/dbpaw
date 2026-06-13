@@ -142,11 +142,11 @@ export function ConnectionDialog({
                       form={form}
                       setForm={setForm}
                       dialogMode={dialogMode}
-                      name={name}
+                      name={name || ""}
                       onNameChange={onNameChange}
-                      database={database}
+                      database={database || ""}
                       onDatabaseChange={onDatabaseChange}
-                      schema={schema}
+                      schema={schema || ""}
                       onSchemaChange={onSchemaChange}
                       showDatabase={formCapabilities.showDatabase}
                       showSchema={formCapabilities.showSchema}
@@ -157,11 +157,11 @@ export function ConnectionDialog({
 
                     <ConnectionNetworkFields
                       driver={form.driver}
-                      host={host}
+                      host={host || ""}
                       onHostChange={onHostChange}
                       port={port}
                       onPortChange={onPortChange}
-                      filePath={filePath}
+                      filePath={filePath || ""}
                       onFilePathChange={onFilePathChange}
                       showHost={formCapabilities.showHost}
                       showPort={formCapabilities.showPort}
@@ -178,17 +178,17 @@ export function ConnectionDialog({
                       showSsh={formCapabilities.showSsh}
                       supportsSslCa={supportsSslCa}
                       hasElasticCloudId={hasElasticCloudId}
-                      sslCaCert={sslCaCert}
+                      sslCaCert={sslCaCert || ""}
                       onSslCaCertChange={onSslCaCertChange}
-                      sshHost={sshHost}
+                      sshHost={sshHost || ""}
                       onSshHostChange={onSshHostChange}
                       sshPort={sshPort}
                       onSshPortChange={onSshPortChange}
-                      sshUsername={sshUsername}
+                      sshUsername={sshUsername || ""}
                       onSshUsernameChange={onSshUsernameChange}
-                      sshPassword={sshPassword}
+                      sshPassword={sshPassword || ""}
                       onSshPasswordChange={onSshPasswordChange}
-                      sshKeyPath={sshKeyPath}
+                      sshKeyPath={sshKeyPath || ""}
                       onSshKeyPathChange={onSshKeyPathChange}
                       onPickSslCaCertFile={onPickSslCaCertFile}
                       onPickSshKeyFile={onPickSshKeyFile}
@@ -198,11 +198,11 @@ export function ConnectionDialog({
 
                 <ConnectionNetworkFields
                   driver={form.driver}
-                  host={host}
+                  host={host || ""}
                   onHostChange={onHostChange}
                   port={port}
                   onPortChange={onPortChange}
-                  filePath={filePath}
+                  filePath={filePath || ""}
                   onFilePathChange={onFilePathChange}
                   showHost={false}
                   showPort={false}

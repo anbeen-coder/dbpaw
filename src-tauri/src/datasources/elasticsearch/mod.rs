@@ -14,6 +14,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 pub use client::build_base_url;
+pub use search::search_documents;
+pub use index::list_indices;
+pub use bulk::import_documents;
 
 pub(crate) const DEFAULT_ELASTICSEARCH_PORT: i64 = 9200;
 pub(crate) const DEFAULT_CONNECT_TIMEOUT_MS: i64 = 5000;
@@ -199,6 +202,27 @@ pub(crate) fn validate_index_name(index: &str) -> Result<String, AppError> {
         return Err(AppError::validation("index name cannot be empty"));
     }
     Ok(trimmed.to_string())
+}
+
+pub(crate) fn validate_raw_path(path: &str) -> Result<String, AppError> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::validation("request path cannot be empty"));
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Err(AppError::validation(
+            "raw requests must use a path, not a full URL",
+        ));
+    }
+    let path = if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{trimmed}")
+    };
+    if path.contains("..") {
+        return Err(AppError::validation("request path cannot contain '..'"));
+    }
+    Ok(path)
 }
 
 pub(crate) fn encode_path_segment(value: &str) -> String {

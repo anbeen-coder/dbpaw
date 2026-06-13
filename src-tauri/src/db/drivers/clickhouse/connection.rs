@@ -1,5 +1,5 @@
-use super::helpers::{quote_ident, quote_literal, table_ref};
 use super::super::{conn_failed_error, DriverResult};
+use super::helpers::{quote_ident, quote_literal, table_ref};
 use crate::error::AppError;
 use crate::models::ConnectionForm;
 use crate::ssh::SshTunnel;

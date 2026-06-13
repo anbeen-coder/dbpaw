@@ -99,9 +99,8 @@ impl ElasticsearchClient {
     ) -> Result<ElasticsearchBulkExportResult, AppError> {
         let index = super::validate_index_name(&index)?;
         let output_path = super::bulk::validate_file_path(&file_path, "export")?;
-        let batch_size = super::bulk::clamp_bulk_batch_size(
-            batch_size.unwrap_or(DEFAULT_BULK_BATCH_SIZE),
-        );
+        let batch_size =
+            super::bulk::clamp_bulk_batch_size(batch_size.unwrap_or(DEFAULT_BULK_BATCH_SIZE));
         let mut body = super::build_search_body(query, dsl)?;
         super::set_search_pagination(&mut body, None, batch_size)?;
 

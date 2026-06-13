@@ -6,12 +6,15 @@ use std::io::{BufRead, BufReader};
 use std::time::Instant;
 
 use super::{
-    BulkAction, BulkActionKind, BulkBatchResult, BulkImportAccumulator, ElasticsearchClient,
-    ElasticsearchBulkImportResult, ElasticsearchMutationResult, DEFAULT_BULK_BATCH_SIZE,
-    MAX_BULK_ERRORS,
+    BulkAction, BulkActionKind, BulkBatchResult, BulkImportAccumulator,
+    ElasticsearchBulkImportResult, ElasticsearchClient, ElasticsearchMutationResult,
+    DEFAULT_BULK_BATCH_SIZE, MAX_BULK_ERRORS,
 };
 
-pub(crate) fn validate_file_path(file_path: &str, operation: &str) -> Result<std::path::PathBuf, AppError> {
+pub(crate) fn validate_file_path(
+    file_path: &str,
+    operation: &str,
+) -> Result<std::path::PathBuf, AppError> {
     let trimmed = file_path.trim();
     if trimmed.is_empty() {
         return Err(AppError::validation(format!(
@@ -21,7 +24,10 @@ pub(crate) fn validate_file_path(file_path: &str, operation: &str) -> Result<std
     Ok(std::path::PathBuf::from(trimmed))
 }
 
-pub(crate) fn parse_bulk_action_line(line: &str, line_number: usize) -> Result<BulkAction, AppError> {
+pub(crate) fn parse_bulk_action_line(
+    line: &str,
+    line_number: usize,
+) -> Result<BulkAction, AppError> {
     let value = serde_json::from_str::<Value>(line.trim()).map_err(|e| {
         AppError::validation(format!(
             "invalid bulk action JSON at line {line_number}: {e}"
@@ -98,7 +104,11 @@ impl ElasticsearchClient {
             ),
             None => (
                 reqwest::Method::POST,
-                format!("/{}/_doc{}", super::encode_path_segment(&index), refresh_query),
+                format!(
+                    "/{}/_doc{}",
+                    super::encode_path_segment(&index),
+                    refresh_query
+                ),
             ),
         };
         self.read_mutation(self.request(method, &path).json(&source))
@@ -142,7 +152,8 @@ impl ElasticsearchClient {
                 "Elasticsearch bulk import file does not exist",
             ));
         }
-        let batch_size = super::clamp_bulk_batch_size(batch_size.unwrap_or(DEFAULT_BULK_BATCH_SIZE));
+        let batch_size =
+            super::clamp_bulk_batch_size(batch_size.unwrap_or(DEFAULT_BULK_BATCH_SIZE));
         let file = File::open(&import_path).map_err(|e| AppError::internal(format!("{e}")))?;
         let mut reader = BufReader::new(file);
         let started = Instant::now();
@@ -263,7 +274,11 @@ impl ElasticsearchClient {
         let response = self
             .request(
                 reqwest::Method::POST,
-                &format!("/{}/_bulk{}", super::encode_path_segment(index), refresh_query),
+                &format!(
+                    "/{}/_bulk{}",
+                    super::encode_path_segment(index),
+                    refresh_query
+                ),
             )
             .header(CONTENT_TYPE, "application/x-ndjson")
             .body(body)

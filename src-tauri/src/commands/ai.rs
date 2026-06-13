@@ -157,9 +157,7 @@ pub async fn ai_create_provider(
     normalize_provider_form(&mut config, Some("openai"))?;
     let db = get_db(&state).await?;
     let created = db.create_ai_provider(config).await?;
-    db.get_ai_provider_public_by_id(created.id)
-        .await
-        
+    db.get_ai_provider_public_by_id(created.id).await
 }
 
 pub async fn ai_create_provider_direct(
@@ -169,9 +167,7 @@ pub async fn ai_create_provider_direct(
     normalize_provider_form(&mut config, Some("openai"))?;
     let db = get_db_from_app_state(state).await?;
     let created = db.create_ai_provider(config).await?;
-    db.get_ai_provider_public_by_id(created.id)
-        .await
-        
+    db.get_ai_provider_public_by_id(created.id).await
 }
 
 #[tauri::command]
@@ -183,9 +179,7 @@ pub async fn ai_update_provider(
     normalize_provider_form(&mut config, None)?;
     let db = get_db(&state).await?;
     let updated = db.update_ai_provider(id, config).await?;
-    db.get_ai_provider_public_by_id(updated.id)
-        .await
-        
+    db.get_ai_provider_public_by_id(updated.id).await
 }
 
 pub async fn ai_update_provider_direct(
@@ -196,9 +190,7 @@ pub async fn ai_update_provider_direct(
     normalize_provider_form(&mut config, None)?;
     let db = get_db_from_app_state(state).await?;
     let updated = db.update_ai_provider(id, config).await?;
-    db.get_ai_provider_public_by_id(updated.id)
-        .await
-        
+    db.get_ai_provider_public_by_id(updated.id).await
 }
 
 #[tauri::command]
@@ -230,9 +222,7 @@ pub async fn ai_clear_provider_api_key(
 ) -> Result<(), AppError> {
     let provider_type = normalize_provider_type(&provider_type)?;
     let db = get_db(&state).await?;
-    db.clear_ai_provider_api_key(&provider_type)
-        .await
-        
+    db.clear_ai_provider_api_key(&provider_type).await
 }
 
 pub async fn ai_clear_provider_api_key_direct(
@@ -241,9 +231,7 @@ pub async fn ai_clear_provider_api_key_direct(
 ) -> Result<(), AppError> {
     let provider_type = normalize_provider_type(&provider_type)?;
     let db = get_db_from_app_state(state).await?;
-    db.clear_ai_provider_api_key(&provider_type)
-        .await
-        
+    db.clear_ai_provider_api_key(&provider_type).await
 }
 
 #[tauri::command]
@@ -686,9 +674,7 @@ pub async fn ai_list_conversations(
     database: Option<String>,
 ) -> Result<Vec<AiConversation>, AppError> {
     let db = get_db(&state).await?;
-    db.list_ai_conversations(connection_id, database)
-        .await
-        
+    db.list_ai_conversations(connection_id, database).await
 }
 
 pub async fn ai_list_conversations_direct(
@@ -697,9 +683,7 @@ pub async fn ai_list_conversations_direct(
     database: Option<String>,
 ) -> Result<Vec<AiConversation>, AppError> {
     let db = get_db_from_app_state(state).await?;
-    db.list_ai_conversations(connection_id, database)
-        .await
-        
+    db.list_ai_conversations(connection_id, database).await
 }
 
 #[tauri::command]
@@ -735,9 +719,7 @@ pub async fn ai_delete_conversation(
     conversation_id: i64,
 ) -> Result<(), AppError> {
     let db = get_db(&state).await?;
-    db.delete_ai_conversation(conversation_id)
-        .await
-        
+    db.delete_ai_conversation(conversation_id).await
 }
 
 pub async fn ai_delete_conversation_direct(
@@ -745,9 +727,7 @@ pub async fn ai_delete_conversation_direct(
     conversation_id: i64,
 ) -> Result<(), AppError> {
     let db = get_db_from_app_state(state).await?;
-    db.delete_ai_conversation(conversation_id)
-        .await
-        
+    db.delete_ai_conversation(conversation_id).await
 }
 
 #[cfg(test)]

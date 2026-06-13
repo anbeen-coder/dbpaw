@@ -1,6 +1,6 @@
+use super::super::{DriverResult, QueryColumn, QueryResult, SingleResultSet};
 use super::connection::{ClickHouseJsonResponse, ClickHouseRawResponse};
 use super::helpers::{quote_ident, quote_literal, table_ref, trim_trailing_semicolon};
-use super::super::{DriverResult, QueryColumn, QueryResult, SingleResultSet};
 use crate::error::AppError;
 use serde_json::Value;
 
@@ -41,7 +41,10 @@ pub fn ensure_json_format(sql: &str) -> String {
 
 pub fn infer_insert_values_row_count(sql: &str) -> Option<i64> {
     let trimmed = trim_trailing_semicolon(sql);
-    if !matches!(super::super::first_sql_keyword(trimmed).as_deref(), Some("INSERT")) {
+    if !matches!(
+        super::super::first_sql_keyword(trimmed).as_deref(),
+        Some("INSERT")
+    ) {
         return None;
     }
 

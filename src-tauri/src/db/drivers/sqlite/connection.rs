@@ -96,9 +96,7 @@ mod tests {
         let conn = SqliteConnection::connect(&form)
             .await
             .expect("Should connect to path with spaces");
-        conn.test_connection()
-            .await
-            .expect("Should execute query");
+        conn.test_connection().await.expect("Should execute query");
         conn.close().await;
 
         let _ = std::fs::remove_file(path);

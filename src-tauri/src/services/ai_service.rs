@@ -105,9 +105,7 @@ async fn get_db(state: &AppState) -> Result<Arc<crate::db::local::LocalDb>, AppE
 
 use std::sync::Arc;
 
-pub async fn ai_list_providers(
-    state: &AppState,
-) -> Result<Vec<AiProviderPublic>, AppError> {
+pub async fn ai_list_providers(state: &AppState) -> Result<Vec<AiProviderPublic>, AppError> {
     let db = get_db(state).await?;
     db.list_ai_providers_public().await
 }
@@ -133,18 +131,12 @@ pub async fn ai_update_provider(
     db.get_ai_provider_public_by_id(updated.id).await
 }
 
-pub async fn ai_delete_provider(
-    state: &AppState,
-    id: i64,
-) -> Result<(), AppError> {
+pub async fn ai_delete_provider(state: &AppState, id: i64) -> Result<(), AppError> {
     let db = get_db(state).await?;
     db.delete_ai_provider(id).await
 }
 
-pub async fn ai_set_default_provider(
-    state: &AppState,
-    id: i64,
-) -> Result<(), AppError> {
+pub async fn ai_set_default_provider(state: &AppState, id: i64) -> Result<(), AppError> {
     let db = get_db(state).await?;
     db.set_default_ai_provider(id).await
 }
@@ -326,9 +318,10 @@ async fn run_chat(
     );
 
     let mut history: Vec<AiChatMessage> = Vec::new();
-    let mut existing = db.list_ai_messages(conversation.id).await.map_err(|e| {
-        map_history_load_error(conversation.id, &e.to_string())
-    })?;
+    let mut existing = db
+        .list_ai_messages(conversation.id)
+        .await
+        .map_err(|e| map_history_load_error(conversation.id, &e.to_string()))?;
     if existing.len() > 16 {
         existing = existing.split_off(existing.len() - 16);
     }
@@ -423,9 +416,9 @@ async fn run_chat_direct(
     let db = get_db(state).await?;
 
     let provider_record = if let Some(provider_id) = request.provider_id {
-        db.get_ai_provider_by_id(provider_id).await.map_err(|_| {
-            AppError::not_found("Selected AI provider does not exist")
-        })?
+        db.get_ai_provider_by_id(provider_id)
+            .await
+            .map_err(|_| AppError::not_found("Selected AI provider does not exist"))?
     } else {
         db.get_default_ai_provider().await.map_err(|_| {
             AppError::validation(
@@ -484,12 +477,9 @@ async fn run_chat_direct(
         (request.connection_id, request.selected_tables.as_ref())
     {
         if !selected.is_empty() {
-            let driver = ensure_connection_with_db_from_app_state(
-                state,
-                conn_id,
-                request.database.clone(),
-            )
-            .await?;
+            let driver =
+                ensure_connection_with_db_from_app_state(state, conn_id, request.database.clone())
+                    .await?;
             let mut tables: Vec<AiTableSummary> = Vec::new();
             for t in selected {
                 let structure = driver
@@ -598,17 +588,12 @@ pub async fn ai_get_conversation(
     })
 }
 
-pub async fn ai_delete_conversation(
-    state: &AppState,
-    id: i64,
-) -> Result<(), AppError> {
+pub async fn ai_delete_conversation(state: &AppState, id: i64) -> Result<(), AppError> {
     let db = get_db(state).await?;
     db.delete_ai_conversation(id).await
 }
 
-pub async fn ai_list_providers_direct(
-    state: &AppState,
-) -> Result<Vec<AiProviderPublic>, AppError> {
+pub async fn ai_list_providers_direct(state: &AppState) -> Result<Vec<AiProviderPublic>, AppError> {
     ai_list_providers(state).await
 }
 
@@ -627,17 +612,11 @@ pub async fn ai_update_provider_direct(
     ai_update_provider(state, id, config).await
 }
 
-pub async fn ai_delete_provider_direct(
-    state: &AppState,
-    id: i64,
-) -> Result<(), AppError> {
+pub async fn ai_delete_provider_direct(state: &AppState, id: i64) -> Result<(), AppError> {
     ai_delete_provider(state, id).await
 }
 
-pub async fn ai_set_default_provider_direct(
-    state: &AppState,
-    id: i64,
-) -> Result<(), AppError> {
+pub async fn ai_set_default_provider_direct(state: &AppState, id: i64) -> Result<(), AppError> {
     ai_set_default_provider(state, id).await
 }
 
@@ -663,10 +642,7 @@ pub async fn ai_get_conversation_direct(
     ai_get_conversation(state, id).await
 }
 
-pub async fn ai_delete_conversation_direct(
-    state: &AppState,
-    id: i64,
-) -> Result<(), AppError> {
+pub async fn ai_delete_conversation_direct(state: &AppState, id: i64) -> Result<(), AppError> {
     ai_delete_conversation(state, id).await
 }
 
@@ -694,7 +670,9 @@ mod tests {
     #[test]
     fn normalize_provider_type_rejects_invalid_chars() {
         assert_eq!(
-            normalize_provider_type("bad type!").unwrap_err().to_string(),
+            normalize_provider_type("bad type!")
+                .unwrap_err()
+                .to_string(),
             "[ERR-3001] providerType has invalid format"
         );
     }

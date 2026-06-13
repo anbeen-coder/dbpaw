@@ -16,7 +16,6 @@ pub async fn save_query(
     if let Some(db) = local_db.as_ref() {
         db.create_saved_query(name, query, description, connection_id, database)
             .await
-            
     } else {
         Err(AppError::internal("Local DB not initialized"))
     }
@@ -53,7 +52,6 @@ pub async fn update_saved_query(
     if let Some(db) = local_db.as_ref() {
         db.update_saved_query(id, name, query, description, connection_id, database)
             .await
-            
     } else {
         Err(AppError::internal("Local DB not initialized"))
     }

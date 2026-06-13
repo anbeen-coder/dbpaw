@@ -118,7 +118,6 @@ pub async fn export_table_data(
         }
     })
     .await
-    
 }
 
 pub async fn export_table_data_direct(
@@ -173,7 +172,6 @@ pub async fn export_table_data_direct(
         }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -195,7 +193,6 @@ pub async fn export_database_sql(
         async move { do_database_export(db_driver, output_path, driver, format, chunk).await }
     })
     .await
-    
 }
 
 pub async fn export_database_sql_direct(
@@ -216,7 +213,6 @@ pub async fn export_database_sql_direct(
         async move { do_database_export(db_driver, output_path, driver, format, chunk).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -247,7 +243,6 @@ pub async fn export_query_result(
         async move { do_query_export(db_driver, output_path, sql, driver, format).await }
     })
     .await
-    
 }
 
 pub async fn export_query_result_direct(
@@ -277,7 +272,6 @@ pub async fn export_query_result_direct(
         async move { do_query_export(db_driver, output_path, sql, driver, format).await }
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -295,7 +289,6 @@ pub async fn import_sql_file(
         async move { execute_sql_import(db_driver, prepared, started_at).await }
     })
     .await
-    
 }
 
 pub async fn import_sql_file_direct(
@@ -312,7 +305,6 @@ pub async fn import_sql_file_direct(
         async move { execute_sql_import(db_driver, prepared, started_at).await }
     })
     .await
-    
 }
 
 #[cfg(test)]

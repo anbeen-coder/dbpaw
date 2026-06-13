@@ -13,10 +13,10 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-pub use client::build_base_url;
-pub use search::search_documents;
-pub use index::list_indices;
 pub use bulk::import_documents;
+pub use client::build_base_url;
+pub use index::list_indices;
+pub use search::search_documents;
 
 pub(crate) const DEFAULT_ELASTICSEARCH_PORT: i64 = 9200;
 pub(crate) const DEFAULT_CONNECT_TIMEOUT_MS: i64 = 5000;
@@ -275,10 +275,7 @@ pub(crate) fn set_search_pagination(
     Ok(())
 }
 
-pub(crate) fn parse_search_response(
-    value: Value,
-    elapsed_ms: i64,
-) -> ElasticsearchSearchResponse {
+pub(crate) fn parse_search_response(value: Value, elapsed_ms: i64) -> ElasticsearchSearchResponse {
     let took_ms = value
         .get("took")
         .and_then(Value::as_i64)
@@ -367,14 +364,13 @@ impl ElasticsearchClient {
 
 #[cfg(test)]
 mod tests {
+    use super::bulk::{build_bulk_action_line, parse_bulk_action_line, validate_file_path};
     use super::{
-        build_api_key, build_auth, build_base_url, build_reqwest_client,
-        build_search_body, clamp_bulk_batch_size, clamp_search_size, normalize_error,
-        parse_docs_count, parse_search_response, set_search_pagination,
-        validate_index_name, validate_raw_path, BulkActionKind,
-        ElasticsearchAuth,
+        build_api_key, build_auth, build_base_url, build_reqwest_client, build_search_body,
+        clamp_bulk_batch_size, clamp_search_size, normalize_error, parse_docs_count,
+        parse_search_response, set_search_pagination, validate_index_name, validate_raw_path,
+        BulkActionKind, ElasticsearchAuth,
     };
-    use super::bulk::{validate_file_path, parse_bulk_action_line, build_bulk_action_line};
     use crate::models::ConnectionForm;
     use base64::{engine::general_purpose, Engine as _};
     use reqwest::StatusCode;
@@ -635,8 +631,11 @@ mod tests {
 
     #[test]
     fn build_search_body_dsl_takes_priority() {
-        let result =
-            build_search_body(Some("ignored".to_string()), Some(r#"{"match":{"title":"hello"}}"#.to_string())).unwrap();
+        let result = build_search_body(
+            Some("ignored".to_string()),
+            Some(r#"{"match":{"title":"hello"}}"#.to_string()),
+        )
+        .unwrap();
         assert_eq!(result["match"]["title"], "hello");
     }
 

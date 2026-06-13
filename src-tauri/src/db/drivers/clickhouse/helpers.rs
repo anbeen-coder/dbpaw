@@ -1,4 +1,4 @@
-use super::super::{DriverResult};
+use super::super::DriverResult;
 use crate::error::AppError;
 use serde_json::Value;
 

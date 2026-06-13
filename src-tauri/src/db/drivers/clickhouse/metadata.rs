@@ -1,6 +1,12 @@
+use super::super::{
+    ColumnInfo, ColumnSchema, DriverResult, QueryColumn, QueryResult, SchemaOverview,
+    SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
+};
 use super::connection::ClickHouseJsonResponse;
-use super::helpers::{quote_ident, quote_literal, table_ref, value_to_bool, value_to_i64, value_to_string, required_i64_from_json_row};
-use super::super::{DriverResult, ColumnInfo, ColumnSchema, QueryColumn, QueryResult, SchemaOverview, SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure};
+use super::helpers::{
+    quote_ident, quote_literal, required_i64_from_json_row, table_ref, value_to_bool, value_to_i64,
+    value_to_string,
+};
 use crate::error::AppError;
 use crate::models::ClickHouseTableExtra;
 use serde_json::Value;
@@ -36,7 +42,11 @@ pub fn extract_ttl_expr(create_table_query: &str) -> Option<String> {
 }
 
 impl ClickHouseDriver {
-    pub async fn estimate_total_rows(&self, schema: &str, table: &str) -> DriverResult<Option<i64>> {
+    pub async fn estimate_total_rows(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> DriverResult<Option<i64>> {
         let sql = format!(
             "SELECT total_rows FROM system.tables WHERE database = {} AND name = {} FORMAT JSON",
             quote_literal(schema),
@@ -99,20 +109,33 @@ mod tests {
     #[test]
     fn extract_ttl_expr_extracts_ttl() {
         let sql = "CREATE TABLE t (id Int64) ENGINE = MergeTree() TTL date + INTERVAL 30 DAY SETTINGS index_granularity = 8192";
-        assert_eq!(extract_ttl_expr(sql), Some("date + INTERVAL 30 DAY".to_string()));
+        assert_eq!(
+            extract_ttl_expr(sql),
+            Some("date + INTERVAL 30 DAY".to_string())
+        );
     }
 
     #[test]
     fn extract_ttl_expr_returns_none_for_no_ttl() {
-        let sql = "CREATE TABLE t (id Int64) ENGINE = MergeTree() SETTINGS index_granularity = 8192";
+        let sql =
+            "CREATE TABLE t (id Int64) ENGINE = MergeTree() SETTINGS index_granularity = 8192";
         assert_eq!(extract_ttl_expr(sql), None);
     }
 
     #[test]
     fn normalize_optional_sql_expr_normalizes() {
         assert_eq!(normalize_optional_sql_expr(None), None);
-        assert_eq!(normalize_optional_sql_expr(Some(&Value::String("".to_string()))), None);
-        assert_eq!(normalize_optional_sql_expr(Some(&Value::String("  ".to_string()))), None);
-        assert_eq!(normalize_optional_sql_expr(Some(&Value::String("expr".to_string()))), Some("expr".to_string()));
+        assert_eq!(
+            normalize_optional_sql_expr(Some(&Value::String("".to_string()))),
+            None
+        );
+        assert_eq!(
+            normalize_optional_sql_expr(Some(&Value::String("  ".to_string()))),
+            None
+        );
+        assert_eq!(
+            normalize_optional_sql_expr(Some(&Value::String("expr".to_string()))),
+            Some("expr".to_string())
+        );
     }
 }

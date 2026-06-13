@@ -165,7 +165,11 @@ pub async fn get_routine_ddl(
         let schema = schema.clone();
         let routine_name = routine_name.clone();
         let routine_type = routine_type.clone();
-        async move { driver.get_routine_ddl(schema, routine_name, routine_type).await }
+        async move {
+            driver
+                .get_routine_ddl(schema, routine_name, routine_type)
+                .await
+        }
     })
     .await
 }
@@ -211,10 +215,7 @@ pub async fn get_schema_foreign_keys(
     .await
 }
 
-pub async fn get_driver_capabilities(
-    state: &AppState,
-    id: i64,
-) -> Result<u32, AppError> {
+pub async fn get_driver_capabilities(state: &AppState, id: i64) -> Result<u32, AppError> {
     crate::commands::execute_with_retry_from_app_state(state, id, None, |driver| async move {
         Ok::<u32, AppError>(driver.capabilities().bits())
     })

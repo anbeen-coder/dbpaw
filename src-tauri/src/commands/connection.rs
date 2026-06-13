@@ -264,9 +264,7 @@ fn normalize_create_database_error(err: AppError, db_name: &str) -> AppError {
 #[tauri::command]
 pub async fn list_databases(form: ConnectionForm) -> Result<Vec<String>, AppError> {
     let form = crate::connection_input::normalize_connection_form(form)?;
-    let driver = crate::db::drivers::connect(&form)
-        .await
-        ?;
+    let driver = crate::db::drivers::connect(&form).await?;
     driver.list_databases().await
 }
 
@@ -279,15 +277,16 @@ pub async fn list_databases_by_id(
         driver.list_databases().await
     })
     .await
-    
 }
 
-pub async fn list_databases_by_id_direct(state: &AppState, id: i64) -> Result<Vec<String>, AppError> {
+pub async fn list_databases_by_id_direct(
+    state: &AppState,
+    id: i64,
+) -> Result<Vec<String>, AppError> {
     super::execute_with_retry_from_app_state(state, id, None, |driver| async move {
         driver.list_databases().await
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -327,8 +326,7 @@ pub async fn create_database_by_id(
             .await
         }
         "postgres" => {
-            let create_sql =
-                build_postgres_create_database_sql(&payload, &db_name)?;
+            let create_sql = build_postgres_create_database_sql(&payload, &db_name)?;
             let exists_check_sql = format!(
                 "SELECT 1 FROM pg_database WHERE datname = {} LIMIT 1",
                 quote_literal(&db_name)
@@ -357,8 +355,7 @@ pub async fn create_database_by_id(
             .await
         }
         "clickhouse" => {
-            let sql =
-                build_clickhouse_create_database_sql(&payload, &db_name)?;
+            let sql = build_clickhouse_create_database_sql(&payload, &db_name)?;
             super::execute_with_retry(&state, id, None, |driver| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
@@ -366,8 +363,7 @@ pub async fn create_database_by_id(
             .await
         }
         "cassandra" => {
-            let sql =
-                build_cassandra_create_database_sql(&payload, &db_name)?;
+            let sql = build_cassandra_create_database_sql(&payload, &db_name)?;
             super::execute_with_retry(&state, id, None, |driver| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
@@ -380,9 +376,7 @@ pub async fn create_database_by_id(
         ))),
     };
 
-    exec_res
-        .map_err(|e| normalize_create_database_error(e, &db_name))
-        
+    exec_res.map_err(|e| normalize_create_database_error(e, &db_name))
 }
 
 pub async fn create_database_by_id_direct(
@@ -421,8 +415,7 @@ pub async fn create_database_by_id_direct(
             .await
         }
         "postgres" => {
-            let create_sql =
-                build_postgres_create_database_sql(&payload, &db_name)?;
+            let create_sql = build_postgres_create_database_sql(&payload, &db_name)?;
             let exists_check_sql = format!(
                 "SELECT 1 FROM pg_database WHERE datname = {} LIMIT 1",
                 quote_literal(&db_name)
@@ -451,8 +444,7 @@ pub async fn create_database_by_id_direct(
             .await
         }
         "clickhouse" => {
-            let sql =
-                build_clickhouse_create_database_sql(&payload, &db_name)?;
+            let sql = build_clickhouse_create_database_sql(&payload, &db_name)?;
             super::execute_with_retry_from_app_state(state, id, None, |driver| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
@@ -460,8 +452,7 @@ pub async fn create_database_by_id_direct(
             .await
         }
         "cassandra" => {
-            let sql =
-                build_cassandra_create_database_sql(&payload, &db_name)?;
+            let sql = build_cassandra_create_database_sql(&payload, &db_name)?;
             super::execute_with_retry_from_app_state(state, id, None, |driver| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
@@ -474,9 +465,7 @@ pub async fn create_database_by_id_direct(
         ))),
     };
 
-    exec_res
-        .map_err(|e| normalize_create_database_error(e, &db_name))
-        
+    exec_res.map_err(|e| normalize_create_database_error(e, &db_name))
 }
 
 #[tauri::command]
@@ -529,7 +518,6 @@ pub async fn get_mysql_charsets_by_id(
         Ok::<Vec<String>, AppError>(charsets)
     })
     .await
-    
 }
 
 #[tauri::command]
@@ -565,7 +553,6 @@ pub async fn get_mysql_collations_by_id(
         }
     })
     .await
-    
 }
 
 pub async fn get_mysql_charsets_by_id_direct(
@@ -589,7 +576,6 @@ pub async fn get_mysql_charsets_by_id_direct(
         Ok::<Vec<String>, AppError>(charsets)
     })
     .await
-    
 }
 
 pub async fn get_mysql_collations_by_id_direct(
@@ -624,7 +610,6 @@ pub async fn get_mysql_collations_by_id_direct(
         }
     })
     .await
-    
 }
 
 #[tauri::command]

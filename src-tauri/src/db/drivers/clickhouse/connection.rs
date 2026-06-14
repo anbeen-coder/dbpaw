@@ -1,9 +1,10 @@
 use super::super::{conn_failed_error, DriverResult};
-use super::helpers::{quote_ident, quote_literal, table_ref};
+use super::helpers::quote_literal;
+use super::ClickHouseDriver;
 use crate::error::AppError;
 use crate::models::ConnectionForm;
-use crate::ssh::SshTunnel;
 use reqwest;
+use serde::Deserialize;
 use serde_json::Value;
 
 #[derive(Debug)]

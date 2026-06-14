@@ -1,9 +1,7 @@
 use crate::db::drivers::DatabaseDriver;
 use crate::error::AppError;
-use crate::models::{Connection, ConnectionForm, TestConnectionResult};
 use crate::state::AppState;
 use serde::Deserialize;
-use std::time::Instant;
 use tauri::State;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -261,33 +259,7 @@ fn normalize_create_database_error(err: AppError, db_name: &str) -> AppError {
     err
 }
 
-#[tauri::command]
-pub async fn list_databases(form: ConnectionForm) -> Result<Vec<String>, AppError> {
-    let form = crate::connection_input::normalize_connection_form(form)?;
-    let driver = crate::db::drivers::connect(&form).await?;
-    driver.list_databases().await
-}
 
-#[tauri::command]
-pub async fn list_databases_by_id(
-    state: State<'_, AppState>,
-    id: i64,
-) -> Result<Vec<String>, AppError> {
-    super::execute_with_retry(&state, id, None, |driver| async move {
-        driver.list_databases().await
-    })
-    .await
-}
-
-pub async fn list_databases_by_id_direct(
-    state: &AppState,
-    id: i64,
-) -> Result<Vec<String>, AppError> {
-    super::execute_with_retry_from_app_state(state, id, None, |driver| async move {
-        driver.list_databases().await
-    })
-    .await
-}
 
 #[tauri::command]
 pub async fn create_database_by_id(
@@ -319,7 +291,7 @@ pub async fn create_database_by_id(
     let exec_res = match driver.as_str() {
         driver if crate::db::drivers::is_mysql_family_driver(driver) => {
             let sql = build_mysql_create_database_sql(&payload, &db_name)?;
-            super::execute_with_retry(&state, id, None, |driver| {
+            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
             })
@@ -331,7 +303,7 @@ pub async fn create_database_by_id(
                 "SELECT 1 FROM pg_database WHERE datname = {} LIMIT 1",
                 quote_literal(&db_name)
             );
-            super::execute_with_retry(&state, id, None, |driver| {
+            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let exists_sql = exists_check_sql.clone();
                 let create_sql = create_sql.clone();
                 async move {
@@ -348,7 +320,7 @@ pub async fn create_database_by_id(
         }
         "mssql" => {
             let sql = build_mssql_create_database_sql(&payload, &db_name)?;
-            super::execute_with_retry(&state, id, None, |driver| {
+            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
             })
@@ -356,7 +328,7 @@ pub async fn create_database_by_id(
         }
         "clickhouse" => {
             let sql = build_clickhouse_create_database_sql(&payload, &db_name)?;
-            super::execute_with_retry(&state, id, None, |driver| {
+            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
             })
@@ -364,7 +336,7 @@ pub async fn create_database_by_id(
         }
         "cassandra" => {
             let sql = build_cassandra_create_database_sql(&payload, &db_name)?;
-            super::execute_with_retry(&state, id, None, |driver| {
+            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
             })
@@ -408,7 +380,7 @@ pub async fn create_database_by_id_direct(
     let exec_res = match driver.as_str() {
         driver if crate::db::drivers::is_mysql_family_driver(driver) => {
             let sql = build_mysql_create_database_sql(&payload, &db_name)?;
-            super::execute_with_retry_from_app_state(state, id, None, |driver| {
+            crate::commands::execute_with_retry_from_app_state(state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
             })
@@ -420,7 +392,7 @@ pub async fn create_database_by_id_direct(
                 "SELECT 1 FROM pg_database WHERE datname = {} LIMIT 1",
                 quote_literal(&db_name)
             );
-            super::execute_with_retry_from_app_state(state, id, None, |driver| {
+            crate::commands::execute_with_retry_from_app_state(state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let exists_sql = exists_check_sql.clone();
                 let create_sql = create_sql.clone();
                 async move {
@@ -437,7 +409,7 @@ pub async fn create_database_by_id_direct(
         }
         "mssql" => {
             let sql = build_mssql_create_database_sql(&payload, &db_name)?;
-            super::execute_with_retry_from_app_state(state, id, None, |driver| {
+            crate::commands::execute_with_retry_from_app_state(state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
             })
@@ -445,7 +417,7 @@ pub async fn create_database_by_id_direct(
         }
         "clickhouse" => {
             let sql = build_clickhouse_create_database_sql(&payload, &db_name)?;
-            super::execute_with_retry_from_app_state(state, id, None, |driver| {
+            crate::commands::execute_with_retry_from_app_state(state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
             })
@@ -453,7 +425,7 @@ pub async fn create_database_by_id_direct(
         }
         "cassandra" => {
             let sql = build_cassandra_create_database_sql(&payload, &db_name)?;
-            super::execute_with_retry_from_app_state(state, id, None, |driver| {
+            crate::commands::execute_with_retry_from_app_state(state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
                 let sql_clone = sql.clone();
                 async move { driver.execute_query(sql_clone).await.map(|_| ()) }
             })
@@ -468,40 +440,14 @@ pub async fn create_database_by_id_direct(
     exec_res.map_err(|e| normalize_create_database_error(e, &db_name))
 }
 
-#[tauri::command]
-pub async fn test_connection_ephemeral(
-    form: ConnectionForm,
-) -> Result<TestConnectionResult, AppError> {
-    let form = crate::connection_input::normalize_connection_form(form)?;
-    let start = Instant::now();
-    if form.driver == "redis" {
-        let mut conn = crate::datasources::redis::connect(&form, None).await?;
-        crate::datasources::redis::ping(&mut conn).await?;
-    } else if form.driver == "elasticsearch" {
-        let client = crate::datasources::elasticsearch::ElasticsearchClient::connect(&form)?;
-        client.test_connection().await?;
-    } else if form.driver == "mongodb" {
-        let driver = crate::db::drivers::mongodb::MongoDBDriver::connect(&form).await?;
-        driver.test_connection().await?;
-    } else {
-        let driver = crate::db::drivers::connect(&form).await?;
-        driver.test_connection().await?;
-    }
 
-    let elapsed = start.elapsed().as_millis() as i64;
-    Ok(TestConnectionResult {
-        success: true,
-        message: "Connection successful".to_string(),
-        latency_ms: Some(elapsed),
-    })
-}
 
 #[tauri::command]
 pub async fn get_mysql_charsets_by_id(
     state: State<'_, AppState>,
     id: i64,
 ) -> Result<Vec<String>, AppError> {
-    super::execute_with_retry(&state, id, None, |driver| async move {
+    crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| async move {
         let result = driver
             .execute_query("SHOW CHARACTER SET".to_string())
             .await?;
@@ -535,7 +481,7 @@ pub async fn get_mysql_collations_by_id(
         }
         None => "SHOW COLLATION".to_string(),
     };
-    super::execute_with_retry(&state, id, None, |driver| {
+    crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
         let sql = sql.clone();
         async move {
             let result = driver.execute_query(sql).await?;
@@ -559,7 +505,7 @@ pub async fn get_mysql_charsets_by_id_direct(
     state: &AppState,
     id: i64,
 ) -> Result<Vec<String>, AppError> {
-    super::execute_with_retry_from_app_state(state, id, None, |driver| async move {
+    crate::commands::execute_with_retry_from_app_state(state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| async move {
         let result = driver
             .execute_query("SHOW CHARACTER SET".to_string())
             .await?;
@@ -592,7 +538,7 @@ pub async fn get_mysql_collations_by_id_direct(
         }
         None => "SHOW COLLATION".to_string(),
     };
-    super::execute_with_retry_from_app_state(state, id, None, |driver| {
+    crate::commands::execute_with_retry_from_app_state(state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
         let sql = sql.clone();
         async move {
             let result = driver.execute_query(sql).await?;
@@ -612,121 +558,7 @@ pub async fn get_mysql_collations_by_id_direct(
     .await
 }
 
-#[tauri::command]
-pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<Connection>, AppError> {
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    if let Some(db) = local_db {
-        db.list_connections().await
-    } else {
-        Err(AppError::internal("Local DB not initialized").into())
-    }
-}
 
-pub async fn get_connections_direct(state: &AppState) -> Result<Vec<Connection>, AppError> {
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    if let Some(db) = local_db {
-        db.list_connections().await
-    } else {
-        Err(AppError::internal("Local DB not initialized").into())
-    }
-}
-
-#[tauri::command]
-pub async fn create_connection(
-    state: State<'_, AppState>,
-    form: ConnectionForm,
-) -> Result<Connection, AppError> {
-    let form = crate::connection_input::normalize_connection_form(form)?;
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    if let Some(db) = local_db {
-        db.create_connection(form).await
-    } else {
-        Err(AppError::internal("Local DB not initialized").into())
-    }
-}
-
-pub async fn create_connection_direct(
-    state: &AppState,
-    form: ConnectionForm,
-) -> Result<Connection, AppError> {
-    let form = crate::connection_input::normalize_connection_form(form)?;
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    if let Some(db) = local_db {
-        db.create_connection(form).await
-    } else {
-        Err(AppError::internal("Local DB not initialized").into())
-    }
-}
-
-#[tauri::command]
-pub async fn update_connection(
-    state: State<'_, AppState>,
-    id: i64,
-    form: ConnectionForm,
-) -> Result<Connection, AppError> {
-    let form = crate::connection_input::normalize_connection_form(form)?;
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    if let Some(db) = local_db {
-        // If connection is updated, we should remove it from pool so next usage reconnects with new config
-        state.pool_manager.remove_by_prefix(&id.to_string()).await;
-
-        db.update_connection(id, form).await
-    } else {
-        Err(AppError::internal("Local DB not initialized").into())
-    }
-}
-
-pub async fn update_connection_direct(
-    state: &AppState,
-    id: i64,
-    form: ConnectionForm,
-) -> Result<Connection, AppError> {
-    let form = crate::connection_input::normalize_connection_form(form)?;
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    if let Some(db) = local_db {
-        state.pool_manager.remove_by_prefix(&id.to_string()).await;
-        db.update_connection(id, form).await
-    } else {
-        Err(AppError::internal("Local DB not initialized").into())
-    }
-}
-
-#[tauri::command]
-pub async fn delete_connection(state: State<'_, AppState>, id: i64) -> Result<(), AppError> {
-    delete_connection_direct(&state, id).await
-}
-
-pub async fn delete_connection_direct(state: &AppState, id: i64) -> Result<(), AppError> {
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    if let Some(db) = local_db {
-        state.pool_manager.remove_by_prefix(&id.to_string()).await;
-        state.redis_cache.lock().await.remove_by_connection_id(id);
-        db.delete_connection(id).await
-    } else {
-        Err(AppError::internal("Local DB not initialized").into())
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -1045,37 +877,4 @@ mod tests {
     }
 }
 
-#[tauri::command]
-pub async fn import_connections(
-    state: State<'_, AppState>,
-    file_path: String,
-) -> Result<crate::import::ImportResult, AppError> {
-    let local_db = {
-        let lock = state.local_db.lock().await;
-        lock.clone()
-    };
-    if let Some(db) = local_db {
-        crate::import::import_from_file(&file_path, &db)
-            .await
-            .map_err(AppError::internal)
-    } else {
-        Err(AppError::internal("Local DB not initialized"))
-    }
-}
 
-#[macro_export]
-macro_rules! connection_commands {
-    () => {
-        $crate::commands::connection::get_connections,
-        $crate::commands::connection::create_connection,
-        $crate::commands::connection::update_connection,
-        $crate::commands::connection::delete_connection,
-        $crate::commands::connection::import_connections,
-        $crate::commands::connection::test_connection_ephemeral,
-        $crate::commands::connection::list_databases,
-        $crate::commands::connection::list_databases_by_id,
-        $crate::commands::connection::create_database_by_id,
-        $crate::commands::connection::get_mysql_charsets_by_id,
-        $crate::commands::connection::get_mysql_collations_by_id,
-    };
-}

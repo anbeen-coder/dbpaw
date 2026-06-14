@@ -3,6 +3,7 @@ use crate::error::AppError;
 use crate::models::ConnectionForm;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
+#[derive(Debug)]
 pub struct SqliteConnection {
     pub pool: sqlx::SqlitePool,
 }

@@ -7,11 +7,11 @@ pub mod table_data;
 use super::{DatabaseDriver, DriverCapabilities, DriverResult};
 use crate::error::AppError;
 use crate::models::{
-    ClickHouseTableExtra, ColumnInfo, ColumnSchema, ConnectionForm, QueryColumn, QueryResult,
-    SchemaOverview, SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema,
-    TableStructure,
+    ColumnInfo, ColumnSchema, QueryResult, SchemaOverview, TableDataResponse, TableInfo,
+    TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
+use helpers::{quote_literal, table_ref, value_to_bool, value_to_string};
 use serde_json::Value;
 use std::collections::HashMap;
 

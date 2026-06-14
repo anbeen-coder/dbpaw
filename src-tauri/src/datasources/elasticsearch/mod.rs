@@ -3,20 +3,13 @@ mod client;
 mod index;
 mod search;
 
+use client::normalize_error;
 use crate::error::AppError;
-use crate::models::ConnectionForm;
-use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::path::PathBuf;
 use std::time::Instant;
 
-pub use bulk::import_documents;
 pub use client::build_base_url;
-pub use index::list_indices;
-pub use search::search_documents;
 
 pub(crate) const DEFAULT_ELASTICSEARCH_PORT: i64 = 9200;
 pub(crate) const DEFAULT_CONNECT_TIMEOUT_MS: i64 = 5000;
@@ -365,9 +358,12 @@ impl ElasticsearchClient {
 #[cfg(test)]
 mod tests {
     use super::bulk::{build_bulk_action_line, parse_bulk_action_line, validate_file_path};
+    use super::client::{
+        build_api_key, build_auth, build_reqwest_client, normalize_error,
+    };
+    use super::index::parse_docs_count;
     use super::{
-        build_api_key, build_auth, build_base_url, build_reqwest_client, build_search_body,
-        clamp_bulk_batch_size, clamp_search_size, normalize_error, parse_docs_count,
+        build_base_url, build_search_body, clamp_bulk_batch_size, clamp_search_size,
         parse_search_response, set_search_pagination, validate_index_name, validate_raw_path,
         BulkActionKind, ElasticsearchAuth,
     };

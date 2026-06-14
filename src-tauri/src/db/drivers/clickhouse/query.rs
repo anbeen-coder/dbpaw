@@ -1,7 +1,5 @@
-use super::super::{DriverResult, QueryColumn, QueryResult, SingleResultSet};
-use super::connection::{ClickHouseJsonResponse, ClickHouseRawResponse};
-use super::helpers::{quote_ident, quote_literal, table_ref, trim_trailing_semicolon};
-use crate::error::AppError;
+use crate::models::{QueryColumn, QueryResult};
+use super::helpers::trim_trailing_semicolon;
 use serde_json::Value;
 
 pub fn has_format_clause(sql: &str) -> bool {

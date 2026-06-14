@@ -1,16 +1,8 @@
-use super::super::{
-    ColumnInfo, ColumnSchema, DriverResult, QueryColumn, QueryResult, SchemaOverview,
-    SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
-};
-use super::connection::ClickHouseJsonResponse;
-use super::helpers::{
-    quote_ident, quote_literal, required_i64_from_json_row, table_ref, value_to_bool, value_to_i64,
-    value_to_string,
-};
-use crate::error::AppError;
+use super::super::DriverResult;
+use super::helpers::{quote_literal, value_to_i64};
+use super::ClickHouseDriver;
 use crate::models::ClickHouseTableExtra;
 use serde_json::Value;
-use std::collections::HashMap;
 
 pub fn normalize_optional_sql_expr(v: Option<&Value>) -> Option<String> {
     v.and_then(Value::as_str).and_then(|s| {

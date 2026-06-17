@@ -219,6 +219,28 @@ describe("ConnectionDialog", () => {
       expect(container.textContent).toContain("connection.dialog.fields.port");
     });
 
+    test("shows username/password fields for postgres", () => {
+      const { container } = render(
+        <ConnectionDialog
+          open={true}
+          dialogMode="create"
+          createStep="details"
+          form={makeForm({ driver: "postgres" })}
+          setForm={NOOP}
+          validationMsg={null}
+          testMsg={null}
+          requiredOk={true}
+          isTesting={false}
+          isConnecting={false}
+          isSavingEdit={false}
+          {...defaultDialogProps}
+        />,
+      );
+
+      expect(container.textContent).toContain("connection.dialog.fields.username");
+      expect(container.textContent).toContain("connection.dialog.fields.password");
+    });
+
     test("shows file path for sqlite", () => {
       const { container } = render(
         <ConnectionDialog
@@ -259,6 +281,28 @@ describe("ConnectionDialog", () => {
       );
 
       expect(container.textContent).not.toContain("connection.dialog.fields.host");
+    });
+
+    test("hides username/password fields for file-based drivers", () => {
+      const { container } = render(
+        <ConnectionDialog
+          open={true}
+          dialogMode="create"
+          createStep="details"
+          form={makeForm({ driver: "sqlite" })}
+          setForm={NOOP}
+          validationMsg={null}
+          testMsg={null}
+          requiredOk={true}
+          isTesting={false}
+          isConnecting={false}
+          isSavingEdit={false}
+          {...defaultDialogProps}
+        />,
+      );
+
+      expect(container.textContent).not.toContain("connection.dialog.fields.username");
+      expect(container.textContent).not.toContain("connection.dialog.fields.password");
     });
 
     test("Back to type button visible in create mode", () => {

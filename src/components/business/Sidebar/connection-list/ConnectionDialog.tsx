@@ -92,6 +92,7 @@ export function ConnectionDialog({
   const [name, onNameChange] = useFormField(form, setForm, "name");
   const [host, onHostChange] = useFormField(form, setForm, "host");
   const [port, onPortChange] = useFormField(form, setForm, "port", (v) => Number(v) || undefined);
+  const [username, onUsernameChange] = useFormField(form, setForm, "username");
   const [password, onPasswordChange] = useFormField(form, setForm, "password");
   const [database, onDatabaseChange] = useFormField(form, setForm, "database");
   const [schema, onSchemaChange] = useFormField(form, setForm, "schema");
@@ -146,8 +147,14 @@ export function ConnectionDialog({
                       onNameChange={onNameChange}
                       database={database || ""}
                       onDatabaseChange={onDatabaseChange}
+                      username={username || ""}
+                      onUsernameChange={onUsernameChange}
+                      password={password || ""}
+                      onPasswordChange={onPasswordChange}
                       schema={schema || ""}
                       onSchemaChange={onSchemaChange}
+                      showUsername={formCapabilities.showUsername}
+                      showPassword={formCapabilities.showPassword}
                       showDatabase={formCapabilities.showDatabase}
                       showSchema={formCapabilities.showSchema}
                       isRedis={isRedis}

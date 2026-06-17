@@ -2,6 +2,10 @@ import type { Dispatch, SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  requiresPasswordOnCreate,
+  requiresUsername,
+} from "@/lib/connection-form/rules";
 import type { ConnectionForm } from "@/services/api";
 import { ElasticsearchFormSection } from "./ElasticsearchFormSection";
 import { MongoDbFormSection } from "./MongoDbFormSection";
@@ -16,8 +20,14 @@ interface ConnectionBasicFieldsProps {
   onNameChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   database: string;
   onDatabaseChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  username: string;
+  onUsernameChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  password: string;
+  onPasswordChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   schema: string;
   onSchemaChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  showUsername: boolean;
+  showPassword: boolean;
   showDatabase: boolean;
   showSchema: boolean;
   isRedis: boolean;
@@ -33,8 +43,14 @@ export function ConnectionBasicFields({
   onNameChange,
   database,
   onDatabaseChange,
+  username,
+  onUsernameChange,
+  password,
+  onPasswordChange,
   schema,
   onSchemaChange,
+  showUsername,
+  showPassword,
   showDatabase,
   showSchema,
   isRedis,
@@ -72,6 +88,48 @@ export function ConnectionBasicFields({
           setForm={setForm}
           dialogMode={dialogMode}
         />
+      )}
+
+      {(showUsername || showPassword) && !isElasticsearch && !isMssql && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {showUsername ? (
+            <div className="grid gap-2">
+              <Label htmlFor="username">
+                {t("connection.dialog.fields.username")}{" "}
+                {requiresUsername(form.driver) ? (
+                  <span className="text-red-600">*</span>
+                ) : null}
+              </Label>
+              <Input
+                id="username"
+                value={username || ""}
+                onChange={onUsernameChange}
+              />
+            </div>
+          ) : null}
+          {showPassword ? (
+            <div className="grid gap-2">
+              <Label htmlFor="password">
+                {t("connection.dialog.fields.password")}{" "}
+                {dialogMode === "create" &&
+                requiresPasswordOnCreate(form.driver) ? (
+                  <span className="text-red-600">*</span>
+                ) : null}
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder={
+                  dialogMode === "edit"
+                    ? t("connection.dialog.placeholders.keepPassword")
+                    : undefined
+                }
+                value={password || ""}
+                onChange={onPasswordChange}
+              />
+            </div>
+          ) : null}
+        </div>
       )}
 
       {(showDatabase || showSchema) && (

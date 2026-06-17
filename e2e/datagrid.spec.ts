@@ -33,9 +33,15 @@ test.describe("DataGrid", () => {
     const runtimeErrors = collectRuntimeErrors(page);
     await expect(page.getByText("alice", { exact: true })).toBeVisible();
     await expect(page.getByText("bob", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Refresh")).toBeVisible();
-    await expect(page.getByLabel("Search")).toBeVisible();
-    await expect(page.getByLabel("Export")).toBeVisible();
+
+    // Scope to the DataGrid tab panel (sidebar also has Refresh button)
+    const tabPanel = page.locator("[role='tabpanel']").filter({
+      has: page.getByText("alice", { exact: true }),
+    });
+    await expect(tabPanel.getByLabel("Refresh")).toBeVisible();
+    await expect(tabPanel.getByLabel("Search")).toBeVisible();
+    await expect(tabPanel.getByLabel("Export")).toBeVisible();
+
     runtimeErrors.assertClean("Table view should not emit runtime errors");
   });
 

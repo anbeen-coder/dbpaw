@@ -44,6 +44,20 @@ export const mockConnections: any[] = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
+  {
+    id: 4,
+    uuid: "mock-4",
+    name: "Redis Dev",
+    dbType: "redis",
+    host: "localhost",
+    port: 6379,
+    database: "0",
+    username: "",
+    ssl: false,
+    sshEnabled: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
 ];
 
 export async function mockGetMysqlCharsets(_id: number): Promise<string[]> {

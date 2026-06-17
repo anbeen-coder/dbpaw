@@ -6,15 +6,31 @@ export async function mockRedisListDatabases(_id: number): Promise<any[]> {
   ];
 }
 
-export async function mockRedisScanKeys(_params: any): Promise<any> {
+export async function mockRedisScanKeys(params: any): Promise<any> {
   await new Promise((resolve) => setTimeout(resolve, 50));
+  const allKeys = [
+    { key: "user:1", keyType: "string", ttl: -1 },
+    { key: "user:2", keyType: "hash", ttl: 3600 },
+    { key: "session:abc", keyType: "string", ttl: 1800 },
+    { key: "counter:visits", keyType: "string", ttl: -1 },
+    { key: "tags", keyType: "set", ttl: -1 },
+    { key: "leaderboard", keyType: "zset", ttl: -1 },
+    { key: "queue:jobs", keyType: "list", ttl: -1 },
+    { key: "cache:page", keyType: "string", ttl: -2 },
+  ];
+
+  const pattern: string = params?.pattern ?? "*";
+  let filtered = allKeys;
+  if (pattern !== "*") {
+    const regex = new RegExp(
+      "^" + pattern.replace(/[.+^${}()|[\]\\-]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+    );
+    filtered = allKeys.filter((k) => regex.test(k.key));
+  }
+
   return {
     cursor: "0",
-    keys: [
-      { key: "user:1", keyType: "string", ttl: -1 },
-      { key: "user:2", keyType: "hash", ttl: 3600 },
-      { key: "session:abc", keyType: "string", ttl: 1800 },
-    ],
+    keys: filtered,
     isPartial: false,
   };
 }
@@ -22,11 +38,142 @@ export async function mockRedisScanKeys(_params: any): Promise<any> {
 export async function mockRedisGetKey(
   _id: number,
   _database: string | undefined,
-  _key: string,
+  key: string,
 ): Promise<any> {
   await new Promise((resolve) => setTimeout(resolve, 50));
-  return {
-    key: _key,
+
+  const typeValues: Record<string, any> = {
+    "user:1": {
+      key: "user:1",
+      keyType: "string",
+      ttl: -1,
+      value: { kind: "string", value: "alice" },
+      valueTotalLen: 5,
+      valueOffset: 0,
+      isBinary: false,
+      extra: null,
+      objectEncoding: "raw",
+      memoryUsage: 56,
+      objectIdletime: 0,
+      objectRefcount: 1,
+      keyExists: true,
+    },
+    "user:2": {
+      key: "user:2",
+      keyType: "hash",
+      ttl: 3600,
+      value: { kind: "hash", value: { name: "Bob", email: "bob@example.com" } },
+      valueTotalLen: 2,
+      valueOffset: 0,
+      isBinary: false,
+      extra: null,
+      objectEncoding: "ziplist",
+      memoryUsage: 128,
+      objectIdletime: 10,
+      objectRefcount: 1,
+      keyExists: true,
+    },
+    "session:abc": {
+      key: "session:abc",
+      keyType: "string",
+      ttl: 1800,
+      value: { kind: "string", value: "session-data-123" },
+      valueTotalLen: 16,
+      valueOffset: 0,
+      isBinary: false,
+      extra: null,
+      objectEncoding: "raw",
+      memoryUsage: 64,
+      objectIdletime: 5,
+      objectRefcount: 1,
+      keyExists: true,
+    },
+    "counter:visits": {
+      key: "counter:visits",
+      keyType: "string",
+      ttl: -1,
+      value: { kind: "string", value: "42" },
+      valueTotalLen: 2,
+      valueOffset: 0,
+      isBinary: false,
+      extra: null,
+      objectEncoding: "int",
+      memoryUsage: 16,
+      objectIdletime: 0,
+      objectRefcount: 1,
+      keyExists: true,
+    },
+    "tags": {
+      key: "tags",
+      keyType: "set",
+      ttl: -1,
+      value: { kind: "set", value: ["go", "rust", "typescript"] },
+      valueTotalLen: 3,
+      valueOffset: 0,
+      isBinary: false,
+      extra: null,
+      objectEncoding: "hashtable",
+      memoryUsage: 96,
+      objectIdletime: 0,
+      objectRefcount: 1,
+      keyExists: true,
+    },
+    "leaderboard": {
+      key: "leaderboard",
+      keyType: "zset",
+      ttl: -1,
+      value: {
+        kind: "zSet",
+        value: [
+          { member: "alice", score: 100 },
+          { member: "bob", score: 85 },
+          { member: "charlie", score: 72 },
+        ],
+      },
+      valueTotalLen: 3,
+      valueOffset: 0,
+      isBinary: false,
+      extra: null,
+      objectEncoding: "ziplist",
+      memoryUsage: 120,
+      objectIdletime: 0,
+      objectRefcount: 1,
+      keyExists: true,
+    },
+    "queue:jobs": {
+      key: "queue:jobs",
+      keyType: "list",
+      ttl: -1,
+      value: { kind: "list", value: ["job-1", "job-2", "job-3"] },
+      valueTotalLen: 3,
+      valueOffset: 0,
+      isBinary: false,
+      extra: null,
+      objectEncoding: "ziplist",
+      memoryUsage: 80,
+      objectIdletime: 0,
+      objectRefcount: 1,
+      keyExists: true,
+    },
+    "cache:page": {
+      key: "cache:page",
+      keyType: "string",
+      ttl: -2,
+      value: { kind: "string", value: "" },
+      valueTotalLen: 0,
+      valueOffset: 0,
+      isBinary: false,
+      extra: null,
+      objectEncoding: "raw",
+      memoryUsage: 0,
+      objectIdletime: 0,
+      objectRefcount: 1,
+      keyExists: false,
+    },
+  };
+
+  return typeValues[key] ?? {
+    key,
     keyType: "string",
     ttl: -1,
     value: { kind: "string", value: "mock-value" },

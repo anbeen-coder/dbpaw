@@ -48,6 +48,7 @@ test("connection node right-click menu opens and actions trigger dialogs", async
 
   // Click Duplicate - silent action, just verify no errors
   await contextMenu.getByRole("button", { name: "Duplicate" }).click();
+  await page.waitForTimeout(500);
   runtimeErrors.assertClean("Duplicate should not emit runtime errors");
 
   // Right-click again
@@ -58,6 +59,7 @@ test("connection node right-click menu opens and actions trigger dialogs", async
 
   // Click Refresh - reconnect action, just verify no errors
   await contextMenu.getByRole("button", { name: "Refresh" }).click();
+  await page.waitForTimeout(500);
   runtimeErrors.assertClean("Refresh should not emit runtime errors");
 
   // Right-click again
@@ -68,6 +70,7 @@ test("connection node right-click menu opens and actions trigger dialogs", async
 
   // Click New Query - opens query tab
   await contextMenu.getByRole("button", { name: "New Query" }).click();
+  await page.waitForTimeout(500);
   runtimeErrors.assertClean("New Query should not emit runtime errors");
 
   // Right-click again

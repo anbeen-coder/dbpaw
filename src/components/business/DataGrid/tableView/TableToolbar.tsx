@@ -197,6 +197,7 @@ export const TableToolbar = React.memo(function TableToolbar({
               className="h-6 w-6 p-0 hover:bg-background"
               onClick={handlePrevPage}
               disabled={page <= 1}
+              aria-label="Previous page"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </Button>
@@ -227,6 +228,7 @@ export const TableToolbar = React.memo(function TableToolbar({
               className="h-6 w-6 p-0 hover:bg-background"
               onClick={handleNextPage}
               disabled={page >= totalPages}
+              aria-label="Next page"
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </Button>
@@ -262,6 +264,7 @@ export const TableToolbar = React.memo(function TableToolbar({
               onClick={handleRefreshClick}
               disabled={isRefreshing}
               title={isRefreshing ? "Refreshing..." : "Refresh"}
+              aria-label="Refresh"
             >
               <RotateCw
                 className={[
@@ -285,6 +288,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 ? "Switch to column view"
                 : "Switch to table view"
             }
+            aria-label={viewMode === "table" ? "Toggle column view" : "Toggle table view"}
           >
             {viewMode === "table" ? (
               <Columns className="w-3.5 h-3.5" />
@@ -299,6 +303,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 size="sm"
                 className="h-6 w-6 p-0 hover:bg-muted/60"
                 title="Search in current table (Ctrl/Cmd+F)"
+                aria-label="Search"
               >
                 <Search className="w-3.5 h-3.5" />
               </Button>
@@ -376,6 +381,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                   )
                 }
                 title={t("connection.menu.newQuery")}
+                aria-label={t("connection.menu.newQuery")}
               >
                 <SquareTerminal className="w-3.5 h-3.5" />
                 {t("connection.menu.newQuery")}
@@ -387,6 +393,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 className="h-6 gap-1 px-2 hover:bg-muted/60"
                 onClick={onShowDDL}
                 title="View Table Structure (DDL)"
+                aria-label="DDL"
               >
                 <FileCode className="w-3.5 h-3.5" />
                 <span className="text-xs font-medium leading-none">
@@ -404,6 +411,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                   }
                 }}
                 title="Open ER Diagram"
+                aria-label="ER Diagram"
               >
                 <Table className="w-3.5 h-3.5" />
                 <span className="text-xs font-medium leading-none">
@@ -422,6 +430,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                   onClick={handleAddDraftRow}
                   disabled={isSaving || isDeleting}
                   title="Add a new row draft"
+                  aria-label="Add row"
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </Button>
@@ -438,6 +447,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                       ? `Delete ${selectedRowsSize} selected row(s)`
                       : "Select rows to delete"
                   }
+                  aria-label="Delete selected rows"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
@@ -455,6 +465,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 onClick={handleSave}
                 disabled={isSaving}
                 title="Save changes (Cmd/Ctrl+S)"
+                aria-label="Save"
               >
                 {isSaving ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -473,6 +484,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 onClick={handleDiscardChanges}
                 disabled={isSaving}
                 title="Discard changes (Esc)"
+                aria-label="Discard"
               >
                 <Undo2 className="w-3.5 h-3.5" />
               </Button>
@@ -487,6 +499,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 className="h-6 w-6 p-0 hover:bg-muted/60"
                 disabled={!tableContext || isExporting}
                 title="Export data"
+                aria-label="Export"
               >
                 <Download className="w-3.5 h-3.5" />
               </Button>

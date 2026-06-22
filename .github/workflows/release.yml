@@ -89,6 +89,8 @@ jobs:
         include:
           - platform: macos-latest
             target: aarch64-apple-darwin
+          - platform: macos-latest
+            target: x86_64-apple-darwin
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
           - platform: windows-2022
@@ -120,6 +122,20 @@ jobs:
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: brew install create-dmg unixodbc
+
+      - name: Setup Rosetta 2 and x86_64 Homebrew
+        if: matrix.target == 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          softwareupdate --install-rosetta --agree-to-license || true
+
+          if [ ! -x /usr/local/bin/brew ]; then
+            arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/null
+          fi
+
+          arch -x86_64 /usr/local/bin/brew install unixodbc
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -169,6 +185,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_UPGRADE_LINK_ACCESS_KEY: ${{ secrets.UPGRADE_LINK_ACCESS_KEY }}
+          RUSTFLAGS: ${{ matrix.target == 'x86_64-apple-darwin' && '-L /usr/local/lib' || '' }}
+          PKG_CONFIG_PATH: ${{ matrix.target == 'x86_64-apple-darwin' && '/usr/local/lib/pkgconfig' || '' }}
+          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.target == 'x86_64-apple-darwin' && '1' || '' }}
 
       - name: Build app (Windows)
         if: matrix.platform == 'windows-2022'

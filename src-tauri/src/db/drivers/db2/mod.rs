@@ -27,8 +27,12 @@ impl Db2Driver {
 
         Ok(Self {
             connection: conn,
-            metadata: metadata::Db2Metadata { config: config.clone() },
-            query: query::Db2Query { config: config.clone() },
+            metadata: metadata::Db2Metadata {
+                config: config.clone(),
+            },
+            query: query::Db2Query {
+                config: config.clone(),
+            },
             table_data: table_data::Db2TableData { config },
         })
     }
@@ -88,6 +92,7 @@ impl DatabaseDriver for Db2Driver {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         self.table_data
             .get_table_data(
@@ -99,6 +104,7 @@ impl DatabaseDriver for Db2Driver {
                 sort_direction,
                 filter,
                 order_by,
+                include_total,
             )
             .await
     }

@@ -46,6 +46,7 @@ impl SqliteTableData {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> Result<TableDataResponse, AppError> {
         let start = std::time::Instant::now();
         let safe_page = if page < 1 { 1 } else { page };
@@ -61,11 +62,17 @@ impl SqliteTableData {
             _ => String::new(),
         };
 
-        let count_query = format!("SELECT COUNT(*) FROM {}{}", table_ref, where_clause);
-        let total: i64 = sqlx::query_scalar(&count_query)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| AppError::query_failed(format!("SQL: {} | {}", count_query, e)))?;
+        let total = if include_total {
+            let count_query = format!("SELECT COUNT(*) FROM {}{}", table_ref, where_clause);
+            Some(
+                sqlx::query_scalar(&count_query)
+                    .fetch_one(&self.pool)
+                    .await
+                    .map_err(|e| AppError::query_failed(format!("SQL: {} | {}", count_query, e)))?,
+            )
+        } else {
+            None
+        };
 
         let order_clause = if let Some(ref ob) = order_by {
             if !ob.trim().is_empty() {
@@ -140,6 +147,7 @@ impl SqliteTableData {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }
@@ -190,16 +198,63 @@ mod tests {
                 Some("asc".to_string()),
                 None,
                 None,
+                true,
             )
             .await
             .unwrap();
 
-        assert_eq!(result.total, 2);
+        assert_eq!(result.total, Some(2));
         assert_eq!(result.data.len(), 2);
         assert_eq!(
             result.data[0]["name"],
             serde_json::Value::String("alice".to_string())
         );
+
+        conn.close().await;
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_get_table_data_can_skip_total_count() {
+        let path = temp_db_path();
+        let form = crate::models::ConnectionForm {
+            driver: "sqlite".to_string(),
+            file_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        let conn = super::super::connection::SqliteConnection::connect(&form)
+            .await
+            .unwrap();
+        let table_data = SqliteTableData {
+            pool: conn.pool.clone(),
+        };
+
+        sqlx::query(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT); \
+             INSERT INTO users (name) VALUES ('alice'), ('bob'), ('carol');",
+        )
+        .execute(&conn.pool)
+        .await
+        .unwrap();
+
+        let result = table_data
+            .get_table_data(
+                "main".to_string(),
+                "users".to_string(),
+                1,
+                2,
+                Some("id".to_string()),
+                Some("asc".to_string()),
+                None,
+                None,
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.total, None);
+        assert_eq!(result.data.len(), 2);
 
         conn.close().await;
         let _ = std::fs::remove_file(path);
@@ -251,10 +306,11 @@ mod tests {
                 None,
                 None,
                 None,
+                true,
             )
             .await
             .unwrap();
-        assert_eq!(result.total, 1);
+        assert_eq!(result.total, Some(1));
         let row = result.data.first().unwrap();
         assert!(
             row["price"].is_number(),

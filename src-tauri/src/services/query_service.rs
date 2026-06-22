@@ -27,6 +27,7 @@ pub async fn get_table_data(
     filter: Option<String>,
     order_by: Option<String>,
     database: Option<String>,
+    include_total: bool,
 ) -> Result<TableDataResponse, AppError> {
     crate::commands::execute_with_retry_from_app_state(state, id, database, |driver| {
         let schema = schema.clone();
@@ -46,6 +47,7 @@ pub async fn get_table_data(
                     sort_direction,
                     filter,
                     order_by,
+                    include_total,
                 )
                 .await
         }
@@ -107,6 +109,7 @@ pub async fn get_table_data_by_conn(
         filter,
         order_by,
         None,
+        true,
     )
     .await
 }

@@ -510,6 +510,7 @@ impl MysqlTableData {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> Result<TableDataResponse, AppError> {
         let start = std::time::Instant::now();
         let offset = (page - 1) * limit;
@@ -523,8 +524,12 @@ impl MysqlTableData {
             _ => String::new(),
         };
 
-        let count_query = format!("SELECT COUNT(*) FROM {}{}", qualified, where_clause);
-        let total = self.fetch_i64_scalar_sql(&count_query).await?;
+        let total = if include_total {
+            let count_query = format!("SELECT COUNT(*) FROM {}{}", qualified, where_clause);
+            Some(self.fetch_i64_scalar_sql(&count_query).await?)
+        } else {
+            None
+        };
 
         let order_clause = if let Some(ref ob) = order_by {
             if !ob.trim().is_empty() {
@@ -605,6 +610,7 @@ impl MysqlTableData {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }

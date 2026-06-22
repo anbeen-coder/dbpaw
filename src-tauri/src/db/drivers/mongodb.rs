@@ -5,9 +5,9 @@ use crate::models::{
     SingleResultSet, TableDataResponse, TableInfo, TableMetadata, TableSchema, TableStructure,
 };
 use async_trait::async_trait;
-use mongodb::bson::{doc, Bson, Document};
-use mongodb::options::{ClientOptions, Tls, TlsOptions};
 use mongodb::Client;
+use mongodb::bson::{Bson, Document, doc};
+use mongodb::options::{ClientOptions, Tls, TlsOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -570,6 +570,7 @@ impl DatabaseDriver for MongoDBDriver {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         let start = Instant::now();
         let safe_page = page.max(1);
@@ -582,10 +583,16 @@ impl DatabaseDriver for MongoDBDriver {
             None => Document::new(),
         };
 
-        let total = collection
-            .count_documents(filter_doc.clone())
-            .await
-            .map_err(normalize_mongo_error)? as i64;
+        let total = if include_total {
+            Some(
+                collection
+                    .count_documents(filter_doc.clone())
+                    .await
+                    .map_err(normalize_mongo_error)? as i64,
+            )
+        } else {
+            None
+        };
 
         let sort_doc = if let Some(ref ob) = order_by {
             parse_json_doc(ob, "sort")?
@@ -637,6 +644,7 @@ impl DatabaseDriver for MongoDBDriver {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }
@@ -713,7 +721,9 @@ impl DatabaseDriver for MongoDBDriver {
             return self.cursor_to_query_result(cursor, trimmed, start).await;
         }
 
-        Err(AppError::query_failed("Unsupported query format. Use {\"find\": \"collection\", ...} or {\"aggregate\": \"collection\", \"pipeline\": [...]}"))
+        Err(AppError::query_failed(
+            "Unsupported query format. Use {\"find\": \"collection\", ...} or {\"aggregate\": \"collection\", \"pipeline\": [...]}",
+        ))
     }
 
     async fn get_schema_overview(&self, schema: Option<String>) -> DriverResult<SchemaOverview> {

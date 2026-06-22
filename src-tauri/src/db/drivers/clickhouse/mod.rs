@@ -237,6 +237,7 @@ impl DatabaseDriver for ClickHouseDriver {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         self.get_table_data(
             schema,
@@ -247,6 +248,7 @@ impl DatabaseDriver for ClickHouseDriver {
             sort_direction,
             filter,
             order_by,
+            include_total,
         )
         .await
     }

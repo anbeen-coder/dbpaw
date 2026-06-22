@@ -234,6 +234,7 @@ function TableTab({ tab }: { tab: TableTabItem }) {
       total={tab.total}
       page={tab.page}
       pageSize={tab.pageSize}
+      includeTotal={!!tab.includeTotal}
       executionTimeMs={tab.executionTimeMs}
       onPageChange={(p) => handlePageChange(tab.id, p)}
       onPageSizeChange={(size) => handlePageSizeChange(tab.id, size)}
@@ -251,6 +252,9 @@ function TableTab({ tab }: { tab: TableTabItem }) {
         });
       }}
       onDataRefresh={(params) => handleTableRefresh(tab.id, params)}
+      onIncludeTotalChange={(includeTotal) =>
+        handleTableRefresh(tab.id, { includeTotal })
+      }
       onCreateQuery={handleCreateQuery}
       tableContext={
         tab.connectionId && tab.database && tab.tableName && tab.driver
@@ -509,7 +513,10 @@ function renderTab(tab: TabItem) {
   }
 }
 
-export function shouldMountTabContent(tabId: string, activeTab: string): boolean {
+export function shouldMountTabContent(
+  tabId: string,
+  activeTab: string,
+): boolean {
   return tabId === activeTab;
 }
 
@@ -536,11 +543,7 @@ export function TabContentRenderer({
       {tabs.map((tab) => {
         const shouldMount = shouldMountTabContent(tab.id, activeTab);
         return (
-          <TabsContent
-            key={tab.id}
-            value={tab.id}
-            className="h-full m-0"
-          >
+          <TabsContent key={tab.id} value={tab.id} className="h-full m-0">
             {shouldMount && <ErrorBoundary>{renderTab(tab)}</ErrorBoundary>}
           </TabsContent>
         );

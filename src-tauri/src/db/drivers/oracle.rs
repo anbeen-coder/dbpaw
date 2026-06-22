@@ -1,6 +1,6 @@
 use super::{
-    conn_failed_error, DatabaseDriver, DriverCapabilities, DriverResult, ForeignKeyDriver,
-    PackageDriver, SequenceDriver, TypeDriver,
+    DatabaseDriver, DriverCapabilities, DriverResult, ForeignKeyDriver, PackageDriver,
+    SequenceDriver, TypeDriver, conn_failed_error,
 };
 use crate::error::AppError;
 use crate::models::{
@@ -515,6 +515,7 @@ impl DatabaseDriver for OracleDriver {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         let start = std::time::Instant::now();
         let safe_page = if page < 1 { 1 } else { page };
@@ -553,16 +554,20 @@ impl DatabaseDriver for OracleDriver {
         };
 
         self.run_blocking(move |conn| {
-            // Total count
-            let count_sql = format!("SELECT COUNT(*) FROM {}{}", table_ref, where_clause);
-            let count_rows = conn
-                .query(&count_sql, &[] as &[&dyn oracle::sql_type::ToSql])
-                .map_err(|e| AppError::query_failed(format!("{e}")))?;
-            let mut total: i64 = 0;
-            for row_result in count_rows {
-                let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
-                total = row.get::<_, Option<i64>>(0).ok().flatten().unwrap_or(0);
-            }
+            let total = if include_total {
+                let count_sql = format!("SELECT COUNT(*) FROM {}{}", table_ref, where_clause);
+                let count_rows = conn
+                    .query(&count_sql, &[] as &[&dyn oracle::sql_type::ToSql])
+                    .map_err(|e| AppError::query_failed(format!("{e}")))?;
+                let mut total: i64 = 0;
+                for row_result in count_rows {
+                    let row = row_result.map_err(|e| AppError::query_failed(format!("{e}")))?;
+                    total = row.get::<_, Option<i64>>(0).ok().flatten().unwrap_or(0);
+                }
+                Some(total)
+            } else {
+                None
+            };
 
             // Paginated data (Oracle 12c+ OFFSET/FETCH)
             let data_sql = format!(
@@ -621,6 +626,7 @@ impl DatabaseDriver for OracleDriver {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }

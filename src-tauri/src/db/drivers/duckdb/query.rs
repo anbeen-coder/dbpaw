@@ -23,6 +23,7 @@ impl DuckdbQuery {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         self.connection
             .run_blocking(move |conn| {
@@ -40,10 +41,17 @@ impl DuckdbQuery {
                     _ => String::new(),
                 };
 
-                let count_query = format!("SELECT COUNT(*) FROM {}{}", table_ref, where_clause);
-                let total: i64 = conn
-                    .query_row(&count_query, [], |row| row.get(0))
-                    .map_err(|e| AppError::query_failed(format!("SQL: {} | {}", count_query, e)))?;
+                let total = if include_total {
+                    let count_query = format!("SELECT COUNT(*) FROM {}{}", table_ref, where_clause);
+                    Some(
+                        conn.query_row(&count_query, [], |row| row.get(0))
+                            .map_err(|e| {
+                                AppError::query_failed(format!("SQL: {} | {}", count_query, e))
+                            })?,
+                    )
+                } else {
+                    None
+                };
 
                 let order_clause = if let Some(ref ob) = order_by {
                     if !ob.trim().is_empty() {
@@ -258,8 +266,7 @@ impl DuckdbQuery {
                                 if !inferred_types {
                                     for (i, col) in columns.iter_mut().enumerate() {
                                         if let Ok(v) = row.get_ref(i) {
-                                            col.r#type =
-                                                duckdb_value_ref_type_name(&v).to_string();
+                                            col.r#type = duckdb_value_ref_type_name(&v).to_string();
                                         }
                                     }
                                     inferred_types = true;

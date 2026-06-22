@@ -88,6 +88,7 @@ impl DatabaseDriver for DuckdbDriver {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         self.query
             .get_table_data(
@@ -99,6 +100,7 @@ impl DatabaseDriver for DuckdbDriver {
                 sort_direction,
                 filter,
                 order_by,
+                include_total,
             )
             .await
     }
@@ -124,6 +126,7 @@ impl DatabaseDriver for DuckdbDriver {
                 sort_direction,
                 filter,
                 order_by,
+                true,
             )
             .await
     }
@@ -158,10 +161,12 @@ mod tests {
         };
         let result = DuckdbDriver::connect(&form).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("file_path cannot be empty"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("file_path cannot be empty")
+        );
     }
 
     #[tokio::test]
@@ -310,6 +315,7 @@ mod tests {
                 None,
                 None,
                 None,
+                true,
             )
             .await
             .unwrap();

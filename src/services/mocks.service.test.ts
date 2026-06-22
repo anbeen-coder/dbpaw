@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { invokeMock } from "./mocks";
-import { mockGetMysqlCharsets, mockGetMysqlCollations } from "./mocks/connections";
+import {
+  mockGetMysqlCharsets,
+  mockGetMysqlCollations,
+} from "./mocks/connections";
 
 describe("invokeMock service layer", () => {
   test("returns table list for metadata command", async () => {
@@ -27,6 +30,33 @@ describe("invokeMock service layer", () => {
     expect(invokeMock("unknown_command_for_test")).rejects.toThrow(
       "Mock: Unknown command",
     );
+  });
+
+  test("table data total is opt-in", async () => {
+    const withoutTotal = await invokeMock<{ total: number | null }>(
+      "get_table_data",
+      {
+        id: 1,
+        schema: "public",
+        table: "users",
+        page: 1,
+        limit: 100,
+      },
+    );
+    expect(withoutTotal.total).toBeNull();
+
+    const withTotal = await invokeMock<{ total: number | null }>(
+      "get_table_data",
+      {
+        id: 1,
+        schema: "public",
+        table: "users",
+        page: 1,
+        limit: 100,
+        includeTotal: true,
+      },
+    );
+    expect(typeof withTotal.total).toBe("number");
   });
 });
 

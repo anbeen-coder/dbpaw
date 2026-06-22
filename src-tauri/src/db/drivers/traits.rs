@@ -95,6 +95,7 @@ pub trait DatabaseDriver: Send + Sync {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse>;
     async fn get_table_data_chunk(
         &self,

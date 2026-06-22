@@ -1,4 +1,4 @@
-use super::{conn_failed_error, DatabaseDriver, DriverCapabilities, DriverResult};
+use super::{DatabaseDriver, DriverCapabilities, DriverResult, conn_failed_error};
 use crate::error::AppError;
 use crate::models::{
     CassandraTableExtra, ColumnInfo, ColumnSchema, ConnectionForm, IndexInfo, QueryColumn,
@@ -606,6 +606,7 @@ impl DatabaseDriver for CassandraDriver {
         sort_direction: Option<String>,
         _filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         let start = Instant::now();
         let safe_page = page.max(1);
@@ -672,7 +673,7 @@ impl DatabaseDriver for CassandraDriver {
         let duration = start.elapsed();
         Ok(TableDataResponse {
             data,
-            total: row_count,
+            total: include_total.then_some(row_count),
             page: safe_page,
             limit: safe_limit,
             execution_time_ms: duration.as_millis() as i64,
@@ -699,6 +700,7 @@ impl DatabaseDriver for CassandraDriver {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }

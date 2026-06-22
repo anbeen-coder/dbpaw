@@ -33,9 +33,10 @@ interface TableViewProps {
   data?: TableRow[];
   columns?: string[];
   hideHeader?: boolean;
-  total?: number;
+  total?: number | null;
   page?: number;
   pageSize?: number;
+  includeTotal?: boolean;
   executionTimeMs?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
@@ -63,7 +64,9 @@ interface TableViewProps {
     limit?: number;
     filter?: string;
     orderBy?: string;
+    includeTotal?: boolean;
   }) => void | Promise<unknown>;
+  onIncludeTotalChange?: (includeTotal: boolean) => void | Promise<unknown>;
   onCreateQuery?: (
     connectionId: number,
     database: string,
@@ -83,6 +86,7 @@ export function TableView({
   total = 0,
   page = 1,
   pageSize = 100,
+  includeTotal = false,
   executionTimeMs = 0,
   onPageChange,
   onPageSizeChange,
@@ -95,6 +99,7 @@ export function TableView({
   onOpenDDL,
   onOpenERDiagram,
   onDataRefresh,
+  onIncludeTotalChange,
   onCreateQuery,
   tableContext,
   isLoading,
@@ -171,9 +176,13 @@ export function TableView({
     [onPageChange, page, pageSize, sortedData],
   );
 
-  // If using external pagination, totalPages is based on total count
-  // Otherwise fallback to filtered data length
-  const totalPages = Math.ceil((total || sortedData.length) / pageSize);
+  const hasKnownTotal = typeof total === "number";
+  const totalPages = hasKnownTotal
+    ? Math.max(1, Math.ceil(total / pageSize))
+    : null;
+  const canGoNext = hasKnownTotal
+    ? page < Math.max(1, Math.ceil(total / pageSize))
+    : currentData.length >= pageSize;
 
   const {
     whereInput,
@@ -194,6 +203,7 @@ export function TableView({
     controlledFilter,
     controlledOrderBy,
     totalPages,
+    canGoNext,
     onPageChange,
     onPageSizeChange,
   });
@@ -463,6 +473,7 @@ export function TableView({
         hideHeader={hideHeader}
         page={page}
         totalPages={totalPages}
+        canGoNext={canGoNext}
         pageInput={pageInput}
         pageSizeInput={pageSizeInput}
         PAGE_SIZE_OPTIONS={PAGE_SIZE_OPTIONS}
@@ -474,6 +485,8 @@ export function TableView({
         tableContext={tableContext}
         isRefreshing={isRefreshing}
         handleRefreshClick={handleRefreshClick}
+        includeTotal={includeTotal}
+        onIncludeTotalChange={onIncludeTotalChange}
         viewMode={viewMode}
         setViewMode={setViewMode}
         isSearchOpen={isSearchOpen}

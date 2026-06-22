@@ -639,7 +639,8 @@ export const en = {
       exportedSuccessfully: "Exported successfully",
       saveToFile: "Save to File",
       msetImport: "MSET Import",
-      msetDescription: "Import key-value pairs (JSON object or lines of key:value)",
+      msetDescription:
+        "Import key-value pairs (JSON object or lines of key:value)",
       importFile: "Import File",
       import: "Import",
     },
@@ -681,7 +682,7 @@ export const en = {
       memberNameRequired: "Member name is required",
       longitudeRange: "Longitude must be between -180 and 180",
       latitudeRange: "Latitude must be between -85.05 and 85.05",
-      locationAdded: "Location \"{{member}}\" added",
+      locationAdded: 'Location "{{member}}" added',
       distanceCalculated: "Distance calculated",
       nearbyFound: "Found {{count}} location(s) nearby",
       locationCount: "{{count}} locations",
@@ -707,7 +708,8 @@ export const en = {
       colGeohash: "Geohash",
       emptyLocations: "No locations",
       lookup: "lookup",
-      footerHint: "Scores are geohash values. Click \"lookup\" to fetch real coordinates via GEOPOS. Use \"Distance\" and \"Nearby\" tools for spatial queries.",
+      footerHint:
+        'Scores are geohash values. Click "lookup" to fetch real coordinates via GEOPOS. Use "Distance" and "Nearby" tools for spatial queries.',
     },
     zset: {
       geoHint:
@@ -832,6 +834,10 @@ export const en = {
     descriptionPlaceholder: "What does this query do?",
   },
   tableView: {
+    toolbar: {
+      totalOn: "Exact total is on",
+      totalOff: "Exact total is off",
+    },
     header: {
       actionHint: "Click to copy column name, double-click to sort {{column}}",
     },

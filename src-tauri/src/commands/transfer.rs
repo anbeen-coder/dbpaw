@@ -5,7 +5,7 @@ mod sql_writer;
 mod writer;
 
 use self::export_service::{
-    do_database_export, do_query_export, do_table_export, DEFAULT_CHUNK_SIZE,
+    DEFAULT_CHUNK_SIZE, do_database_export, do_query_export, do_table_export,
 };
 #[cfg(test)]
 use self::import_plan::*;
@@ -13,7 +13,7 @@ use self::import_service::{execute_sql_import, prepare_sql_import};
 #[cfg(test)]
 use self::sql_writer::{quote_ident, quote_target, sql_value};
 #[cfg(test)]
-use self::writer::{csv_escape, validate_output_path, ExportWriter};
+use self::writer::{ExportWriter, csv_escape, validate_output_path};
 use self::writer::{extension_for_format, resolve_output_path};
 #[cfg(test)]
 use crate::db::drivers::{DatabaseDriver, DriverResult};
@@ -402,6 +402,7 @@ mod tests {
             _sort_direction: Option<String>,
             _filter: Option<String>,
             _order_by: Option<String>,
+            _include_total: bool,
         ) -> DriverResult<TableDataResponse> {
             Err(AppError::unsupported("not implemented in mock").into())
         }
@@ -426,11 +427,12 @@ mod tests {
                 .take(limit.max(1) as usize)
                 .collect::<Vec<_>>();
             Ok(TableDataResponse {
-                total: self
-                    .rows
-                    .get(&key)
-                    .map(|rows| rows.len() as i64)
-                    .unwrap_or(0),
+                total: Some(
+                    self.rows
+                        .get(&key)
+                        .map(|rows| rows.len() as i64)
+                        .unwrap_or(0),
+                ),
                 data: chunk,
                 page,
                 limit,

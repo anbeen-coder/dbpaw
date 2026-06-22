@@ -76,7 +76,11 @@ export const metadataApi = {
     getSchemaOverview: (id: number, database?: string, schema?: string) =>
       invoke<SchemaOverview>("get_schema_overview", { id, database, schema }),
     getSchemaForeignKeys: (id: number, database?: string, schema?: string) =>
-      invoke<SchemaForeignKey[]>("get_schema_foreign_keys", { id, database, schema }),
+      invoke<SchemaForeignKey[]>("get_schema_foreign_keys", {
+        id,
+        database,
+        schema,
+      }),
     listEvents: (connectionId: string, database: string) =>
       invoke<EventInfo[]>("list_events", { connectionId, database }),
     listSequences: (connectionId: string, database: string) =>
@@ -102,10 +106,11 @@ export const metadataApi = {
       sortColumn?: string;
       sortDirection?: "asc" | "desc";
       orderBy?: string;
+      includeTotal?: boolean;
     }) =>
       invoke<{
         data: any[];
-        total: number;
+        total: number | null;
         page: number;
         limit: number;
         executionTimeMs: number;
@@ -116,13 +121,21 @@ export const metadataApi = {
       table: string,
       page: number,
       limit: number,
+      includeTotal?: boolean,
     ) =>
       invoke<{
         data: any[];
-        total: number;
+        total: number | null;
         page: number;
         limit: number;
         executionTimeMs: number;
-      }>("get_table_data_by_conn", { form, schema, table, page, limit }),
+      }>("get_table_data_by_conn", {
+        form,
+        schema,
+        table,
+        page,
+        limit,
+        includeTotal,
+      }),
   },
 };

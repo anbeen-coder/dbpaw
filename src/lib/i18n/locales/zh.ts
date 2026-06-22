@@ -625,6 +625,10 @@ export const zh: Translations = {
     sendMessage: "发送消息",
   },
   tableView: {
+    toolbar: {
+      totalOn: "已开启精确总量",
+      totalOff: "已关闭精确总量",
+    },
     header: {
       actionHint: "单击复制字段名，双击按 {{column}} 排序",
     },
@@ -1041,7 +1045,7 @@ export const zh: Translations = {
       memberNameRequired: "成员名称不能为空",
       longitudeRange: "经度必须在 -180 到 180 之间",
       latitudeRange: "纬度必须在 -85.05 到 85.05 之间",
-      locationAdded: "位置 \"{{member}}\" 已添加",
+      locationAdded: '位置 "{{member}}" 已添加',
       distanceCalculated: "距离已计算",
       nearbyFound: "找到 {{count}} 个附近位置",
       locationCount: "{{count}} 个位置",
@@ -1067,7 +1071,8 @@ export const zh: Translations = {
       colGeohash: "Geohash",
       emptyLocations: "暂无位置",
       lookup: "查询",
-      footerHint: '分数为 geohash 值。点击"查询"通过 GEOPOS 获取真实坐标。使用"距离"和"附近"工具进行空间查询。',
+      footerHint:
+        '分数为 geohash 值。点击"查询"通过 GEOPOS 获取真实坐标。使用"距离"和"附近"工具进行空间查询。',
     },
     zset: {
       geoHint:

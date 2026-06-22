@@ -115,6 +115,7 @@ impl DatabaseDriver for MysqlDriver {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         self.table_data
             .get_table_data(
@@ -126,6 +127,7 @@ impl DatabaseDriver for MysqlDriver {
                 sort_direction,
                 filter,
                 order_by,
+                include_total,
             )
             .await
     }

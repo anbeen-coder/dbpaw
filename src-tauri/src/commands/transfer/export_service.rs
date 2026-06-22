@@ -86,7 +86,7 @@ async fn write_table_export(
                     }
                     exported +=
                         writer.write_rows(&resp.data, &columns, Some(&schema), &table, &driver)?;
-                    if exported >= resp.total {
+                    if resp.total.is_some_and(|total| exported >= total) {
                         break;
                     }
                     current_page += 1;

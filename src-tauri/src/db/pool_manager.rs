@@ -399,6 +399,7 @@ mod tests {
             _sort_direction: Option<String>,
             _filter: Option<String>,
             _order_by: Option<String>,
+            _include_total: bool,
         ) -> DriverResult<crate::models::TableDataResponse> {
             Err(crate::error::AppError::unsupported("Unimplemented"))
         }
@@ -602,6 +603,7 @@ mod tests {
             _sort_direction: Option<String>,
             _filter: Option<String>,
             _order_by: Option<String>,
+            _include_total: bool,
         ) -> DriverResult<crate::models::TableDataResponse> {
             Err(crate::error::AppError::unsupported("Unimplemented"))
         }
@@ -680,16 +682,20 @@ mod tests {
         manager.check_all_connections_health().await;
 
         let pools = manager.pools.read().await;
-        assert!(pools
-            .get("healthy")
-            .unwrap()
-            .is_healthy
-            .load(std::sync::atomic::Ordering::Relaxed));
-        assert!(!pools
-            .get("unhealthy")
-            .unwrap()
-            .is_healthy
-            .load(std::sync::atomic::Ordering::Relaxed));
+        assert!(
+            pools
+                .get("healthy")
+                .unwrap()
+                .is_healthy
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
+        assert!(
+            !pools
+                .get("unhealthy")
+                .unwrap()
+                .is_healthy
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
     }
 
     #[tokio::test]

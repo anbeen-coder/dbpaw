@@ -10,6 +10,7 @@ export type TableRefreshOverrides = {
   limit?: number;
   filter?: string;
   orderBy?: string;
+  includeTotal?: boolean;
 };
 
 interface UseTableViewerParams {
@@ -53,6 +54,7 @@ export function useTableViewer({
           connectionId,
           driver,
           isLoading: true,
+          includeTotal: false,
         } satisfies TableTabItem,
       ]);
       setActiveTab(tabId);
@@ -71,6 +73,7 @@ export function useTableViewer({
           table,
           page: 1,
           limit: 100,
+          includeTotal: false,
         });
         let columns: string[] = [];
         try {
@@ -105,6 +108,7 @@ export function useTableViewer({
               total: resp.total,
               page: resp.page,
               pageSize: resp.limit,
+              includeTotal: false,
               executionTimeMs: resp.executionTimeMs,
             };
           }),
@@ -140,6 +144,9 @@ export function useTableViewer({
       const nextLimit = overrides?.limit ?? tab.pageSize ?? 100;
       const nextFilter = hasOwn("filter") ? overrides?.filter : tab.filter;
       const nextOrderBy = hasOwn("orderBy") ? overrides?.orderBy : tab.orderBy;
+      const nextIncludeTotal = hasOwn("includeTotal")
+        ? !!overrides?.includeTotal
+        : !!tab.includeTotal;
 
       try {
         const { schema, dbParam } = resolveTableScope(
@@ -158,6 +165,7 @@ export function useTableViewer({
           sortColumn: tab.sortColumn,
           sortDirection: tab.sortDirection,
           orderBy: nextOrderBy || undefined,
+          includeTotal: nextIncludeTotal,
         });
 
         setTabs((prev) =>
@@ -173,6 +181,7 @@ export function useTableViewer({
               executionTimeMs: resp.executionTimeMs,
               filter: nextFilter,
               orderBy: nextOrderBy,
+              includeTotal: nextIncludeTotal,
             };
           }),
         );
@@ -210,6 +219,7 @@ export function useTableViewer({
           sortColumn: tab.sortColumn,
           sortDirection: tab.sortDirection,
           orderBy: tab.orderBy,
+          includeTotal: !!tab.includeTotal,
         });
 
         setTabs((prev) =>
@@ -259,6 +269,7 @@ export function useTableViewer({
           sortColumn: tab.sortColumn,
           sortDirection: tab.sortDirection,
           orderBy: tab.orderBy,
+          includeTotal: !!tab.includeTotal,
         });
 
         setTabs((prev) =>
@@ -318,6 +329,7 @@ export function useTableViewer({
           sortColumn: column,
           sortDirection: direction,
           orderBy: tab.orderBy,
+          includeTotal: !!tab.includeTotal,
         });
 
         setTabs((prev) =>
@@ -378,6 +390,7 @@ export function useTableViewer({
           sortColumn: tab.sortColumn,
           sortDirection: tab.sortDirection,
           orderBy: orderBy || undefined,
+          includeTotal: !!tab.includeTotal,
         });
 
         setTabs((prev) =>

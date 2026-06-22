@@ -221,8 +221,8 @@ mod tests {
         QueryResult, SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableStructure,
     };
     use async_trait::async_trait;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MockDriver;
 
@@ -265,6 +265,7 @@ mod tests {
             _sort_direction: Option<String>,
             _filter: Option<String>,
             _order_by: Option<String>,
+            _include_total: bool,
         ) -> DriverResult<TableDataResponse> {
             Err(crate::error::AppError::unsupported("Unimplemented"))
         }

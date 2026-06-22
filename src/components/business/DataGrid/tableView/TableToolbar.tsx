@@ -9,6 +9,7 @@ import {
   Columns,
   Rows,
   FileCode,
+  Hash,
   Save,
   Undo2,
   Loader2,
@@ -50,7 +51,8 @@ interface TableToolbarProps {
   hideHeader: boolean;
   // Pagination
   page: number;
-  totalPages: number;
+  totalPages: number | null;
+  canGoNext: boolean;
   pageInput: string;
   pageSizeInput: string;
   PAGE_SIZE_OPTIONS: readonly string[];
@@ -69,6 +71,8 @@ interface TableToolbarProps {
   };
   isRefreshing: boolean;
   handleRefreshClick: () => void;
+  includeTotal: boolean;
+  onIncludeTotalChange?: (includeTotal: boolean) => void | Promise<unknown>;
   // View mode
   viewMode: "table" | "column";
   setViewMode: (m: "table" | "column") => void;
@@ -132,6 +136,7 @@ export const TableToolbar = React.memo(function TableToolbar({
   hideHeader,
   page,
   totalPages,
+  canGoNext,
   pageInput,
   pageSizeInput,
   PAGE_SIZE_OPTIONS,
@@ -143,6 +148,8 @@ export const TableToolbar = React.memo(function TableToolbar({
   tableContext,
   isRefreshing,
   handleRefreshClick,
+  includeTotal,
+  onIncludeTotalChange,
   viewMode,
   setViewMode,
   isSearchOpen,
@@ -219,7 +226,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 }}
               />
               <span className="text-xs text-muted-foreground">
-                / {totalPages}
+                / {totalPages ?? "?"}
               </span>
             </div>
             <Button
@@ -227,7 +234,7 @@ export const TableToolbar = React.memo(function TableToolbar({
               size="sm"
               className="h-6 w-6 p-0 hover:bg-background"
               onClick={handleNextPage}
-              disabled={page >= totalPages}
+              disabled={!canGoNext}
               aria-label="Next page"
             >
               <ChevronRight className="w-3.5 h-3.5" />
@@ -237,10 +244,7 @@ export const TableToolbar = React.memo(function TableToolbar({
           {/* Page size selector */}
           <div className="flex items-center gap-2 ml-1">
             <span className="text-xs text-muted-foreground">Limit</span>
-            <Select
-              value={pageSizeInput}
-              onValueChange={handlePageSizeChange}
-            >
+            <Select value={pageSizeInput} onValueChange={handlePageSizeChange}>
               <SelectTrigger
                 size="sm"
                 className="w-[70px] text-xs border-border/50 bg-muted/40 [&_svg]:size-3 px-2 gap-1 data-[size=sm]:h-6 data-[size=sm]:py-0"
@@ -267,13 +271,30 @@ export const TableToolbar = React.memo(function TableToolbar({
               aria-label="Refresh"
             >
               <RotateCw
-                className={[
-                  "w-3.5 h-3.5",
-                  isRefreshing ? "animate-spin" : "",
-                ]
+                className={["w-3.5 h-3.5", isRefreshing ? "animate-spin" : ""]
                   .filter(Boolean)
                   .join(" ")}
               />
+            </Button>
+          )}
+          {tableContext && onIncludeTotalChange && (
+            <Button
+              variant={includeTotal ? "secondary" : "ghost"}
+              size="sm"
+              className="h-6 w-6 p-0 hover:bg-muted/60"
+              onClick={() => onIncludeTotalChange(!includeTotal)}
+              title={
+                includeTotal
+                  ? t("tableView.toolbar.totalOn")
+                  : t("tableView.toolbar.totalOff")
+              }
+              aria-label={
+                includeTotal
+                  ? t("tableView.toolbar.totalOn")
+                  : t("tableView.toolbar.totalOff")
+              }
+            >
+              <Hash className="w-3.5 h-3.5" />
             </Button>
           )}
           <Button
@@ -288,7 +309,9 @@ export const TableToolbar = React.memo(function TableToolbar({
                 ? "Switch to column view"
                 : "Switch to table view"
             }
-            aria-label={viewMode === "table" ? "Toggle column view" : "Toggle table view"}
+            aria-label={
+              viewMode === "table" ? "Toggle column view" : "Toggle table view"
+            }
           >
             {viewMode === "table" ? (
               <Columns className="w-3.5 h-3.5" />
@@ -346,8 +369,7 @@ export const TableToolbar = React.memo(function TableToolbar({
               </div>
               {normalizedSearchKeyword ? (
                 <div className="text-[11px] text-muted-foreground">
-                  {matchedRowsSize} row(s), {searchMatchesLength}{" "}
-                  match(es)
+                  {matchedRowsSize} row(s), {searchMatchesLength} match(es)
                   {currentSearchMatch
                     ? ` • ${searchCursorIndex + 1}/${searchMatchesLength}`
                     : ""}
@@ -396,9 +418,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 aria-label="DDL"
               >
                 <FileCode className="w-3.5 h-3.5" />
-                <span className="text-xs font-medium leading-none">
-                  ddl
-                </span>
+                <span className="text-xs font-medium leading-none">ddl</span>
               </Button>
 
               <Button
@@ -414,9 +434,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                 aria-label="ER Diagram"
               >
                 <Table className="w-3.5 h-3.5" />
-                <span className="text-xs font-medium leading-none">
-                  ER
-                </span>
+                <span className="text-xs font-medium leading-none">ER</span>
               </Button>
             </>
           )}
@@ -516,16 +534,12 @@ export const TableToolbar = React.memo(function TableToolbar({
                     CSV
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() =>
-                      void handleExport("current_page", "json")
-                    }
+                    onClick={() => void handleExport("current_page", "json")}
                   >
                     JSON
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() =>
-                      void handleExport("current_page", "sql_dml")
-                    }
+                    onClick={() => void handleExport("current_page", "sql_dml")}
                   >
                     SQL
                   </DropdownMenuItem>
@@ -569,9 +583,7 @@ export const TableToolbar = React.memo(function TableToolbar({
                     JSON
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() =>
-                      void handleExport("full_table", "sql_dml")
-                    }
+                    onClick={() => void handleExport("full_table", "sql_dml")}
                   >
                     SQL
                   </DropdownMenuItem>

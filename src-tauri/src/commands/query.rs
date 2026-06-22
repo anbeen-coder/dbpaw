@@ -152,7 +152,9 @@ async fn execute_query_core(
         .map(|d| d.eq_ignore_ascii_case("redis"))
         .unwrap_or(false)
     {
-        return Err(AppError::unsupported("Redis connections do not support SQL queries. Use the Redis key view to browse and edit keys."));
+        return Err(AppError::unsupported(
+            "Redis connections do not support SQL queries. Use the Redis key view to browse and edit keys.",
+        ));
     }
     let cancellation_supported = driver
         .as_deref()
@@ -230,11 +232,22 @@ pub async fn get_table_data_by_conn(
     table: String,
     page: i64,
     limit: i64,
+    include_total: Option<bool>,
 ) -> Result<TableDataResponse, AppError> {
     validate_page_limit(page, limit)?;
     let driver = crate::db::drivers::connect(&form).await?;
     driver
-        .get_table_data(schema, table, page, limit, None, None, None, None)
+        .get_table_data(
+            schema,
+            table,
+            page,
+            limit,
+            None,
+            None,
+            None,
+            None,
+            resolve_include_total(include_total),
+        )
         .await
 }
 
@@ -293,8 +306,10 @@ pub async fn get_table_data(
     sort_column: Option<String>,
     sort_direction: Option<String>,
     order_by: Option<String>,
+    include_total: Option<bool>,
 ) -> Result<TableDataResponse, AppError> {
     validate_page_limit(page, limit)?;
+    let include_total = resolve_include_total(include_total);
     super::execute_with_retry(&state, id, database, |driver| {
         let schema_clone = schema.clone();
         let table_clone = table.clone();
@@ -313,11 +328,16 @@ pub async fn get_table_data(
                     sort_dir_clone,
                     filter_clone,
                     order_by_clone,
+                    include_total,
                 )
                 .await
         }
     })
     .await
+}
+
+fn resolve_include_total(value: Option<bool>) -> bool {
+    value.unwrap_or(false)
 }
 
 async fn cancel_query_core(
@@ -478,10 +498,10 @@ pub async fn cancel_query_direct(
 
 #[cfg(test)]
 mod tests {
-    use super::{clamp_sql_execution_logs_limit, make_query_id};
+    use super::{clamp_sql_execution_logs_limit, make_query_id, resolve_include_total};
     use crate::sql::query_guard::{
-        apply_default_limit, classify_statement, collect_top_level_keywords, is_single_statement,
-        StatementKind,
+        StatementKind, apply_default_limit, classify_statement, collect_top_level_keywords,
+        is_single_statement,
     };
 
     #[test]
@@ -718,9 +738,11 @@ mod tests {
         );
         assert_eq!(tokens.first().map(String::as_str), Some("create"));
         assert!(tokens.contains(&"function".to_string()));
-        assert!(!tokens
-            .iter()
-            .any(|token| token == "begin" || token == "end"));
+        assert!(
+            !tokens
+                .iter()
+                .any(|token| token == "begin" || token == "end")
+        );
     }
 
     #[test]
@@ -744,6 +766,13 @@ mod tests {
 
         let generated = make_query_id(7, Some("   ".to_string()));
         assert!(generated.starts_with("q-7-"));
+    }
+
+    #[test]
+    fn resolve_include_total_defaults_to_false() {
+        assert!(!resolve_include_total(None));
+        assert!(!resolve_include_total(Some(false)));
+        assert!(resolve_include_total(Some(true)));
     }
 }
 

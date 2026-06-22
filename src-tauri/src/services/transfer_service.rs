@@ -32,6 +32,7 @@ pub async fn export_table_data(
                     None,
                     None,
                     None,
+                    true,
                 )
                 .await?;
 

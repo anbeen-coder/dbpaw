@@ -1,6 +1,6 @@
 use super::super::DriverResult;
-use super::helpers::{quote_ident, required_i64_from_json_row, table_ref};
 use super::ClickHouseDriver;
+use super::helpers::{quote_ident, required_i64_from_json_row, table_ref};
 use crate::error::AppError;
 use crate::models::TableDataResponse;
 use serde_json::Value;
@@ -16,6 +16,7 @@ impl ClickHouseDriver {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         let start = std::time::Instant::now();
 
@@ -37,25 +38,29 @@ impl ClickHouseDriver {
             _ => String::new(),
         };
 
-        let total = if where_clause.is_empty() {
-            match self.estimate_total_rows(&target_schema, &table).await? {
-                Some(estimated) => estimated,
-                None => {
-                    let count_sql = format!(
-                        "SELECT count() AS total FROM {}{} FORMAT JSON",
-                        qualified, where_clause
-                    );
-                    let count_resp = self.execute_json(&count_sql, None).await?;
-                    required_i64_from_json_row(count_resp.data.first(), "total", &count_sql)?
+        let total = if include_total {
+            Some(if where_clause.is_empty() {
+                match self.estimate_total_rows(&target_schema, &table).await? {
+                    Some(estimated) => estimated,
+                    None => {
+                        let count_sql = format!(
+                            "SELECT count() AS total FROM {}{} FORMAT JSON",
+                            qualified, where_clause
+                        );
+                        let count_resp = self.execute_json(&count_sql, None).await?;
+                        required_i64_from_json_row(count_resp.data.first(), "total", &count_sql)?
+                    }
                 }
-            }
+            } else {
+                let count_sql = format!(
+                    "SELECT count() AS total FROM {}{} FORMAT JSON",
+                    qualified, where_clause
+                );
+                let count_resp = self.execute_json(&count_sql, None).await?;
+                required_i64_from_json_row(count_resp.data.first(), "total", &count_sql)?
+            })
         } else {
-            let count_sql = format!(
-                "SELECT count() AS total FROM {}{} FORMAT JSON",
-                qualified, where_clause
-            );
-            let count_resp = self.execute_json(&count_sql, None).await?;
-            required_i64_from_json_row(count_resp.data.first(), "total", &count_sql)?
+            None
         };
 
         let order_clause = if let Some(ref ob) = order_by {
@@ -125,6 +130,7 @@ impl ClickHouseDriver {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }

@@ -180,9 +180,10 @@ export async function mockGetTableData(params: {
   sortColumn?: string;
   sortDirection?: "asc" | "desc";
   orderBy?: string;
+  includeTotal?: boolean;
 }): Promise<{
   data: any[];
-  total: number;
+  total: number | null;
   page: number;
   limit: number;
   executionTimeMs: number;
@@ -202,7 +203,7 @@ export async function mockGetTableData(params: {
 
   return {
     data: source.data.slice(start, end),
-    total: source.total,
+    total: params.includeTotal ? source.total : null,
     page,
     limit,
     executionTimeMs: Math.floor(Math.random() * 50) + 20,
@@ -215,9 +216,10 @@ export async function mockGetTableDataByConn(
   _table: string,
   page: number,
   limit: number,
+  includeTotal?: boolean,
 ): Promise<{
   data: any[];
-  total: number;
+  total: number | null;
   page: number;
   limit: number;
   executionTimeMs: number;
@@ -229,7 +231,7 @@ export async function mockGetTableDataByConn(
 
   return {
     data: mockTableData.data.slice(start, end),
-    total: mockTableData.total,
+    total: includeTotal ? mockTableData.total : null,
     page,
     limit,
     executionTimeMs: Math.floor(Math.random() * 50) + 20,
@@ -247,6 +249,7 @@ export function handleTableData(cmd: string, args?: any): Promise<any> | null {
         args.table,
         args.page,
         args.limit,
+        args.includeTotal,
       );
     default:
       return null;

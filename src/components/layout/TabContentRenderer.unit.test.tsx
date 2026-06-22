@@ -233,19 +233,32 @@ describe("TabContentRenderer", () => {
   });
 
   test("renders table tab for active table tab", async () => {
+    const refreshCalls: any[] = [];
     const tab: TableTabItem = {
       id: "tbl-1",
       type: "table",
       title: "users",
       data: [],
       columns: ["id", "name"],
+      includeTotal: true,
     };
     render(
-      <TabContentRenderer tabs={[tab]} activeTab="tbl-1" {...defaultProps} />,
+      <TabContentRenderer
+        tabs={[tab]}
+        activeTab="tbl-1"
+        {...defaultProps}
+        handleTableRefresh={async (_tabId, overrides) => {
+          refreshCalls.push(overrides);
+        }}
+      />,
     );
     await flush();
     expect(tableCalls).toHaveLength(1);
     expect(tableCalls[0].columns).toEqual(["id", "name"]);
+    expect(tableCalls[0].includeTotal).toBe(true);
+
+    await tableCalls[0].onIncludeTotalChange(false);
+    expect(refreshCalls).toEqual([{ includeTotal: false }]);
   });
 
   test("redis-key tab returns null when connectionId missing", () => {

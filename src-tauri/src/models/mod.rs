@@ -340,7 +340,7 @@ pub struct QueryResult {
 #[serde(rename_all = "camelCase")]
 pub struct TableDataResponse {
     pub data: Vec<serde_json::Value>,
-    pub total: i64,
+    pub total: Option<i64>,
     pub page: i64,
     pub limit: i64,
     pub execution_time_ms: i64,

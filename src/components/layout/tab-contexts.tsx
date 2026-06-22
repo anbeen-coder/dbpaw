@@ -7,6 +7,7 @@ export type TableRefreshOverrides = {
   limit?: number;
   filter?: string;
   orderBy?: string;
+  includeTotal?: boolean;
 };
 
 export type TableDdlContext = {

@@ -1,5 +1,5 @@
+use super::super::{DriverResult, conn_failed_error};
 use super::connection::Db2Config;
-use super::super::{conn_failed_error, DriverResult};
 use crate::error::AppError;
 use crate::models::TableDataResponse;
 use odbc_api::{ConnectionOptions, Cursor, ResultSetMetadata};
@@ -93,6 +93,7 @@ impl Db2TableData {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         let start = std::time::Instant::now();
         let safe_page = if page < 1 { 1 } else { page };
@@ -127,17 +128,22 @@ impl Db2TableData {
         };
 
         self.run_blocking(move |conn| {
-            let count_sql = format!("SELECT COUNT(*) FROM {}{}", table_ref, where_clause);
-            let count_cursor = conn
-                .execute(&count_sql, ())
-                .map_err(|e| AppError::query_failed(e.to_string()))?;
-            let mut total: i64 = 0;
-            if let Some(c) = count_cursor {
-                let (_, count_rows) = collect_cursor_data(c)?;
-                if let Some(row) = count_rows.first() {
-                    total = row.as_str().and_then(|s| s.parse().ok()).unwrap_or(0);
+            let total = if include_total {
+                let count_sql = format!("SELECT COUNT(*) FROM {}{}", table_ref, where_clause);
+                let count_cursor = conn
+                    .execute(&count_sql, ())
+                    .map_err(|e| AppError::query_failed(e.to_string()))?;
+                let mut total: i64 = 0;
+                if let Some(c) = count_cursor {
+                    let (_, count_rows) = collect_cursor_data(c)?;
+                    if let Some(row) = count_rows.first() {
+                        total = row.as_str().and_then(|s| s.parse().ok()).unwrap_or(0);
+                    }
                 }
-            }
+                Some(total)
+            } else {
+                None
+            };
 
             let data_sql = format!(
                 "SELECT * FROM {}{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
@@ -183,6 +189,7 @@ impl Db2TableData {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }

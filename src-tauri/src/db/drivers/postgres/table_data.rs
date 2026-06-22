@@ -90,6 +90,7 @@ impl PostgresTableData {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> Result<TableDataResponse, AppError> {
         let start = std::time::Instant::now();
         let offset = (page - 1) * limit;
@@ -103,11 +104,17 @@ impl PostgresTableData {
         };
 
         let qt = pg_qualified_table(&schema, &table);
-        let count_query = format!("SELECT COUNT(*) FROM {}{}", qt, where_clause);
-        let total: i64 = sqlx::query_scalar(&count_query)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| query_error(format!("SQL: {} | {}", count_query, e)))?;
+        let total = if include_total {
+            let count_query = format!("SELECT COUNT(*) FROM {}{}", qt, where_clause);
+            Some(
+                sqlx::query_scalar(&count_query)
+                    .fetch_one(&self.pool)
+                    .await
+                    .map_err(|e| query_error(format!("SQL: {} | {}", count_query, e)))?,
+            )
+        } else {
+            None
+        };
 
         let order_clause = if let Some(ref ob) = order_by {
             if !ob.trim().is_empty() {
@@ -171,6 +178,7 @@ impl PostgresTableData {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }

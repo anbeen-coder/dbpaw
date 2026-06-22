@@ -1,9 +1,9 @@
 use super::super::DriverResult;
 use crate::models::TableDataResponse;
 
+use super::MssqlDriver;
 use super::metadata::{build_mssql_select_list, quote_ident, table_ref};
 use super::query::escape_literal;
-use super::MssqlDriver;
 
 impl MssqlDriver {
     pub(crate) async fn get_table_data_impl(
@@ -16,6 +16,7 @@ impl MssqlDriver {
         sort_direction: Option<String>,
         filter: Option<String>,
         order_by: Option<String>,
+        include_total: bool,
     ) -> DriverResult<TableDataResponse> {
         let start = std::time::Instant::now();
         let safe_page = if page < 1 { 1 } else { page };
@@ -31,15 +32,21 @@ impl MssqlDriver {
             _ => String::new(),
         };
 
-        let count_sql = format!(
-            "SELECT COUNT_BIG(1) AS total FROM {}{}",
-            qualified, where_clause
-        );
-        let count_rows = self.fetch_rows(&count_sql).await?;
-        let total = count_rows
-            .first()
-            .map(|row| Self::parse_i64(row, 0))
-            .unwrap_or(0);
+        let total = if include_total {
+            let count_sql = format!(
+                "SELECT COUNT_BIG(1) AS total FROM {}{}",
+                qualified, where_clause
+            );
+            let count_rows = self.fetch_rows(&count_sql).await?;
+            Some(
+                count_rows
+                    .first()
+                    .map(|row| Self::parse_i64(row, 0))
+                    .unwrap_or(0),
+            )
+        } else {
+            None
+        };
 
         let order_clause = if let Some(ref raw) = order_by {
             if raw.trim().is_empty() {
@@ -60,7 +67,8 @@ impl MssqlDriver {
 
         let column_sql = format!(
             "SELECT c.name, t.name AS data_type FROM sys.columns c JOIN sys.types t ON c.user_type_id = t.user_type_id JOIN sys.tables tbl ON tbl.object_id = c.object_id JOIN sys.schemas s ON s.schema_id = tbl.schema_id WHERE s.name = '{}' AND tbl.name = '{}' ORDER BY c.column_id",
-            escape_literal(&schema), escape_literal(&table)
+            escape_literal(&schema),
+            escape_literal(&table)
         );
         let col_rows = self.fetch_rows(&column_sql).await?;
         let mut col_list = Vec::new();
@@ -85,7 +93,15 @@ impl MssqlDriver {
                         .trim()
                         .to_string()
                 };
-            format!("SELECT * FROM ( SELECT TOP ({}) {}, ROW_NUMBER() OVER (ORDER BY {}) AS __row_num FROM {}{} ) AS __paged WHERE __row_num > {} ORDER BY __row_num", offset + safe_limit, select_list, row_num_order, qualified, where_clause, offset)
+            format!(
+                "SELECT * FROM ( SELECT TOP ({}) {}, ROW_NUMBER() OVER (ORDER BY {}) AS __row_num FROM {}{} ) AS __paged WHERE __row_num > {} ORDER BY __row_num",
+                offset + safe_limit,
+                select_list,
+                row_num_order,
+                qualified,
+                where_clause,
+                offset
+            )
         };
         let (mut data, mut columns) = self.fetch_query_result_json(&sql).await?;
 
@@ -127,6 +143,7 @@ impl MssqlDriver {
             sort_direction,
             filter,
             order_by,
+            true,
         )
         .await
     }

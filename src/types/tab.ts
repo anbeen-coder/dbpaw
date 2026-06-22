@@ -42,9 +42,10 @@ export interface TableTabItem {
   driver?: string;
   data?: Record<string, unknown>[];
   columns?: string[];
-  total?: number;
+  total?: number | null;
   page?: number;
   pageSize?: number;
+  includeTotal?: boolean;
   executionTimeMs?: number;
   isLoading?: boolean;
   sortColumn?: string;

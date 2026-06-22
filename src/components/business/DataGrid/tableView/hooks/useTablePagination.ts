@@ -7,7 +7,8 @@ interface UseTablePaginationParams {
   pageSize: number;
   controlledFilter?: string;
   controlledOrderBy?: string;
-  totalPages: number;
+  totalPages: number | null;
+  canGoNext: boolean;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
 }
@@ -18,6 +19,7 @@ export function useTablePagination({
   controlledFilter,
   controlledOrderBy,
   totalPages,
+  canGoNext,
   onPageChange,
   onPageSizeChange,
 }: UseTablePaginationParams) {
@@ -54,14 +56,15 @@ export function useTablePagination({
   }, [page, onPageChange]);
 
   const handleNextPage = useCallback(() => {
-    if (page < totalPages) {
+    if (canGoNext) {
       onPageChange?.(page + 1);
     }
-  }, [page, totalPages, onPageChange]);
+  }, [page, canGoNext, onPageChange]);
 
   const handlePageInputCommit = useCallback(() => {
     const parsed = Number.parseInt(pageInput, 10);
-    const maxPage = Math.max(totalPages, 1);
+    const maxPage =
+      totalPages === null ? Number.MAX_SAFE_INTEGER : Math.max(totalPages, 1);
     const nextPage = Number.isNaN(parsed)
       ? page
       : Math.min(Math.max(parsed, 1), maxPage);

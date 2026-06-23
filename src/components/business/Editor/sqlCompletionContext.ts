@@ -1,6 +1,8 @@
 import type { Completion, CompletionResult } from "@codemirror/autocomplete";
 import type { SchemaOverview } from "@/services/api";
 
+const MYSQL_FAMILY_DRIVERS = new Set(["mysql", "mariadb", "tidb", "starrocks", "doris"]);
+
 type SqlCompletionClause = "table" | "column" | null;
 
 type SqlCompletionContextInfo = {
@@ -180,12 +182,32 @@ export function extractReferencedTables(
 
 export function detectSqlCompletionContext(
   textBeforeCursor: string,
+  options?: { driver?: string; availableDatabases?: string[] },
 ): SqlCompletionContextInfo {
   const from = getIdentifierStart(textBeforeCursor);
   const prefix = textBeforeCursor.slice(from);
   const contextText = textBeforeCursor.slice(0, from);
 
   if (prefix.includes(".") || contextText.endsWith(".")) {
+    const driver = options?.driver;
+    const availableDatabases = options?.availableDatabases;
+    if (driver && MYSQL_FAMILY_DRIVERS.has(driver) && availableDatabases?.length) {
+      const fullText = textBeforeCursor;
+      const dotIdx = fullText.lastIndexOf(".");
+      if (dotIdx > 0) {
+        let idEnd = dotIdx;
+        while (idEnd > 0 && /[\w$]/.test(fullText[idEnd - 1])) idEnd--;
+        const beforeDot = fullText.slice(idEnd, dotIdx);
+        if (beforeDot) {
+          const isDbRef = availableDatabases.some(
+            (db) => db.toLowerCase() === beforeDot.toLowerCase(),
+          );
+          if (isDbRef) {
+            return { clause: "table", from };
+          }
+        }
+      }
+    }
     return { clause: null, from };
   }
 
@@ -300,16 +322,17 @@ export function buildSqlContextualCompletion(params: {
   explicit: boolean;
   schemaOverview?: SchemaOverview;
   availableDatabases?: string[];
+  driver?: string;
 }): CompletionResult | null {
-  const { textBeforeCursor, explicit, schemaOverview, availableDatabases } = params;
+  const { textBeforeCursor, explicit, schemaOverview, availableDatabases, driver } = params;
   if (!schemaOverview) return null;
 
-  const context = detectSqlCompletionContext(textBeforeCursor);
+  const context = detectSqlCompletionContext(textBeforeCursor, { driver, availableDatabases });
   if (!context.clause) return null;
 
   const prefix = textBeforeCursor.slice(context.from);
   const isEmptyPrefix = prefix.length === 0;
-  if (isEmptyPrefix && !explicit && !/\s$/.test(textBeforeCursor)) {
+  if (isEmptyPrefix && !explicit && !/\s$/.test(textBeforeCursor) && !textBeforeCursor.endsWith(".")) {
     return null;
   }
 

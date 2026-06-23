@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import type { ConnectionForm, RoutineType, SavedQuery } from "@/services/api";
 import type { DatabaseGroupConfig } from "@/lib/tree-adapters/types";
@@ -27,6 +27,8 @@ import { useSavedQueriesTree } from "./hooks/useSavedQueriesTree";
 import { useConnectionTreeSearch } from "./hooks/useConnectionTreeSearch";
 import { useConnectionRevealSync } from "./hooks/useConnectionRevealSync";
 import { useConnectionTreeAdapters } from "./hooks/useConnectionTreeAdapters";
+import { useContextMenu } from "./hooks/useContextMenu";
+import { getGroupItems } from "./utils/getGroupItems";
 
 interface ConnectionListProps {
   onTableSelect?: (
@@ -258,15 +260,8 @@ export function ConnectionList({
   // listing them as deps (avoids re-firing on every connection state update).
   connectionsRef.current = connections;
   expandedDatabasesRef.current = expandedDatabases;
-  const [contextMenu, setContextMenu] = useState<{
-    visible: boolean;
-    x: number;
-    y: number;
-    connectionId: string | null;
-    databaseName?: string | null;
-    schemaName?: string | null;
-    type: "connection" | "database" | "schema";
-  }>({ visible: false, x: 0, y: 0, connectionId: null, type: "connection" });
+  const { contextMenu, setContextMenu, contextMenuConnection } =
+    useContextMenu(connections);
   const { isLoadingQueries, savedQueriesByConnection } = useSavedQueriesTree({
     showSavedQueriesInTree,
     lastUpdated,
@@ -386,50 +381,20 @@ export function ConnectionList({
     t,
   };
 
-  const getGroupItems = (
+  const getGroupItemsForDatabase = (
     database: DatabaseInfo,
     group: DatabaseGroupConfig,
     dbKey: string,
     schema?: SchemaInfo,
-  ): { name: string; [key: string]: any }[] => {
-    switch (group.source) {
-      case "tables": {
-        const tables = schema ? schema.tables : database.tables || [];
-        return group.sourceFilter
-          ? tables.filter((t) => t.type === group.sourceFilter)
-          : tables.filter((t) => t.type === "table" || t.type === "BASE TABLE");
-      }
-      case "routines": {
-        if (schema) {
-          const routines =
-            group.sourceFilter === "procedure"
-              ? schema.procedures
-              : schema.functions;
-          return routines;
-        }
-        const routines = database.routines || [];
-        return group.sourceFilter
-          ? routines.filter((r) => r.type === group.sourceFilter)
-          : routines;
-      }
-      case "events":
-        return databaseEvents.get(dbKey) || [];
-      case "sequences":
-        return databaseSequences.get(dbKey) || [];
-      case "types":
-        return databaseTypes.get(dbKey) || [];
-      case "synonyms":
-        return databaseSynonyms.get(dbKey) || [];
-      case "packages":
-        return databasePackages.get(dbKey) || [];
-      default:
-        return [];
-    }
-  };
+  ) =>
+    getGroupItems(database, group, dbKey, {
+      databaseEvents,
+      databaseSequences,
+      databaseTypes,
+      databaseSynonyms,
+      databasePackages,
+    }, schema);
 
-  const contextMenuConnection = contextMenu.connectionId
-    ? connections.find((conn) => conn.id === contextMenu.connectionId)
-    : null;
   const contextMenuDatabaseAdapter = contextMenuConnection
     ? getAdapter(contextMenuConnection)
     : null;
@@ -500,7 +465,7 @@ export function ConnectionList({
         simpleMode={simpleMode}
         onContextMenuChange={setContextMenu}
         onSelectSavedQuery={onSelectSavedQuery}
-        getGroupItems={getGroupItems}
+        getGroupItems={getGroupItemsForDatabase}
         onNewConnection={openCreateDialog}
         onImportConnection={() => setIsImportDialogOpen(true)}
       />

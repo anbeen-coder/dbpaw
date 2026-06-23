@@ -62,6 +62,10 @@ it never happens again.
   `SHORTCUT_DEFAULTS`, a label under `settings.shortcuts.label.*` in
   every locale, and wire the matcher call in the appropriate handler
   site — do not hard-code the key.
+- Icon-only buttons that trigger user actions must have an accessible name
+  (`aria-label`, and usually matching `title`) from i18n text. Without this,
+  Playwright flow tests have to click by position and can miss the exact
+  "button exists but crashes when clicked" regression they are meant to catch.
 
 ## Database Drivers
 
@@ -110,3 +114,30 @@ it never happens again.
   `.claude/skills/`.
 - When you encounter a new failure mode during this session, add an entry to
   this file. The file grows as the project's institutional knowledge grows.
+
+## Hot Files Governance
+
+The following files are modification hotspots (most commits in last 30 days).
+Before modifying them, check line count. If over threshold, suggest extracting
+logic before adding more.
+
+| File | Threshold | Extraction strategy |
+|------|-----------|---------------------|
+| `src/components/business/DataGrid/TableView.tsx` | 500 lines | Extract to hooks in `tableView/hooks/` |
+| `src/components/business/Sidebar/ConnectionList.tsx` | 500 lines | Split tree state, dialog state, action handlers |
+| `src-tauri/src/commands/query.rs` | 600 lines | Extract helpers to `db/` or `services/` |
+| `src-tauri/src/commands/metadata.rs` | 600 lines | Extract helpers to `db/` or `services/` |
+| `src-tauri/src/lib.rs` | 500 lines | Move command registration to module-level helpers |
+| `src/lib/i18n/locales/*.ts` | 800 lines | Split by domain, re-export from index |
+
+**Rules:**
+1. When modifying a hot file, first check `wc -l`. If over threshold, inform the
+   user and suggest extraction targets before proceeding.
+2. Do not add new top-level functions or handlers to hot files. Extract to
+   hooks, helpers, or service modules first, then import.
+3. For `TableView.tsx`: only orchestration and layout belong here. State logic,
+   event handlers, and data transformations go in `tableView/hooks/`.
+4. For `ConnectionList.tsx`: split into `useTreeState`, `useDialogState`,
+   `useConnectionActions` hooks.
+5. For `lib.rs`: prefer `commands::<module>::register(builder)` pattern over
+   listing every command inline.

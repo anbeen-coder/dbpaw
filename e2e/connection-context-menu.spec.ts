@@ -103,3 +103,44 @@ test("connection node right-click menu opens and actions trigger dialogs", async
     "Delete confirmation should not emit runtime errors",
   );
 });
+
+test("database node right-click menu", async ({ page }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
+  runtimeErrors.assertClean("App boot");
+
+  // Connect the connection by double-clicking
+  await page.getByText("PostgreSQL Dev", { exact: true }).dblclick();
+  await expect(page.getByText("testdb")).toBeVisible();
+
+  // Wait for the tree to settle
+  await page.waitForTimeout(500);
+
+  // Right-click on the database node
+  const dbNode = page.getByText("testdb", { exact: true });
+  await dbNode.click({ button: "right" });
+
+  // Verify context menu items
+  const contextMenu = page.locator(".fixed.z-50");
+  await expect(contextMenu).toBeVisible();
+  await expect(
+    contextMenu.getByRole("button", { name: "Refresh Tables" }),
+  ).toBeVisible();
+  await expect(
+    contextMenu.getByRole("button", { name: "ER Diagram" }),
+  ).toBeVisible();
+
+  // Click Refresh Tables from database context menu
+  await contextMenu
+    .getByRole("button", { name: "Refresh Tables" })
+    .click();
+
+  // Wait for refresh to complete
+  await page.waitForTimeout(500);
+
+  runtimeErrors.assertClean("Database context menu");
+});

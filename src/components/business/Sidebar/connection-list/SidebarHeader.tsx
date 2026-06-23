@@ -83,6 +83,8 @@ export function SidebarHeader({
           variant="ghost"
           size="sm"
           className="h-6 w-6 p-0"
+          aria-label={t("connection.menu.refresh")}
+          title={t("connection.menu.refresh")}
           onClick={onRefresh}
           loading={isLoadingConnections}
         >
@@ -96,6 +98,8 @@ export function SidebarHeader({
               variant="ghost"
               size="sm"
               className="h-6 w-6 p-0"
+              aria-label={t("connection.menu.newConnection")}
+              title={t("connection.menu.newConnection")}
               onClick={openCreateDialog}
             >
               <Plus className="w-3.5 h-3.5" />

@@ -377,21 +377,20 @@ test.describe("DataGrid", () => {
   });
 
   test.describe("Export Execution", () => {
-    test("export current page to CSV", async ({ page }) => {
-      const runtimeErrors = collectRuntimeErrors(page);
-
-      // Click Export button
+    async function exportCurrentPage(page: Page, format: string) {
       await page.getByLabel("Export").click();
-      // Hover "Export Current Page"
       await page
         .getByRole("menuitem", { name: "Export Current Page" })
         .hover();
-      // Click CSV
-      await page.getByRole("menuitem", { name: "CSV" }).click();
+      await page.getByRole("menuitem", { name: format }).click();
+      await expect(
+        page.getByText(/Export dialog is only available/),
+      ).toBeVisible();
+    }
 
-      // Wait for export to complete
-      await page.waitForTimeout(500);
-
+    test("export current page to CSV", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+      await exportCurrentPage(page, "CSV");
       runtimeErrors.assertClean(
         "Export current page to CSV should not emit runtime errors",
       );
@@ -399,19 +398,7 @@ test.describe("DataGrid", () => {
 
     test("export current page to JSON", async ({ page }) => {
       const runtimeErrors = collectRuntimeErrors(page);
-
-      // Click Export button
-      await page.getByLabel("Export").click();
-      // Hover "Export Current Page"
-      await page
-        .getByRole("menuitem", { name: "Export Current Page" })
-        .hover();
-      // Click JSON
-      await page.getByRole("menuitem", { name: "JSON" }).click();
-
-      // Wait for export to complete
-      await page.waitForTimeout(500);
-
+      await exportCurrentPage(page, "JSON");
       runtimeErrors.assertClean(
         "Export current page to JSON should not emit runtime errors",
       );
@@ -419,19 +406,7 @@ test.describe("DataGrid", () => {
 
     test("export current page to SQL", async ({ page }) => {
       const runtimeErrors = collectRuntimeErrors(page);
-
-      // Click Export button
-      await page.getByLabel("Export").click();
-      // Hover "Export Current Page"
-      await page
-        .getByRole("menuitem", { name: "Export Current Page" })
-        .hover();
-      // Click SQL
-      await page.getByRole("menuitem", { name: "SQL" }).click();
-
-      // Wait for export to complete
-      await page.waitForTimeout(500);
-
+      await exportCurrentPage(page, "SQL");
       runtimeErrors.assertClean(
         "Export current page to SQL should not emit runtime errors",
       );

@@ -1,7 +1,6 @@
 import type { Completion, CompletionResult } from "@codemirror/autocomplete";
 import type { SchemaOverview } from "@/services/api";
-
-const MYSQL_FAMILY_DRIVERS = new Set(["mysql", "mariadb", "tidb", "starrocks", "doris"]);
+import { isMysqlFamilyDriver } from "@/lib/driver-registry";
 
 type SqlCompletionClause = "table" | "column" | null;
 
@@ -191,13 +190,11 @@ export function detectSqlCompletionContext(
   if (prefix.includes(".") || contextText.endsWith(".")) {
     const driver = options?.driver;
     const availableDatabases = options?.availableDatabases;
-    if (driver && MYSQL_FAMILY_DRIVERS.has(driver) && availableDatabases?.length) {
-      const fullText = textBeforeCursor;
-      const dotIdx = fullText.lastIndexOf(".");
+    if (driver && isMysqlFamilyDriver(driver) && availableDatabases?.length) {
+      const dotIdx = textBeforeCursor.lastIndexOf(".");
       if (dotIdx > 0) {
-        let idEnd = dotIdx;
-        while (idEnd > 0 && /[\w$]/.test(fullText[idEnd - 1])) idEnd--;
-        const beforeDot = fullText.slice(idEnd, dotIdx);
+        const idStart = getIdentifierStart(textBeforeCursor.slice(0, dotIdx));
+        const beforeDot = textBeforeCursor.slice(idStart, dotIdx);
         if (beforeDot) {
           const isDbRef = availableDatabases.some(
             (db) => db.toLowerCase() === beforeDot.toLowerCase(),

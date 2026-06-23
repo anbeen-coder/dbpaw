@@ -58,6 +58,20 @@ export const mockConnections: any[] = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
+  {
+    id: 5,
+    uuid: "mock-5",
+    name: "MongoDB Dev",
+    dbType: "mongodb",
+    host: "localhost",
+    port: 27017,
+    database: "testdb",
+    username: "",
+    ssl: false,
+    sshEnabled: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
 ];
 
 export async function mockGetMysqlCharsets(_id: number): Promise<string[]> {

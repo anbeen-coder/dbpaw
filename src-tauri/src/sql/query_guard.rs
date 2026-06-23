@@ -565,3 +565,242 @@ pub fn apply_default_limit(sql: &str, driver: Option<&str>) -> String {
 
     append_limit_1000(normalized)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adds_limit_to_simple_select() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t", None),
+            "SELECT * FROM t LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn keeps_existing_limit() {
+        assert_eq!(
+            apply_default_limit("select * from t limit 10", None),
+            "select * from t limit 10"
+        );
+    }
+
+    #[test]
+    fn ignores_limit_column_name() {
+        assert_eq!(
+            apply_default_limit("SELECT limit FROM t", None),
+            "SELECT limit FROM t LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn ignores_limit_alias() {
+        assert_eq!(
+            apply_default_limit("SELECT a AS limit FROM t", None),
+            "SELECT a AS limit FROM t LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn ignores_limit_identifier_in_where() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t WHERE limit > 10", None),
+            "SELECT * FROM t WHERE limit > 10 LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn keeps_fetch_first_rows_only() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t FETCH FIRST 20 ROWS ONLY", None),
+            "SELECT * FROM t FETCH FIRST 20 ROWS ONLY"
+        );
+    }
+
+    #[test]
+    fn supports_leading_comment() {
+        assert_eq!(
+            apply_default_limit("-- c\nSELECT * FROM t", None),
+            "-- c\nSELECT * FROM t LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn ignores_subquery_limit() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM (SELECT * FROM t LIMIT 5) s", None),
+            "SELECT * FROM (SELECT * FROM t LIMIT 5) s LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn preserves_trailing_semicolon() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t;", None),
+            "SELECT * FROM t LIMIT 1000;"
+        );
+    }
+
+    #[test]
+    fn skips_multi_statement_sql() {
+        assert_eq!(
+            apply_default_limit("SELECT 1; SELECT 2;", None),
+            "SELECT 1; SELECT 2;"
+        );
+    }
+
+    #[test]
+    fn applies_to_with_select_queries() {
+        assert_eq!(
+            apply_default_limit("WITH cte AS (SELECT 1) SELECT * FROM cte", None),
+            "WITH cte AS (SELECT 1) SELECT * FROM cte LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn skips_with_non_select_queries() {
+        assert_eq!(
+            apply_default_limit(
+                "WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte",
+                None
+            ),
+            "WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte"
+        );
+    }
+
+    #[test]
+    fn ignores_limit_inside_string_literal() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t WHERE name = 'limit x'", None),
+            "SELECT * FROM t WHERE name = 'limit x' LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn clickhouse_skips_default_limit_when_format_clause_exists() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t FORMAT JSON", Some("clickhouse")),
+            "SELECT * FROM t FORMAT JSON"
+        );
+    }
+
+    #[test]
+    fn clickhouse_keeps_default_limit_for_regular_select() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t", Some("clickhouse")),
+            "SELECT * FROM t LIMIT 1000"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_top_to_simple_select() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t", Some("mssql")),
+            "SELECT TOP (1000) * FROM t"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_top_with_existing_order() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t ORDER BY id DESC", Some("mssql")),
+            "SELECT TOP (1000) * FROM t ORDER BY id DESC"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_top_to_cte_select() {
+        assert_eq!(
+            apply_default_limit("WITH cte AS (SELECT 1) SELECT * FROM cte", Some("mssql")),
+            "WITH cte AS (SELECT 1) SELECT TOP (1000) * FROM cte"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_top_to_select_with_semicolon() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t;", Some("mssql")),
+            "SELECT TOP (1000) * FROM t;"
+        );
+    }
+
+    #[test]
+    fn mssql_keeps_existing_top() {
+        assert_eq!(
+            apply_default_limit("SELECT TOP 20 * FROM t", Some("mssql")),
+            "SELECT TOP 20 * FROM t"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_fetch_to_existing_offset_clause() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t ORDER BY id OFFSET 10 ROWS", Some("mssql")),
+            "SELECT * FROM t ORDER BY id OFFSET 10 ROWS FETCH NEXT 1000 ROWS ONLY"
+        );
+    }
+
+    #[test]
+    fn mssql_adds_fetch_to_existing_offset_clause_with_semicolon() {
+        assert_eq!(
+            apply_default_limit("SELECT * FROM t ORDER BY id OFFSET 10 ROWS;", Some("mssql")),
+            "SELECT * FROM t ORDER BY id OFFSET 10 ROWS FETCH NEXT 1000 ROWS ONLY;"
+        );
+    }
+
+    #[test]
+    fn is_single_statement_handles_comments_and_quotes() {
+        assert!(is_single_statement("SELECT 1 -- comment\n"));
+        assert!(is_single_statement("SELECT 'a; b'"));
+        assert!(is_single_statement("SELECT \"a; b\""));
+        assert!(is_single_statement("SELECT `a; b`"));
+        assert!(is_single_statement(
+            "CREATE FUNCTION f() RETURNS void AS $$ BEGIN PERFORM 1; END; $$ LANGUAGE plpgsql;"
+        ));
+        assert!(is_single_statement(
+            "CREATE FUNCTION f() RETURNS text AS $tag$ BEGIN RETURN ';'; END; $tag$ LANGUAGE plpgsql;"
+        ));
+        assert!(!is_single_statement("SELECT 1; SELECT 2"));
+    }
+
+    #[test]
+    fn is_single_statement_handles_nested_parens_and_unbalanced() {
+        assert!(is_single_statement("SELECT (SELECT 1)"));
+        assert!(!is_single_statement("SELECT (1;"));
+        assert!(!is_single_statement("SELECT 1)"));
+    }
+
+    #[test]
+    fn collect_top_level_keywords_skips_subqueries_and_strings() {
+        let tokens =
+            collect_top_level_keywords("WITH cte AS (SELECT 'from' AS v) SELECT * FROM cte");
+        assert_eq!(tokens.first().map(String::as_str), Some("with"));
+        assert!(tokens.contains(&"select".to_string()));
+        assert!(tokens.contains(&"from".to_string()));
+    }
+
+    #[test]
+    fn collect_top_level_keywords_skips_dollar_quoted_bodies() {
+        let tokens = collect_top_level_keywords(
+            "CREATE FUNCTION f() RETURNS void AS $$ BEGIN SELECT 1; END; $$ LANGUAGE plpgsql",
+        );
+        assert_eq!(tokens.first().map(String::as_str), Some("create"));
+        assert!(tokens.contains(&"function".to_string()));
+        assert!(!tokens
+            .iter()
+            .any(|token| token == "begin" || token == "end"));
+    }
+
+    #[test]
+    fn classify_statement_classifies_with_queries() {
+        assert_eq!(
+            classify_statement("WITH c AS (SELECT 1) SELECT * FROM c"),
+            StatementKind::Select
+        );
+        assert_eq!(
+            classify_statement("WITH c AS (SELECT 1) UPDATE t SET a = 1"),
+            StatementKind::Write
+        );
+    }
+}

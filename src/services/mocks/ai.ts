@@ -292,7 +292,7 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
         role: "user",
         content: input,
         createdAt: now,
-      } as any);
+      });
       msgs.push({
         id: msgs.length + 1,
         conversationId,
@@ -325,7 +325,7 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
         })(),
         model: "mock-model",
         createdAt: now,
-      } as any);
+      });
       mockAiMessages[conversationId] = msgs;
       const idx = mockAiConversations.findIndex((x) => x.id === conversationId);
       if (idx >= 0) {

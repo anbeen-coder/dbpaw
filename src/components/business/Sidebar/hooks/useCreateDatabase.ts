@@ -4,7 +4,7 @@ import type { CreateDatabasePayload, Driver } from "@/services/api";
 import type { Connection, CreateDatabaseForm } from "../connection-list/types";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { supportsCreateDatabase, isMysqlFamilyDriver } from "@/lib/driver-registry";
+import { supportsCreateDatabase, isMysqlFamilyDriver, isRegisteredDriver } from "@/lib/driver-registry";
 import { errorMessage } from "@/lib/errors";
 
 const defaultCreateDatabaseForm: CreateDatabaseForm = {
@@ -164,7 +164,7 @@ export function useCreateDatabase(params: {
   );
   const createDbTargetDriver = createDbTargetConnection?.type;
   const isMySqlFamilyCreateDb = createDbTargetDriver
-    ? isMysqlFamilyDriver(createDbTargetDriver as any)
+    ? isRegisteredDriver(createDbTargetDriver) && isMysqlFamilyDriver(createDbTargetDriver)
     : false;
   const isPostgresCreateDb = createDbTargetDriver === "postgres";
   const isMssqlCreateDb = createDbTargetDriver === "mssql";

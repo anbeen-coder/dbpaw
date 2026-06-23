@@ -1,6 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 
 interface SortableTabProps {
   id: string;
@@ -28,7 +28,7 @@ export function SortableTab({ id, children }: SortableTabProps) {
   return (
     <div
       ref={setNodeRef}
-      style={style as any}
+      style={style as CSSProperties}
       {...attributes}
       {...listeners}
       className="h-full flex items-center outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

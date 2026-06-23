@@ -8,6 +8,7 @@ import {
   type TransferFormat,
   isTauri,
 } from "@/services/api";
+import type { SqlLanguage } from "sql-formatter";
 import { errorMessage } from "@/lib/errors";
 
 export function useSqlEditorApi(props: {
@@ -166,7 +167,7 @@ export function useSqlEditorApi(props: {
         clickhouse: "sql",
         mssql: "transactsql",
       };
-      const language = ((driver && dialectMap[driver]) || "sql") as any;
+      const language: SqlLanguage = ((driver && dialectMap[driver]) || "sql") as SqlLanguage;
       const formatted = format(code, {
         language,
         keywordCase: "upper",

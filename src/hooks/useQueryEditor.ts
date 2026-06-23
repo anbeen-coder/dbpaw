@@ -2,7 +2,7 @@ import { useCallback, useRef } from "react";
 import { api, SavedQuery, SchemaOverview } from "@/services/api";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/errors";
-import { isKeyValueDriver } from "@/lib/driver-registry";
+import { isKeyValueDriver, isRegisteredDriver } from "@/lib/driver-registry";
 import { applyQueryCompletionToTab } from "@/lib/queryExecutionState";
 import {
   normalizeDatabaseOptions,
@@ -45,7 +45,7 @@ export function useQueryEditor({
 
   const handleCreateQuery = useCallback(
     (connectionId: number, databaseName: string, driver: string) => {
-      if (isKeyValueDriver(driver as any)) {
+      if (isRegisteredDriver(driver) && isKeyValueDriver(driver)) {
         toast.info(
           "Redis connections don't support SQL queries. Use the Redis key view to browse and edit keys.",
         );

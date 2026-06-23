@@ -8,6 +8,7 @@ import {
   type ElasticsearchIndexAction,
 } from "@/components/business/Elasticsearch/elasticsearch-index-management";
 import { errorMessage } from "@/lib/errors";
+import type { Driver, DriverKind } from "@/lib/driver-registry";
 import type { TreeCallbacks } from "@/lib/tree-adapters/types.tsx";
 import { getDatasourceTreeAdapter as getDatasourceTreeAdapterFn } from "../connection-list/getDatasourceTreeAdapter";
 import type {
@@ -138,15 +139,16 @@ export function useConnectionTreeAdapters(options: {
 
   const handleOpenERDiagram = useCallback(
     (connectionId: string, database: string) => {
+      const conn = connections.find((c) => c.id === connectionId);
       treeCallbacks?.onOpenERDiagram?.({
         connectionId,
-        connectionName: "",
-        connectionType: "" as any,
-        driverKind: "sql" as any,
+        connectionName: conn?.name ?? "",
+        connectionType: (conn?.type ?? "postgres") as Driver,
+        driverKind: "sql" as DriverKind,
         databaseName: database,
       });
     },
-    [treeCallbacks],
+    [treeCallbacks, connections],
   );
 
   const handleCreateQueryFromContext = useCallback(

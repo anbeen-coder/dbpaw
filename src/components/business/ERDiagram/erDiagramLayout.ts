@@ -16,7 +16,8 @@ export function computeLayout(
   g.setGraph({ rankdir: "TB", nodesep: NODESEP, ranksep: RANKSEP });
 
   nodes.forEach((node) => {
-    const columnCount = (node.data?.columns as any[])?.length || 0;
+    const columns = node.data?.columns;
+    const columnCount = Array.isArray(columns) ? columns.length : 0;
     const height = NODE_HEADER_HEIGHT + columnCount * NODE_ROW_HEIGHT;
     g.setNode(node.id, { width: NODE_WIDTH, height });
   });

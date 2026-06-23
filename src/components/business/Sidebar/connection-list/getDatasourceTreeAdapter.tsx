@@ -6,7 +6,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { ContextMenuItem } from "@/components/ui/context-menu";
 import { api } from "@/services/api";
-import { getTreeConfig } from "@/lib/driver-registry";
+import { getTreeConfig, type DriverKind } from "@/lib/driver-registry";
 import type { TreeCallbacks } from "@/lib/tree-adapters/types.tsx";
 import type { ElasticsearchIndexAction } from "@/components/business/Elasticsearch/elasticsearch-index-management";
 import type {
@@ -104,7 +104,7 @@ export function getDatasourceTreeAdapter(params: {
     connectionId: connection.id,
     connectionName: connection.name,
     connectionType: connection.type,
-    driverKind: driverKind as any,
+    driverKind: driverKind as DriverKind,
   });
 
   const enhancedCallbacks = {

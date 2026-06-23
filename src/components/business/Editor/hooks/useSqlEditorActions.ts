@@ -20,9 +20,28 @@ import { CLICKHOUSE_COMPLETIONS } from "../clickhouseKeywords";
 import { getEditorTheme } from "../sqlThemes";
 import type { SchemaOverview } from "@/services/api";
 
+function mergeSchemaOverviews(
+  current: SchemaOverview | undefined,
+  crossDbCache: Map<string, SchemaOverview> | undefined,
+): SchemaOverview | undefined {
+  if (!current && (!crossDbCache || crossDbCache.size === 0)) return undefined;
+  if (!crossDbCache || crossDbCache.size === 0) return current;
+
+  const merged: SchemaOverview = { tables: [...(current?.tables ?? [])] };
+  for (const [, overview] of crossDbCache) {
+    for (const table of overview.tables) {
+      merged.tables.push(table);
+    }
+  }
+  return merged;
+}
+
 export function useSqlEditorActions(props: {
   driver?: string;
   schemaOverview?: SchemaOverview;
+  crossDbSchemaCache?: Map<string, SchemaOverview>;
+  availableDatabases?: string[];
+  onCrossDbSchemaLoad?: (dbName: string) => void;
   editorFontSizePx: number;
   theme: string;
   onExecute?: (sql: string) => void;
@@ -33,6 +52,9 @@ export function useSqlEditorActions(props: {
   const {
     driver,
     schemaOverview,
+    crossDbSchemaCache,
+    availableDatabases,
+    onCrossDbSchemaLoad,
     editorFontSizePx,
     theme,
     onExecute,
@@ -42,6 +64,7 @@ export function useSqlEditorActions(props: {
   } = props;
 
   const editorViewRef = useRef<EditorView | null>(null);
+  const loadingRef = useRef<Set<string>>(new Set());
 
   const executeFromEditorRef = useRef<((view: EditorView) => void) | null>(null);
   const handleFormatRef = useRef(handleFormat);
@@ -100,9 +123,10 @@ export function useSqlEditorActions(props: {
   }, [driver]);
 
   const sqlSchema = useMemo((): SQLNamespace => {
-    if (!schemaOverview) return {};
+    const merged = mergeSchemaOverviews(schemaOverview, crossDbSchemaCache);
+    if (!merged) return {};
     const schemaMap: SQLNamespace = {};
-    schemaOverview.tables.forEach((t) => {
+    merged.tables.forEach((t) => {
       const colNames = t.columns.map((c) => c.name);
       schemaMap[t.name] = colNames;
       if (t.schema) {
@@ -110,7 +134,7 @@ export function useSqlEditorActions(props: {
       }
     });
     return schemaMap;
-  }, [schemaOverview]);
+  }, [schemaOverview, crossDbSchemaCache]);
 
   const customCompletion = useMemo(() => {
     const hasSchema = !!schemaOverview;
@@ -121,10 +145,37 @@ export function useSqlEditorActions(props: {
       const results: any[] = [];
 
       if (hasSchema) {
+        const textBeforeCursor = context.state.sliceDoc(0, context.pos);
+
+        // Detect cross-DB references that need loading
+        if (onCrossDbSchemaLoad && availableDatabases?.length) {
+          const TABLE_REF_REGEX =
+            /\b(?:FROM|(?:LEFT|RIGHT|FULL|INNER|CROSS)(?:\s+OUTER)?\s+JOIN|JOIN)\s+([A-Za-z_][\w$]*)(?:\.([A-Za-z_][\w$]*))?/gi;
+          let match = TABLE_REF_REGEX.exec(textBeforeCursor);
+          while (match) {
+            const [, first, second] = match;
+            if (second) {
+              const isFirstPartDb = availableDatabases.some(
+                (db) => db.toLowerCase() === first.toLowerCase(),
+              );
+              const isAlreadyCached =
+                crossDbSchemaCache?.has(first) ||
+                loadingRef.current.has(first);
+              if (isFirstPartDb && !isAlreadyCached) {
+                loadingRef.current.add(first);
+                onCrossDbSchemaLoad(first);
+              }
+            }
+            match = TABLE_REF_REGEX.exec(textBeforeCursor);
+          }
+        }
+
+        const merged = mergeSchemaOverviews(schemaOverview, crossDbSchemaCache);
         const r = buildSqlContextualCompletion({
-          textBeforeCursor: context.state.sliceDoc(0, context.pos),
+          textBeforeCursor,
           explicit: context.explicit,
-          schemaOverview: schemaOverview!,
+          schemaOverview: merged,
+          availableDatabases,
         });
         if (r) results.push(r);
       }
@@ -156,7 +207,7 @@ export function useSqlEditorActions(props: {
       }
       return { from, options, validFor: /^[\w$]*$/ };
     };
-  }, [schemaOverview, driver]);
+  }, [schemaOverview, driver, crossDbSchemaCache, availableDatabases, onCrossDbSchemaLoad]);
 
   const extensions = useMemo((): Extension[] => {
     const fontSizeExt = EditorView.theme({

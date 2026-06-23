@@ -75,6 +75,60 @@ describe("detectSqlCompletionContext", () => {
       from: 9,
     });
   });
+
+  test("MySQL: detects table context for db. prefix when db is available", () => {
+    expect(
+      detectSqlCompletionContext("SELECT * FROM other_db.", {
+        driver: "mysql",
+        availableDatabases: ["other_db"],
+      }),
+    ).toEqual({ clause: "table", from: 23 });
+  });
+
+  test("MySQL: detects table context while typing after db.", () => {
+    expect(
+      detectSqlCompletionContext("SELECT * FROM other_db.prod", {
+        driver: "mysql",
+        availableDatabases: ["other_db"],
+      }),
+    ).toEqual({ clause: "table", from: 23 });
+  });
+
+  test("MySQL: bails on unknown database prefix", () => {
+    expect(
+      detectSqlCompletionContext("SELECT * FROM unknown.", {
+        driver: "mysql",
+        availableDatabases: ["other_db"],
+      }),
+    ).toEqual({ clause: null, from: 22 });
+  });
+
+  test("non-MySQL: bails on db. prefix even with availableDatabases", () => {
+    expect(
+      detectSqlCompletionContext("SELECT * FROM other_db.", {
+        driver: "postgres",
+        availableDatabases: ["other_db"],
+      }),
+    ).toEqual({ clause: null, from: 23 });
+  });
+
+  test("MySQL: detects column context after db.table in WHERE", () => {
+    expect(
+      detectSqlCompletionContext(
+        "SELECT * FROM other_db.products WHERE ",
+        { driver: "mysql", availableDatabases: ["other_db"] },
+      ),
+    ).toEqual({ clause: "column", from: 38 });
+  });
+
+  test("MySQL: bails on triple-dot pattern db.table.col", () => {
+    expect(
+      detectSqlCompletionContext("SELECT * FROM other_db.products.", {
+        driver: "mysql",
+        availableDatabases: ["other_db"],
+      }),
+    ).toEqual({ clause: null, from: 32 });
+  });
 });
 
 describe("buildSqlContextualCompletion", () => {
@@ -166,6 +220,69 @@ describe("buildSqlContextualCompletion", () => {
 
     const lastOption = result?.options[result.options.length - 1];
     expect(lastOption?.detail).toBe("profiles");
+  });
+
+  test("MySQL: returns table candidates after db. prefix", () => {
+    const mergedOverview: SchemaOverview = {
+      tables: [
+        ...schemaOverview.tables,
+        {
+          schema: "other_db",
+          name: "products",
+          columns: [
+            { name: "id", type: "integer" },
+            { name: "name", type: "varchar" },
+          ],
+        },
+      ],
+    };
+    const result = buildSqlContextualCompletion({
+      textBeforeCursor: "SELECT * FROM other_db.",
+      explicit: false,
+      schemaOverview: mergedOverview,
+      availableDatabases: ["other_db"],
+      driver: "mysql",
+    });
+    expect(result).not.toBeNull();
+    expect(result?.options.map((o) => o.label)).toContain("other_db.products");
+  });
+
+  test("MySQL: returns column candidates after db.table WHERE", () => {
+    const mergedOverview: SchemaOverview = {
+      tables: [
+        ...schemaOverview.tables,
+        {
+          schema: "other_db",
+          name: "products",
+          columns: [
+            { name: "id", type: "integer" },
+            { name: "name", type: "varchar" },
+          ],
+        },
+      ],
+    };
+    const result = buildSqlContextualCompletion({
+      textBeforeCursor: "SELECT * FROM other_db.products WHERE ",
+      explicit: false,
+      schemaOverview: mergedOverview,
+      availableDatabases: ["other_db"],
+      driver: "mysql",
+    });
+    expect(result).not.toBeNull();
+    const labels = result?.options.map((o) => o.label) ?? [];
+    expect(labels).toContain("id");
+    expect(labels).toContain("name");
+  });
+
+  test("non-MySQL: returns null after db. prefix (defers to CodeMirror)", () => {
+    const result = buildSqlContextualCompletion({
+      textBeforeCursor: "SELECT * FROM other_db.",
+      explicit: false,
+      schemaOverview,
+      availableDatabases: ["other_db"],
+      driver: "postgres",
+    });
+    expect(result).toBeNull();
   });
 });
 

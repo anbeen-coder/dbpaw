@@ -135,6 +135,7 @@ export function SqlToolbar({
                   variant="outline"
                   className="h-8 w-8"
                   disabled={isExecuting}
+                  aria-label={t("sqlEditor.tooltip.runSql")}
                 >
                   {isExecuting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -156,6 +157,7 @@ export function SqlToolbar({
                   className="h-8 w-8"
                   onClick={onFormat}
                   disabled={isFormatting}
+                  aria-label={t("sqlEditor.tooltip.formatSql")}
                 >
                   <Braces className="w-4 h-4" />
                 </Button>
@@ -172,6 +174,7 @@ export function SqlToolbar({
                   size="icon"
                   className="h-8 w-8"
                   onClick={onCancel}
+                  aria-label={t("sqlEditor.tooltip.cancelQuery")}
                 >
                   <span className="h-3 w-3 bg-foreground/80 rounded-[1px]" />
                 </Button>
@@ -188,6 +191,7 @@ export function SqlToolbar({
                   size="icon"
                   className="h-8 w-8"
                   onClick={onTriggerSave}
+                  aria-label={t("sqlEditor.tooltip.saveQuery")}
                 >
                   <Save className="w-4 h-4" />
                 </Button>
@@ -204,6 +208,7 @@ export function SqlToolbar({
                   size="icon"
                   className="h-8 w-8"
                   onClick={onClear}
+                  aria-label={t("sqlEditor.tooltip.clearEditor")}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>

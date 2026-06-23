@@ -243,3 +243,82 @@ test("SQL editor: execute invalid query shows error", async ({ page }) => {
   });
   // Skip assertClean — the mock throws intentionally, which triggers console.error in the API layer
 });
+
+test("SQL logs dropdown shows execution history", async ({ page }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
+
+  await openNewQueryTab(page);
+  await typeInEditor(page, "SELECT * FROM users");
+
+  // Execute query first
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(page.getByText("Execution successful")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Open SQL logs dropdown
+  await page.getByLabel("Open SQL execution logs").click();
+
+  // Verify SQL logs dropdown opens
+  await expect(page.getByText("SQL Logs (latest 100)")).toBeVisible();
+
+  // Verify executed query appears in logs
+  const logsPopover = page.locator("[data-radix-popper-content-wrapper]");
+  await expect(logsPopover.getByText("SELECT * FROM users").first()).toBeVisible();
+
+  runtimeErrors.assertClean("SQL logs dropdown shows execution history");
+});
+
+test("SQL logs dropdown shows empty state", async ({ page }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
+
+  await openNewQueryTab(page);
+
+  // Open SQL logs dropdown
+  await page.getByLabel("Open SQL execution logs").click();
+
+  // Verify empty state message
+  await expect(page.getByText("No execution logs yet.")).toBeVisible();
+
+  runtimeErrors.assertClean("SQL logs dropdown shows empty state");
+});
+
+test("SQL logs copy SQL button", async ({ page, context }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+
+  await context.grantPermissions(["clipboard-write"]);
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
+
+  await openNewQueryTab(page);
+  await typeInEditor(page, "SELECT 1");
+
+  // Execute query
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(page.getByText("Execution successful")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Open SQL logs dropdown
+  await page.getByLabel("Open SQL execution logs").click();
+
+  // Click copy button on the log entry
+  await page.getByLabel("Copy SQL").click();
+
+  // Verify copy success toast
+  await expect(page.getByText("SQL copied")).toBeVisible();
+
+  runtimeErrors.assertClean("SQL logs copy SQL button");
+});

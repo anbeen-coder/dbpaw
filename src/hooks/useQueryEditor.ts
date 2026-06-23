@@ -352,6 +352,7 @@ export function useQueryEditor({
                 queryResults: null,
                 activeQueryId: undefined,
                 schemaOverview: undefined,
+                crossDbSchemaCache: undefined,
               }
             : item,
         ),
@@ -380,6 +381,39 @@ export function useQueryEditor({
       }
     },
     [fetchEditorSchemaOverview, t, tabs],
+  );
+
+  const handleCrossDbSchemaLoad = useCallback(
+    async (tabId: string, dbName: string) => {
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab || tab.type !== "editor" || !tab.connectionId) return;
+
+      try {
+        const schemaOverview = await fetchEditorSchemaOverview(
+          tab.connectionId,
+          dbName,
+        );
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === tabId && t.type === "editor"
+              ? {
+                  ...t,
+                  crossDbSchemaCache: new Map([
+                    ...(t.crossDbSchemaCache || []),
+                    [dbName, schemaOverview],
+                  ]),
+                }
+              : t,
+          ),
+        );
+      } catch (e) {
+        console.error(
+          `Failed to load schema overview for cross-DB "${dbName}":`,
+          errorMessage(e),
+        );
+      }
+    },
+    [fetchEditorSchemaOverview, setTabs, tabs],
   );
 
   const saveEditorTab = useCallback(
@@ -432,6 +466,7 @@ export function useQueryEditor({
     handleSqlChange,
     handleExecuteQuery,
     handleEditorDatabaseChange,
+    handleCrossDbSchemaLoad,
     saveEditorTab,
   };
 }

@@ -1,6 +1,7 @@
 import type { Completion, CompletionResult } from "@codemirror/autocomplete";
 import type { SchemaOverview } from "@/services/api";
 import { isMysqlFamilyDriver } from "@/lib/driver-registry";
+import type { Driver } from "@/lib/driver-registry";
 
 type SqlCompletionClause = "table" | "column" | null;
 
@@ -190,7 +191,7 @@ export function detectSqlCompletionContext(
   if (prefix.includes(".") || contextText.endsWith(".")) {
     const driver = options?.driver;
     const availableDatabases = options?.availableDatabases;
-    if (driver && isMysqlFamilyDriver(driver) && availableDatabases?.length) {
+    if (driver && isMysqlFamilyDriver(driver as Driver) && availableDatabases?.length) {
       const dotIdx = textBeforeCursor.lastIndexOf(".");
       if (dotIdx > 0) {
         const idStart = getIdentifierStart(textBeforeCursor.slice(0, dotIdx));

@@ -113,6 +113,7 @@ export function useSqlEditorActions(props: {
       case "tidb":
       case "mariadb":
       case "starrocks":
+      case "doris":
         return MySQL;
       case "sqlite":
       case "duckdb":
@@ -176,6 +177,7 @@ export function useSqlEditorActions(props: {
           explicit: context.explicit,
           schemaOverview: merged,
           availableDatabases,
+          driver,
         });
         if (r) results.push(r);
       }

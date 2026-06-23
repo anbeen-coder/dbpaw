@@ -113,6 +113,7 @@ export default function App() {
     handleSqlChange,
     handleExecuteQuery,
     handleEditorDatabaseChange,
+    handleCrossDbSchemaLoad,
     saveEditorTab,
   } = useQueryEditor({
     tabs,
@@ -377,6 +378,7 @@ export default function App() {
             handleExecuteQuery={handleExecuteQuery}
             handleSqlChange={handleSqlChange}
             handleEditorDatabaseChange={handleEditorDatabaseChange}
+            handleCrossDbSchemaLoad={handleCrossDbSchemaLoad}
             handlePageChange={handlePageChange}
             handlePageSizeChange={handlePageSizeChange}
             handleSortChange={handleSortChange}

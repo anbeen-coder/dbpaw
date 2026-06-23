@@ -154,6 +154,7 @@ const defaultProps = {
   handleExecuteQuery: ASYNC_NOOP,
   handleSqlChange: NOOP,
   handleEditorDatabaseChange: ASYNC_NOOP,
+  handleCrossDbSchemaLoad: ASYNC_NOOP,
   handlePageChange: ASYNC_NOOP,
   handlePageSizeChange: ASYNC_NOOP,
   handleSortChange: ASYNC_NOOP,

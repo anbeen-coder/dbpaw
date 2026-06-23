@@ -28,6 +28,8 @@ interface SqlEditorProps {
   onCancel?: () => void;
   databaseName?: string;
   availableDatabases?: string[];
+  crossDbSchemaCache?: Map<string, SchemaOverview>;
+  onCrossDbSchemaLoad?: (dbName: string) => void;
   value?: string;
   onChange?: (value: string) => void;
   onDatabaseChange?: (database: string) => void;
@@ -47,6 +49,8 @@ export function SqlEditor({
   onCancel,
   databaseName,
   availableDatabases,
+  crossDbSchemaCache,
+  onCrossDbSchemaLoad,
   value,
   onChange,
   onDatabaseChange,
@@ -79,6 +83,9 @@ export function SqlEditor({
   const actions = useSqlEditorActions({
     driver,
     schemaOverview,
+    crossDbSchemaCache,
+    availableDatabases,
+    onCrossDbSchemaLoad,
     editorFontSizePx,
     theme,
     onExecute,

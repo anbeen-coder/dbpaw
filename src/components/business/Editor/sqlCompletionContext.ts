@@ -9,6 +9,7 @@ type SqlCompletionContextInfo = {
 };
 
 type ReferencedTable = {
+  database?: string;
   schema?: string;
   name: string;
   alias?: string;
@@ -45,8 +46,15 @@ const CLAUSE_PATTERNS = [...TABLE_CLAUSES, ...COLUMN_CLAUSES].map((clause) => ({
   regex: new RegExp(`\\b${clause.replace(/\s+/g, "\\s+")}\\b`, "gi"),
 }));
 
-const TABLE_REFERENCE_REGEX =
-  /\b(?:FROM|(?:LEFT|RIGHT|FULL|INNER|CROSS)(?:\s+OUTER)?\s+JOIN|JOIN)\s+([A-Za-z_][\w$]*)(?:\.([A-Za-z_][\w$]*))?(?:\s+(?:AS\s+)?([A-Za-z_][\w$]*))?/gi;
+const ALIAS_EXCLUDED_KEYWORDS = [
+  "FROM", "JOIN", "LEFT", "RIGHT", "FULL", "INNER", "CROSS", "OUTER",
+  "WHERE", "ON", "GROUP", "ORDER", "HAVING", "SELECT", "INTO", "UPDATE", "AS"
+].join("|");
+
+const TABLE_REFERENCE_REGEX = new RegExp(
+  `\\b(?:FROM|(?:LEFT|RIGHT|FULL|INNER|CROSS)(?:\\s+OUTER)?\\s+JOIN|JOIN)\\s+([A-Za-z_][\\w$]*)(?:\\.([A-Za-z_][\\w$]*))?(?:\\s+(?:AS\\s+)?(?!${ALIAS_EXCLUDED_KEYWORDS}\\b)([A-Za-z_][\\w$]*))?`,
+  "gi"
+);
 
 const RESERVED_ALIAS_KEYWORDS = new Set(
   [
@@ -84,7 +92,8 @@ function resolveReferencedTable(
   schemaOverview: SchemaOverview,
   rawTableName: string,
   rawQualifiedName?: string,
-): { schema?: string; name: string } | null {
+  availableDatabases?: string[],
+): { schema?: string; name: string; database?: string } | null {
   if (rawQualifiedName) {
     const qualifiedMatch = schemaOverview.tables.find(
       (table) =>
@@ -102,22 +111,36 @@ function resolveReferencedTable(
   const bareMatch = schemaOverview.tables.find(
     (table) => table.name.toLowerCase() === rawTableName.toLowerCase(),
   );
-  if (!bareMatch) {
-    return null;
+  if (bareMatch) {
+    return {
+      schema: bareMatch.schema || undefined,
+      name: bareMatch.name,
+    };
   }
 
-  return {
-    schema: bareMatch.schema || undefined,
-    name: bareMatch.name,
-  };
+  if (
+    rawQualifiedName &&
+    availableDatabases?.some(
+      (db) => db.toLowerCase() === rawTableName.toLowerCase(),
+    )
+  ) {
+    return {
+      database: rawTableName,
+      name: rawQualifiedName,
+    };
+  }
+
+  return null;
 }
 
 export function extractReferencedTables(
   textBeforeCursor: string,
   schemaOverview: SchemaOverview,
+  availableDatabases?: string[],
 ): ReferencedTable[] {
   const referencedTables: ReferencedTable[] = [];
   const seen = new Set<string>();
+  TABLE_REFERENCE_REGEX.lastIndex = 0;
   let match = TABLE_REFERENCE_REGEX.exec(textBeforeCursor);
   let order = 0;
 
@@ -127,6 +150,7 @@ export function extractReferencedTables(
       schemaOverview,
       rawTableName,
       rawQualifiedName,
+      availableDatabases,
     );
 
     if (resolved) {
@@ -138,7 +162,9 @@ export function extractReferencedTables(
             ? rawAlias
             : undefined;
         referencedTables.push({
-          ...resolved,
+          ...(resolved.database && { database: resolved.database }),
+          schema: resolved.schema,
+          name: resolved.name,
           alias,
           order,
         });
@@ -273,8 +299,9 @@ export function buildSqlContextualCompletion(params: {
   textBeforeCursor: string;
   explicit: boolean;
   schemaOverview?: SchemaOverview;
+  availableDatabases?: string[];
 }): CompletionResult | null {
-  const { textBeforeCursor, explicit, schemaOverview } = params;
+  const { textBeforeCursor, explicit, schemaOverview, availableDatabases } = params;
   if (!schemaOverview) return null;
 
   const context = detectSqlCompletionContext(textBeforeCursor);
@@ -291,7 +318,7 @@ export function buildSqlContextualCompletion(params: {
       ? buildTableOptions(schemaOverview)
       : buildColumnOptions(
           schemaOverview,
-          extractReferencedTables(textBeforeCursor, schemaOverview),
+          extractReferencedTables(textBeforeCursor, schemaOverview, availableDatabases),
         );
 
   return {

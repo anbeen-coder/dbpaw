@@ -208,3 +208,77 @@ describe("extractReferencedTables", () => {
     ]);
   });
 });
+
+describe("cross-database reference detection", () => {
+  const crossDbOverview: SchemaOverview = {
+    tables: [
+      {
+        schema: "other_db",
+        name: "products",
+        columns: [
+          { name: "id", type: "integer" },
+          { name: "name", type: "varchar" },
+        ],
+      },
+    ],
+  };
+
+  test("extractReferencedTables resolves cross-DB table with availableDatabases", () => {
+    const result = extractReferencedTables(
+      "SELECT * FROM users JOIN other_db.products p ON ",
+      schemaOverview,
+      ["other_db"],
+    );
+    expect(result).toEqual([
+      { schema: "public", name: "users", alias: undefined, order: 0 },
+      { database: "other_db", name: "products", alias: "p", order: 1 },
+    ]);
+  });
+
+  test("extractReferencedTables ignores unknown database names", () => {
+    const result = extractReferencedTables(
+      "SELECT * FROM unknown_db.table1",
+      schemaOverview,
+      ["other_db"],
+    );
+    expect(result).toEqual([]);
+  });
+
+  test("extractReferencedTables falls back to schema match before DB check", () => {
+    const result = extractReferencedTables(
+      "SELECT * FROM public.users",
+      schemaOverview,
+      ["public"],
+    );
+    expect(result).toEqual([
+      { schema: "public", name: "users", alias: undefined, order: 0 },
+    ]);
+  });
+
+  test("buildSqlContextualCompletion includes cross-DB tables after FROM", () => {
+    const mergedOverview: SchemaOverview = {
+      tables: [...schemaOverview.tables, ...crossDbOverview.tables],
+    };
+    const result = buildSqlContextualCompletion({
+      textBeforeCursor: "SELECT * FROM ",
+      explicit: false,
+      schemaOverview: mergedOverview,
+    });
+    expect(result?.options.map((o) => o.label)).toContain("other_db.products");
+  });
+
+  test("buildSqlContextualCompletion includes cross-DB columns in WHERE", () => {
+    const mergedOverview: SchemaOverview = {
+      tables: [...schemaOverview.tables, ...crossDbOverview.tables],
+    };
+    const result = buildSqlContextualCompletion({
+      textBeforeCursor:
+        "SELECT * FROM users JOIN other_db.products p WHERE ",
+      explicit: false,
+      schemaOverview: mergedOverview,
+    });
+    const labels = result?.options.map((o) => o.label) ?? [];
+    expect(labels).toContain("name");
+    expect(labels).toContain("id");
+  });
+});

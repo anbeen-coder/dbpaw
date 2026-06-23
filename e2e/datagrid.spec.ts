@@ -375,4 +375,66 @@ test.describe("DataGrid", () => {
       );
     });
   });
+
+  test.describe("Export Execution", () => {
+    test("export current page to CSV", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Click Export button
+      await page.getByLabel("Export").click();
+      // Hover "Export Current Page"
+      await page
+        .getByRole("menuitem", { name: "Export Current Page" })
+        .hover();
+      // Click CSV
+      await page.getByRole("menuitem", { name: "CSV" }).click();
+
+      // Wait for export to complete
+      await page.waitForTimeout(500);
+
+      runtimeErrors.assertClean(
+        "Export current page to CSV should not emit runtime errors",
+      );
+    });
+
+    test("export current page to JSON", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Click Export button
+      await page.getByLabel("Export").click();
+      // Hover "Export Current Page"
+      await page
+        .getByRole("menuitem", { name: "Export Current Page" })
+        .hover();
+      // Click JSON
+      await page.getByRole("menuitem", { name: "JSON" }).click();
+
+      // Wait for export to complete
+      await page.waitForTimeout(500);
+
+      runtimeErrors.assertClean(
+        "Export current page to JSON should not emit runtime errors",
+      );
+    });
+
+    test("export current page to SQL", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Click Export button
+      await page.getByLabel("Export").click();
+      // Hover "Export Current Page"
+      await page
+        .getByRole("menuitem", { name: "Export Current Page" })
+        .hover();
+      // Click SQL
+      await page.getByRole("menuitem", { name: "SQL" }).click();
+
+      // Wait for export to complete
+      await page.waitForTimeout(500);
+
+      runtimeErrors.assertClean(
+        "Export current page to SQL should not emit runtime errors",
+      );
+    });
+  });
 });

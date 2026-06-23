@@ -25,6 +25,7 @@ export interface EditorTabItem {
   activeQueryId?: string;
   lastQueryId?: string;
   schemaOverview?: SchemaOverview;
+  crossDbSchemaCache?: Map<string, SchemaOverview>;
   savedQueryId?: number;
   savedQueryDescription?: string;
   availableDatabases?: string[];

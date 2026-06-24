@@ -346,12 +346,19 @@ jobs:
           fi
 
           if [ -n "${TAURI_PRIVATE_KEY_PASSWORD:-}" ]; then
-            ./node_modules/.bin/tauri signer sign --private-key "$TAURI_PRIVATE_KEY" --password "$TAURI_PRIVATE_KEY_PASSWORD" "$updater_bundle" > "$updater_bundle.sig"
+            signer_output="$(./node_modules/.bin/tauri signer sign --private-key "$TAURI_PRIVATE_KEY" --password "$TAURI_PRIVATE_KEY_PASSWORD" "$updater_bundle")"
           else
-            ./node_modules/.bin/tauri signer sign --private-key "$TAURI_PRIVATE_KEY" "$updater_bundle" > "$updater_bundle.sig"
+            signer_output="$(./node_modules/.bin/tauri signer sign --private-key "$TAURI_PRIVATE_KEY" "$updater_bundle")"
           fi
+          printf '%s\n' "$signer_output"
 
-          if [ ! -s "$updater_bundle.sig" ]; then
+          signature="$(printf '%s\n' "$signer_output" | awk 'found && NF { print; exit } /^Public signature:$/ { found = 1 }')"
+          if [ -z "$signature" ]; then
+            signature="$(printf '%s\n' "$signer_output" | awk 'NF { print; exit }')"
+          fi
+          printf '%s\n' "$signature" > "$updater_bundle.sig"
+
+          if [ ! -s "$updater_bundle.sig" ] || grep -q 'Your file was signed successfully' "$updater_bundle.sig"; then
             echo "Updater signature was not generated: $updater_bundle.sig"
             exit 1
           fi

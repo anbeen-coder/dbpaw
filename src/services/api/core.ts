@@ -4,6 +4,7 @@ import {
   DRIVER_REGISTRY,
   type ImportDriverCapability,
 } from "@/lib/driver-registry";
+import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
 
 export const isTauri = () => {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -13,7 +14,17 @@ const isMockModeEnabled = () => {
   return import.meta.env.VITE_USE_MOCK === "true";
 };
 
-export const invoke = async <T>(cmd: string, args?: any): Promise<T> => {
+// Typed overload — constrains args and return to CommandMap
+export function invoke<T extends keyof CommandMap>(
+  cmd: T,
+  args: CommandArgs<T>,
+): Promise<CommandReturn<T>>;
+
+// Legacy overload — for commands not yet in CommandMap
+export function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
+
+// Implementation (unchanged)
+export async function invoke<T>(cmd: string, args?: any): Promise<T> {
   if (isTauri()) {
     return tauriInvoke(cmd, args);
   }

@@ -1,5 +1,6 @@
 mod export_tests;
 mod helpers;
+mod import_plan_tests;
 mod import_tests;
 
 #[test]

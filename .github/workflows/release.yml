@@ -233,6 +233,132 @@ jobs:
 
           echo "bundle_dir=$bundle_dir" >> "$GITHUB_OUTPUT"
 
+      - name: Bundle x86_64 macOS dylibs
+        if: matrix.target == 'x86_64-apple-darwin'
+        shell: bash
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          bundle_dir="${{ steps.paths.outputs.bundle_dir }}"
+          app_path="$(find "$bundle_dir/macos" -maxdepth 1 -type d -name '*.app' | head -n 1 || true)"
+          if [ -z "$app_path" ]; then
+            echo "No .app bundle found in $bundle_dir/macos"
+            find "$bundle_dir" -maxdepth 4 -print || true
+            exit 1
+          fi
+
+          executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_path/Contents/Info.plist")"
+          executable="$app_path/Contents/MacOS/$executable_name"
+          if [ ! -x "$executable" ]; then
+            echo "Executable not found or not executable: $executable"
+            find "$app_path/Contents/MacOS" -maxdepth 1 -type f -print || true
+            exit 1
+          fi
+
+          frameworks_dir="$app_path/Contents/Frameworks"
+          mkdir -p "$frameworks_dir"
+
+          should_bundle_dep() {
+            local dep="$1"
+            [[ "$dep" != /usr/lib/* ]] \
+              && [[ "$dep" != /System/* ]] \
+              && [[ "$dep" != @* ]] \
+              && [ -f "$dep" ]
+          }
+
+          collect_deps() {
+            local target="$1"
+            local deps dep dep_name
+
+            deps="$(otool -L "$target" 2>/dev/null | tail -n +2 | awk '{print $1}')"
+            for dep in $deps; do
+              if ! should_bundle_dep "$dep"; then
+                continue
+              fi
+
+              dep_name="$(basename "$dep")"
+              if [ ! -f "$frameworks_dir/$dep_name" ]; then
+                echo "Bundling dependency: $dep"
+                cp -L "$dep" "$frameworks_dir/$dep_name"
+                chmod u+w "$frameworks_dir/$dep_name"
+                collect_deps "$dep"
+              fi
+            done
+          }
+
+          rewrite_target_deps() {
+            local target="$1"
+            local deps dep dep_name
+
+            deps="$(otool -L "$target" 2>/dev/null | tail -n +2 | awk '{print $1}')"
+            for dep in $deps; do
+              if ! should_bundle_dep "$dep"; then
+                continue
+              fi
+
+              dep_name="$(basename "$dep")"
+              if [ -f "$frameworks_dir/$dep_name" ]; then
+                install_name_tool -change "$dep" "@executable_path/../Frameworks/$dep_name" "$target"
+              fi
+            done
+          }
+
+          echo "Executable before bundling:"
+          otool -L "$executable"
+
+          collect_deps "$executable"
+
+          for dylib in "$frameworks_dir"/*.dylib; do
+            [ -f "$dylib" ] || continue
+            dylib_name="$(basename "$dylib")"
+            install_name_tool -id "@executable_path/../Frameworks/$dylib_name" "$dylib"
+            rewrite_target_deps "$dylib"
+          done
+          rewrite_target_deps "$executable"
+
+          echo ""
+          echo "Bundled dylibs:"
+          find "$frameworks_dir" -maxdepth 1 -type f -name '*.dylib' -print -exec otool -L {} \;
+
+          echo ""
+          echo "Executable after bundling:"
+          otool -L "$executable"
+
+          if otool -L "$executable" | grep -q '/usr/local/opt/unixodbc'; then
+            echo "Executable still references /usr/local/opt/unixodbc"
+            exit 1
+          fi
+
+          codesign --force --deep --sign - "$app_path"
+          codesign --verify --deep --strict "$app_path"
+
+          macos_dir="$bundle_dir/macos"
+          updater_bundle="$macos_dir/DbPaw-${{ matrix.target }}.app.tar.gz"
+          rm -f "$macos_dir"/*.app.tar.gz "$macos_dir"/*.app.tar.gz.sig
+          tar -czf "$updater_bundle" -C "$macos_dir" "$(basename "$app_path")"
+
+          if [ -z "${TAURI_PRIVATE_KEY:-}" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is required to regenerate the modified updater bundle signature."
+            exit 1
+          fi
+
+          if [ -n "${TAURI_PRIVATE_KEY_PASSWORD:-}" ]; then
+            ./node_modules/.bin/tauri signer sign --private-key "$TAURI_PRIVATE_KEY" --password "$TAURI_PRIVATE_KEY_PASSWORD" "$updater_bundle" > "$updater_bundle.sig"
+          else
+            ./node_modules/.bin/tauri signer sign --private-key "$TAURI_PRIVATE_KEY" "$updater_bundle" > "$updater_bundle.sig"
+          fi
+
+          if [ ! -s "$updater_bundle.sig" ]; then
+            echo "Updater signature was not generated: $updater_bundle.sig"
+            exit 1
+          fi
+
+          echo "Regenerated updater bundle: $updater_bundle"
+          echo "Regenerated updater signature: $updater_bundle.sig"
+
       - name: Normalize macOS updater bundle names
         if: matrix.target == 'aarch64-apple-darwin' || matrix.target == 'x86_64-apple-darwin'
         shell: bash
@@ -253,6 +379,39 @@ jobs:
           if [ -f "${src}.sig" ] && [ ! -f "${dst}.sig" ]; then
             mv "${src}.sig" "${dst}.sig"
           fi
+
+      - name: Create x86_64 macOS DMG
+        if: matrix.target == 'x86_64-apple-darwin'
+        shell: bash
+        env:
+          TAG_NAME: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          bundle_dir="${{ steps.paths.outputs.bundle_dir }}"
+          app_path="$(find "$bundle_dir/macos" -maxdepth 1 -type d -name '*.app' | head -n 1 || true)"
+          if [ -z "$app_path" ]; then
+            echo "No .app bundle found in $bundle_dir/macos"
+            exit 1
+          fi
+
+          dmg_dir="$bundle_dir/dmg"
+          dmg_path="$dmg_dir/DbPaw_${TAG_NAME}_x86_64.dmg"
+          mkdir -p "$dmg_dir"
+          rm -f "$dmg_path"
+
+          create-dmg \
+            --volname "DbPaw" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --icon "$(basename "$app_path")" 200 190 \
+            --hide-extension "$(basename "$app_path")" \
+            --app-drop-link 600 185 \
+            "$dmg_path" \
+            "$app_path"
+
+          echo "Created DMG: $dmg_path"
 
       - name: Generate updater metadata
         shell: bash
@@ -332,6 +491,7 @@ jobs:
           name: bundle-${{ matrix.target }}
           path: |
             ${{ steps.paths.outputs.bundle_dir }}/macos/**/*.app.tar.gz*
+            ${{ steps.paths.outputs.bundle_dir }}/dmg/**/*.dmg
           if-no-files-found: error
 
       - name: Upload bundle artifacts (Linux)

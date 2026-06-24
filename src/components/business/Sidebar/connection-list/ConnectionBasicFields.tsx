@@ -16,8 +16,6 @@ interface ConnectionBasicFieldsProps {
   form: ConnectionForm;
   setForm: Dispatch<SetStateAction<ConnectionForm>>;
   dialogMode: "create" | "edit";
-  name: string;
-  onNameChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   database: string;
   onDatabaseChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   username: string;
@@ -39,8 +37,6 @@ export function ConnectionBasicFields({
   form,
   setForm,
   dialogMode,
-  name,
-  onNameChange,
   database,
   onDatabaseChange,
   username,
@@ -61,13 +57,6 @@ export function ConnectionBasicFields({
 
   return (
     <>
-      <div className="grid gap-2">
-        <Label htmlFor="name">
-          {t("connection.dialog.fields.connectionName")}
-        </Label>
-        <Input id="name" value={name || ""} onChange={onNameChange} />
-      </div>
-
       {isRedis && <RedisFormSection form={form} setForm={setForm} />}
 
       {isElasticsearch && (

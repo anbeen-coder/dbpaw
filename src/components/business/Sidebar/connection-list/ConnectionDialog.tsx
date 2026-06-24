@@ -137,14 +137,19 @@ export function ConnectionDialog({
                   backLabel={t("connection.dialog.backToType")}
                 />
 
+                <div className="grid gap-2">
+                  <Label htmlFor="name">
+                    {t("connection.dialog.fields.connectionName")}
+                  </Label>
+                  <Input id="name" value={name || ""} onChange={onNameChange} />
+                </div>
+
                 {!isFileBased && (
                   <>
                     <ConnectionBasicFields
                       form={form}
                       setForm={setForm}
                       dialogMode={dialogMode}
-                      name={name || ""}
-                      onNameChange={onNameChange}
                       database={database || ""}
                       onDatabaseChange={onDatabaseChange}
                       username={username || ""}

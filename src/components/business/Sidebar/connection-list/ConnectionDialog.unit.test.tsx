@@ -371,6 +371,33 @@ describe("ConnectionDialog", () => {
     });
   });
 
+  describe("Connection Name field visibility", () => {
+    const drivers: Driver[] = ["postgres", "sqlite", "redis", "elasticsearch", "mongodb", "mssql"];
+
+    for (const driver of drivers) {
+      test(`shows Connection Name for ${driver}`, () => {
+        const { container } = render(
+          <ConnectionDialog
+            open={true}
+            dialogMode="create"
+            createStep="details"
+            form={makeForm({ driver })}
+            setForm={NOOP}
+            validationMsg={null}
+            testMsg={null}
+            requiredOk={true}
+            isTesting={false}
+            isConnecting={false}
+            isSavingEdit={false}
+            {...defaultDialogProps}
+          />,
+        );
+
+        expect(container.textContent).toContain("connection.dialog.fields.connectionName");
+      });
+    }
+  });
+
   describe("driver-specific sections", () => {
     test("redis shows RedisFormSection", () => {
       render(

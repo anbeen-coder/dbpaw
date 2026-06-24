@@ -1,6 +1,12 @@
 import { COMMANDS } from "../commands";
+import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
 
-export function handleSystem(cmd: string, _args?: any): Promise<any> | null {
+type SystemCommand = Extract<keyof CommandMap, "list_system_fonts">;
+
+export function handleSystem<T extends SystemCommand>(
+  cmd: T,
+  _args: CommandArgs<T>,
+): Promise<CommandReturn<T>> | null {
   switch (cmd) {
     case COMMANDS.LIST_SYSTEM_FONTS:
       return Promise.resolve([
@@ -22,7 +28,7 @@ export function handleSystem(cmd: string, _args?: any): Promise<any> | null {
         "Microsoft YaHei",
         "SimSun",
         "SimHei",
-      ]);
+      ]) as Promise<CommandReturn<T>>;
     default:
       return null;
   }

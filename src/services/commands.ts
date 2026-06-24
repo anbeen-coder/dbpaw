@@ -109,6 +109,7 @@ export const COMMANDS = {
 
   // Elasticsearch
   ELASTICSEARCH_TEST_CONNECTION: "elasticsearch_test_connection",
+  ELASTICSEARCH_TEST_CONNECTION_EPHEMERAL: "elasticsearch_test_connection_ephemeral",
   ELASTICSEARCH_LIST_INDICES: "elasticsearch_list_indices",
   ELASTICSEARCH_GET_INDEX_MAPPING: "elasticsearch_get_index_mapping",
   ELASTICSEARCH_CREATE_INDEX: "elasticsearch_create_index",

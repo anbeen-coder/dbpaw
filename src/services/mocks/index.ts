@@ -15,16 +15,16 @@ type Handler = (cmd: string, args: any) => Promise<any> | null;
 
 const handlers: Handler[] = [
   handleQuery as Handler,
-  handleRedis,
+  handleRedis as unknown as Handler,
   handleMetadata as Handler,
   handleTableData,
   handleConnections as unknown as Handler,
   handleQueries,
   handleTransfer,
-  handleElasticsearch,
-  handleMongodb,
-  handleAi,
-  handleSystem,
+  handleElasticsearch as unknown as Handler,
+  handleMongodb as unknown as Handler,
+  handleAi as unknown as Handler,
+  handleSystem as unknown as Handler,
   handleMcp,
 ];
 

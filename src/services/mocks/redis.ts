@@ -1,4 +1,7 @@
 import { COMMANDS } from "../commands";
+import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
+
+type RedisCommand = Extract<keyof CommandMap, "redis_${string}">;
 
 export async function mockRedisListDatabases(_id: number): Promise<any[]> {
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -294,123 +297,129 @@ export async function mockRedisExecuteRaw(
   return { output: "PONG" };
 }
 
-export function handleRedis(cmd: string, args?: any): Promise<any> | null {
+export function handleRedis<T extends RedisCommand>(
+  cmd: T,
+  args: CommandArgs<T>,
+): Promise<CommandReturn<T>> | null {
   switch (cmd) {
     case COMMANDS.REDIS_LIST_DATABASES:
-      return mockRedisListDatabases(args.id);
+      return mockRedisListDatabases((args as CommandArgs<"redis_list_databases">).id) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_SCAN_KEYS:
-      return mockRedisScanKeys(args);
-    case COMMANDS.REDIS_GET_KEY:
-      return mockRedisGetKey(args.id, args.database, args.key);
-    case COMMANDS.REDIS_SET_KEY:
-      return mockRedisSetKey(args.id, args.database, args.payload);
-    case COMMANDS.REDIS_DELETE_KEY:
-      return mockRedisDeleteKey(args.id, args.database, args.key);
-    case COMMANDS.REDIS_RENAME_KEY:
-      return mockRedisRenameKey(
-        args.id,
-        args.database,
-        args.oldKey,
-        args.newKey,
-        args.force,
-      );
-    case COMMANDS.REDIS_SET_TTL:
-      return mockRedisSetTtl(
-        args.id,
-        args.database,
-        args.key,
-        args.ttlSeconds,
-      );
+      return mockRedisScanKeys(args) as Promise<CommandReturn<T>>;
+    case COMMANDS.REDIS_GET_KEY: {
+      const a = args as CommandArgs<"redis_get_key">;
+      return mockRedisGetKey(a.id, a.database, a.key) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.REDIS_SET_KEY: {
+      const a = args as CommandArgs<"redis_set_key">;
+      return mockRedisSetKey(a.id, a.database, a.payload) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.REDIS_DELETE_KEY: {
+      const a = args as CommandArgs<"redis_delete_key">;
+      return mockRedisDeleteKey(a.id, a.database, a.key) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.REDIS_RENAME_KEY: {
+      const a = args as CommandArgs<"redis_rename_key">;
+      return mockRedisRenameKey(a.id, a.database, a.oldKey, a.newKey, a.force) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.REDIS_SET_TTL: {
+      const a = args as CommandArgs<"redis_set_ttl">;
+      return mockRedisSetTtl(a.id, a.database, a.key, a.ttlSeconds) as Promise<CommandReturn<T>>;
+    }
     case COMMANDS.REDIS_SERVER_INFO:
-      return mockRedisServerInfo(args.id, args.database);
+      return mockRedisServerInfo((args as CommandArgs<"redis_server_info">).id, (args as CommandArgs<"redis_server_info">).database) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_SERVER_CONFIG:
-      return mockRedisServerConfig(args.id, args.database);
-    case COMMANDS.REDIS_SLOWLOG_GET:
-      return mockRedisSlowlogGet(args.id, args.database, args.count);
-    case COMMANDS.REDIS_EXECUTE_RAW:
-      return mockRedisExecuteRaw(args.id, args.database, args.command);
+      return mockRedisServerConfig((args as CommandArgs<"redis_server_config">).id, (args as CommandArgs<"redis_server_config">).database) as Promise<CommandReturn<T>>;
+    case COMMANDS.REDIS_SLOWLOG_GET: {
+      const a = args as CommandArgs<"redis_slowlog_get">;
+      return mockRedisSlowlogGet(a.id, a.database, a.count) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.REDIS_EXECUTE_RAW: {
+      const a = args as CommandArgs<"redis_execute_raw">;
+      return mockRedisExecuteRaw(a.id, a.database, a.command) as Promise<CommandReturn<T>>;
+    }
     case COMMANDS.REDIS_UPDATE_KEY:
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({ ok: true }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_GET_KEY_PAGE:
-      return Promise.resolve({ items: [], total: 0, cursor: "0" });
+      return Promise.resolve({ items: [], total: 0, cursor: "0" }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_GET_STREAM_RANGE:
-      return Promise.resolve({ messages: [], next_cursor: "0" });
+      return Promise.resolve({ messages: [], next_cursor: "0" }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_GET_STREAM_VIEW:
-      return Promise.resolve({ messages: [], next_cursor: "0" });
+      return Promise.resolve({ messages: [], next_cursor: "0" }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_XGROUP_CREATE:
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({ ok: true }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_XGROUP_DEL:
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({ ok: true }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_XGROUP_SETID:
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({ ok: true }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_XACK:
-      return Promise.resolve({ acked: 0 });
+      return Promise.resolve({ acked: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_XPENDING:
-      return Promise.resolve({ pending: [] });
+      return Promise.resolve({ pending: [] }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_XCLAIM:
-      return Promise.resolve({ claimed: [] });
+      return Promise.resolve({ claimed: [] }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_XTRIM:
-      return Promise.resolve({ trimmed: 0 });
+      return Promise.resolve({ trimmed: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_XREADGROUP:
-      return Promise.resolve({ messages: [] });
+      return Promise.resolve({ messages: [] }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_PATCH_KEY:
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({ ok: true }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_BITMAP_GET_BIT:
-      return Promise.resolve({ value: false });
+      return Promise.resolve({ value: false }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_BITMAP_COUNT:
-      return Promise.resolve({ count: 0 });
+      return Promise.resolve({ count: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_BITMAP_POS:
-      return Promise.resolve({ positions: [] });
+      return Promise.resolve({ positions: [] }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_HLL_PFADD:
-      return Promise.resolve({ added: true });
+      return Promise.resolve({ added: true }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_GEO_ADD:
-      return Promise.resolve({ added: 0 });
+      return Promise.resolve({ added: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_GEO_POS:
-      return Promise.resolve([]);
+      return Promise.resolve([]) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_GEO_DIST:
-      return Promise.resolve({ distance: 0 });
+      return Promise.resolve({ distance: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_GEO_SEARCH:
-      return Promise.resolve([]);
+      return Promise.resolve([]) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_ZRANGEBYSCORE:
-      return Promise.resolve({ members: [], total: 0 });
+      return Promise.resolve({ members: [], total: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_ZRANK:
-      return Promise.resolve({ rank: 0 });
+      return Promise.resolve({ rank: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_SET_OPERATION:
-      return Promise.resolve([]);
+      return Promise.resolve([]) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_SISMEMBER:
-      return Promise.resolve({ is_member: false });
+      return Promise.resolve({ is_member: false }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_SMOVE:
-      return Promise.resolve({ moved: false });
+      return Promise.resolve({ moved: false }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_BATCH_KEY_OPS:
-      return Promise.resolve({ results: [] });
+      return Promise.resolve({ results: [] }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_MGET:
-      return Promise.resolve([]);
+      return Promise.resolve([]) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_MSET:
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({ ok: true }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_CLUSTER_INFO:
-      return Promise.resolve({});
+      return Promise.resolve({}) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_ZSCORE:
-      return Promise.resolve({ score: null });
+      return Promise.resolve({ score: null }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_ZMSCORE:
-      return Promise.resolve([]);
+      return Promise.resolve([]) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_ZRANGEBYLEX:
-      return Promise.resolve({ members: [], total: 0 });
+      return Promise.resolve({ members: [], total: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_ZLEXCOUNT:
-      return Promise.resolve({ count: 0 });
+      return Promise.resolve({ count: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_ZPOPMIN:
-      return Promise.resolve({ items: [] });
+      return Promise.resolve({ items: [] }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_ZPOPMAX:
-      return Promise.resolve({ items: [] });
+      return Promise.resolve({ items: [] }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_LINDEX:
-      return Promise.resolve(null);
+      return Promise.resolve(null) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_LPOS:
-      return Promise.resolve({ index: null });
+      return Promise.resolve({ index: null }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_LTRIM:
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({ ok: true }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_LINSERT:
-      return Promise.resolve({ length: 0 });
+      return Promise.resolve({ length: 0 }) as Promise<CommandReturn<T>>;
     case COMMANDS.REDIS_LMOVE:
-      return Promise.resolve(null);
+      return Promise.resolve(null) as Promise<CommandReturn<T>>;
     default:
       return null;
   }

@@ -1,5 +1,20 @@
 import { AIProviderConfig, AIConversation, AIConversationDetail } from "../types";
 import { COMMANDS } from "../commands";
+import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
+
+type AiCommand = Extract<keyof CommandMap,
+  | "ai_list_providers"
+  | "ai_create_provider"
+  | "ai_update_provider"
+  | "ai_delete_provider"
+  | "ai_set_default_provider"
+  | "ai_clear_provider_api_key"
+  | "ai_chat_start"
+  | "ai_chat_continue"
+  | "ai_list_conversations"
+  | "ai_get_conversation"
+  | "ai_delete_conversation"
+>;
 
 const mockAiProviders: AIProviderConfig[] = [
   {
@@ -161,16 +176,20 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
   ],
 };
 
-export function handleAi(cmd: string, args?: any): Promise<any> | null {
+export function handleAi<T extends AiCommand>(
+  cmd: T,
+  args: CommandArgs<T>,
+): Promise<CommandReturn<T>> | null {
   switch (cmd) {
     case COMMANDS.AI_LIST_PROVIDERS:
-      return Promise.resolve([...mockAiProviders]);
+      return Promise.resolve([...mockAiProviders]) as Promise<CommandReturn<T>>;
 
     case COMMANDS.AI_CREATE_PROVIDER: {
-      const requestedType = String(args.config.providerType || "openai");
+      const a = args as CommandArgs<"ai_create_provider">;
+      const requestedType = String(a.config.providerType || "openai");
 
       const now = new Date().toISOString();
-      const isDefault = args.config.isDefault ?? true;
+      const isDefault = a.config.isDefault ?? true;
       if (isDefault) {
         mockAiProviders.forEach((p) => (p.isDefault = false));
       }
@@ -181,13 +200,13 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
       if (idx >= 0) {
         mockAiProviders[idx] = {
           ...mockAiProviders[idx],
-          ...args.config,
+          ...a.config,
           providerType: requestedType,
-          enabled: args.config.enabled ?? true,
+          enabled: a.config.enabled ?? true,
           isDefault,
           updatedAt: now,
         };
-        return Promise.resolve(mockAiProviders[idx]);
+        return Promise.resolve(mockAiProviders[idx]) as Promise<CommandReturn<T>>;
       }
 
       const id = mockAiProviders.length
@@ -196,94 +215,101 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
       const created: AIProviderConfig = {
         id,
         providerType: requestedType,
+        hasApiKey: true,
         isDefault,
-        enabled: args.config.enabled ?? true,
-        extraJson: args.config.extraJson ?? null,
+        enabled: a.config.enabled ?? true,
+        extraJson: a.config.extraJson ?? null,
         createdAt: now,
         updatedAt: now,
-        ...args.config,
+        ...a.config,
       };
       mockAiProviders.push(created);
-      return Promise.resolve(created);
+      return Promise.resolve(created) as Promise<CommandReturn<T>>;
     }
 
     case COMMANDS.AI_UPDATE_PROVIDER: {
-      const idx = mockAiProviders.findIndex((p) => p.id === args.id);
+      const a = args as CommandArgs<"ai_update_provider">;
+      const idx = mockAiProviders.findIndex((p) => p.id === a.id);
       if (idx < 0) throw new Error("Provider not found");
       const requestedType = String(
-        args.config.providerType || mockAiProviders[idx].providerType,
+        a.config.providerType || mockAiProviders[idx].providerType,
       );
       const conflict = mockAiProviders.find(
-        (p) => p.providerType === requestedType && p.id !== args.id,
+        (p) => p.providerType === requestedType && p.id !== a.id,
       );
       if (conflict) {
         throw new Error("UNIQUE constraint failed: ai_providers.provider_type");
       }
-      if (args.config.isDefault) {
+      if (a.config.isDefault) {
         mockAiProviders.forEach((p) => (p.isDefault = false));
       }
       mockAiProviders[idx] = {
         ...mockAiProviders[idx],
-        ...args.config,
+        ...a.config,
         providerType: requestedType,
         updatedAt: new Date().toISOString(),
       };
-      return Promise.resolve(mockAiProviders[idx]);
+      return Promise.resolve(mockAiProviders[idx]) as Promise<CommandReturn<T>>;
     }
 
     case COMMANDS.AI_DELETE_PROVIDER: {
-      const idx = mockAiProviders.findIndex((p) => p.id === args.id);
+      const a = args as CommandArgs<"ai_delete_provider">;
+      const idx = mockAiProviders.findIndex((p) => p.id === a.id);
       if (idx >= 0) mockAiProviders.splice(idx, 1);
-      return Promise.resolve(undefined);
+      return Promise.resolve(undefined) as Promise<CommandReturn<T>>;
     }
 
     case COMMANDS.AI_SET_DEFAULT_PROVIDER: {
-      mockAiProviders.forEach((p) => (p.isDefault = p.id === args.id));
-      return Promise.resolve(undefined);
+      const a = args as CommandArgs<"ai_set_default_provider">;
+      mockAiProviders.forEach((p) => (p.isDefault = p.id === a.id));
+      return Promise.resolve(undefined) as Promise<CommandReturn<T>>;
     }
 
     case COMMANDS.AI_LIST_CONVERSATIONS:
-      return Promise.resolve([...mockAiConversations]);
+      return Promise.resolve([...mockAiConversations]) as Promise<CommandReturn<T>>;
 
     case COMMANDS.AI_GET_CONVERSATION: {
-      const c = mockAiConversations.find((x) => x.id === args.conversationId);
+      const a = args as CommandArgs<"ai_get_conversation">;
+      const c = mockAiConversations.find((x) => x.id === a.conversationId);
       if (!c) throw new Error("Conversation not found");
       return Promise.resolve({
         conversation: c,
         messages: mockAiMessages[c.id] || [],
-      });
+      }) as Promise<CommandReturn<T>>;
     }
 
     case COMMANDS.AI_DELETE_CONVERSATION: {
+      const a = args as CommandArgs<"ai_delete_conversation">;
       const idx = mockAiConversations.findIndex(
-        (x) => x.id === args.conversationId,
+        (x) => x.id === a.conversationId,
       );
       if (idx >= 0) mockAiConversations.splice(idx, 1);
-      delete mockAiMessages[args.conversationId];
-      return Promise.resolve(undefined);
+      delete mockAiMessages[a.conversationId];
+      return Promise.resolve(undefined) as Promise<CommandReturn<T>>;
     }
 
     case COMMANDS.AI_CLEAR_PROVIDER_API_KEY:
-      return Promise.resolve({ ok: true });
+      return Promise.resolve(undefined) as Promise<CommandReturn<T>>;
 
     case COMMANDS.AI_CHAT_START:
     case COMMANDS.AI_CHAT_CONTINUE: {
-      const input = args.request.input as string;
+      const a = args as CommandArgs<"ai_chat_start">;
+      const input = a.request.input as string;
       const selectedTables =
-        (args.request.selectedTables as
+        (a.request.selectedTables as
           | Array<{ schema: string; name: string }>
           | undefined) || [];
-      let conversationId = args.request.conversationId as number | undefined;
+      let conversationId = a.request.conversationId as number | undefined;
       if (!conversationId) {
         conversationId = mockAiConversations.length
           ? Math.max(...mockAiConversations.map((x) => x.id)) + 1
           : 1;
         mockAiConversations.unshift({
           id: conversationId,
-          title: args.request.title || input.slice(0, 20),
-          scenario: args.request.scenario || "sql_generate",
-          connectionId: args.request.connectionId || null,
-          database: args.request.database || null,
+          title: a.request.title || input.slice(0, 20),
+          scenario: a.request.scenario || "sql_generate",
+          connectionId: a.request.connectionId || null,
+          database: a.request.database || null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -302,7 +328,7 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
         conversationId,
         role: "assistant",
         content: (() => {
-          const scenario = String(args.request.scenario || "sql_generate");
+          const scenario = String(a.request.scenario || "sql_generate");
           const first = selectedTables[0];
           const from = first ? `${first.schema}.${first.name}` : "public.users";
 
@@ -342,7 +368,7 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
         conversationId,
         userMessageId: msgs[msgs.length - 2].id,
         assistantMessageId: msgs[msgs.length - 1].id,
-      });
+      }) as Promise<CommandReturn<T>>;
     }
 
     default:

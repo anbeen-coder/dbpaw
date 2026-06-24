@@ -1,5 +1,6 @@
 mod export_service;
 mod import_dialects;
+mod import_parser;
 mod import_plan;
 mod import_service;
 mod import_types;

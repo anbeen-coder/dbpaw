@@ -263,6 +263,9 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
       return Promise.resolve(undefined);
     }
 
+    case COMMANDS.AI_CLEAR_PROVIDER_API_KEY:
+      return Promise.resolve({ ok: true });
+
     case COMMANDS.AI_CHAT_START:
     case COMMANDS.AI_CHAT_CONTINUE: {
       const input = args.request.input as string;

@@ -168,6 +168,11 @@ export function handleElasticsearch(
         tookMs: 3,
       });
 
+    case COMMANDS.ELASTICSEARCH_EXPORT_DOCUMENTS:
+      return Promise.resolve({ documents: [], total: 0 });
+    case COMMANDS.ELASTICSEARCH_IMPORT_DOCUMENTS:
+      return Promise.resolve({ imported: 0, errors: [] });
+
     default:
       return null;
   }

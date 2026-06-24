@@ -318,6 +318,8 @@ export function handleConnections(cmd: string, args?: any): Promise<any> | null 
       return mockGetMysqlCollations(args.id, args.charset);
     case COMMANDS.TEST_CONNECTION_EPHEMERAL:
       return mockTestConnectionEphemeral(args.form);
+    case COMMANDS.LIST_SQLITE_ISSUES:
+      return Promise.resolve([]);
     default:
       return null;
   }

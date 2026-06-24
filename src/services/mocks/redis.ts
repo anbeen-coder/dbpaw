@@ -329,6 +329,88 @@ export function handleRedis(cmd: string, args?: any): Promise<any> | null {
       return mockRedisSlowlogGet(args.id, args.database, args.count);
     case COMMANDS.REDIS_EXECUTE_RAW:
       return mockRedisExecuteRaw(args.id, args.database, args.command);
+    case COMMANDS.REDIS_UPDATE_KEY:
+      return Promise.resolve({ ok: true });
+    case COMMANDS.REDIS_GET_KEY_PAGE:
+      return Promise.resolve({ items: [], total: 0, cursor: "0" });
+    case COMMANDS.REDIS_GET_STREAM_RANGE:
+      return Promise.resolve({ messages: [], next_cursor: "0" });
+    case COMMANDS.REDIS_GET_STREAM_VIEW:
+      return Promise.resolve({ messages: [], next_cursor: "0" });
+    case COMMANDS.REDIS_XGROUP_CREATE:
+      return Promise.resolve({ ok: true });
+    case COMMANDS.REDIS_XGROUP_DEL:
+      return Promise.resolve({ ok: true });
+    case COMMANDS.REDIS_XGROUP_SETID:
+      return Promise.resolve({ ok: true });
+    case COMMANDS.REDIS_XACK:
+      return Promise.resolve({ acked: 0 });
+    case COMMANDS.REDIS_XPENDING:
+      return Promise.resolve({ pending: [] });
+    case COMMANDS.REDIS_XCLAIM:
+      return Promise.resolve({ claimed: [] });
+    case COMMANDS.REDIS_XTRIM:
+      return Promise.resolve({ trimmed: 0 });
+    case COMMANDS.REDIS_XREADGROUP:
+      return Promise.resolve({ messages: [] });
+    case COMMANDS.REDIS_PATCH_KEY:
+      return Promise.resolve({ ok: true });
+    case COMMANDS.REDIS_BITMAP_GET_BIT:
+      return Promise.resolve({ value: false });
+    case COMMANDS.REDIS_BITMAP_COUNT:
+      return Promise.resolve({ count: 0 });
+    case COMMANDS.REDIS_BITMAP_POS:
+      return Promise.resolve({ positions: [] });
+    case COMMANDS.REDIS_HLL_PFADD:
+      return Promise.resolve({ added: true });
+    case COMMANDS.REDIS_GEO_ADD:
+      return Promise.resolve({ added: 0 });
+    case COMMANDS.REDIS_GEO_POS:
+      return Promise.resolve([]);
+    case COMMANDS.REDIS_GEO_DIST:
+      return Promise.resolve({ distance: 0 });
+    case COMMANDS.REDIS_GEO_SEARCH:
+      return Promise.resolve([]);
+    case COMMANDS.REDIS_ZRANGEBYSCORE:
+      return Promise.resolve([]);
+    case COMMANDS.REDIS_ZRANK:
+      return Promise.resolve({ rank: 0 });
+    case COMMANDS.REDIS_SET_OPERATION:
+      return Promise.resolve([]);
+    case COMMANDS.REDIS_SISMEMBER:
+      return Promise.resolve({ is_member: false });
+    case COMMANDS.REDIS_SMOVE:
+      return Promise.resolve({ moved: false });
+    case COMMANDS.REDIS_BATCH_KEY_OPS:
+      return Promise.resolve({ results: [] });
+    case COMMANDS.REDIS_MGET:
+      return Promise.resolve([]);
+    case COMMANDS.REDIS_MSET:
+      return Promise.resolve({ ok: true });
+    case COMMANDS.REDIS_CLUSTER_INFO:
+      return Promise.resolve({});
+    case COMMANDS.REDIS_ZSCORE:
+      return Promise.resolve({ score: null });
+    case COMMANDS.REDIS_ZMSCORE:
+      return Promise.resolve([]);
+    case COMMANDS.REDIS_ZRANGEBYLEX:
+      return Promise.resolve([]);
+    case COMMANDS.REDIS_ZLEXCOUNT:
+      return Promise.resolve({ count: 0 });
+    case COMMANDS.REDIS_ZPOPMIN:
+      return Promise.resolve({ items: [] });
+    case COMMANDS.REDIS_ZPOPMAX:
+      return Promise.resolve({ items: [] });
+    case COMMANDS.REDIS_LINDEX:
+      return Promise.resolve(null);
+    case COMMANDS.REDIS_LPOS:
+      return Promise.resolve({ index: null });
+    case COMMANDS.REDIS_LTRIM:
+      return Promise.resolve({ ok: true });
+    case COMMANDS.REDIS_LINSERT:
+      return Promise.resolve({ length: 0 });
+    case COMMANDS.REDIS_LMOVE:
+      return Promise.resolve(null);
     default:
       return null;
   }

@@ -1,4 +1,5 @@
 import { invoke } from "./core";
+import { COMMANDS } from "@/services/commands";
 import type {
   MongodbCollectionInfo,
   MongodbConnectionInfo,
@@ -10,15 +11,15 @@ import type {
 export const mongodbApi = {
   mongodb: {
     testConnection: (id: number) =>
-      invoke<MongodbConnectionInfo>("mongodb_test_connection", { id }),
+      invoke<MongodbConnectionInfo>(COMMANDS.MONGODB_TEST_CONNECTION, { id }),
     testConnectionEphemeral: (form: ConnectionForm) =>
-      invoke<TestConnectionResult>("mongodb_test_connection_ephemeral", {
+      invoke<TestConnectionResult>(COMMANDS.MONGODB_TEST_CONNECTION_EPHEMERAL, {
         form,
       }),
     listDatabases: (id: number) =>
-      invoke<MongodbDatabaseInfo[]>("mongodb_list_databases", { id }),
+      invoke<MongodbDatabaseInfo[]>(COMMANDS.MONGODB_LIST_DATABASES, { id }),
     listCollections: (id: number, database: string) =>
-      invoke<MongodbCollectionInfo[]>("mongodb_list_collections", {
+      invoke<MongodbCollectionInfo[]>(COMMANDS.MONGODB_LIST_COLLECTIONS, {
         id,
         database,
       }),

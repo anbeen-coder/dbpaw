@@ -1,4 +1,5 @@
 import { invoke } from "./core";
+import { COMMANDS } from "@/services/commands";
 import type {
   RedisBatchKeyOp,
   RedisBatchKeyOpResult,
@@ -32,38 +33,38 @@ import type {
 export const redisApi = {
   redisLogs: {
     list: (limit = 100) =>
-      invoke<RedisCommandLog[]>("list_redis_command_logs", { limit }),
+      invoke<RedisCommandLog[]>(COMMANDS.LIST_REDIS_COMMAND_LOGS, { limit }),
   },
   redis: {
     listDatabases: (id: number) =>
-      invoke<RedisDatabaseInfo[]>("redis_list_databases", { id }),
+      invoke<RedisDatabaseInfo[]>(COMMANDS.REDIS_LIST_DATABASES, { id }),
     scanKeys: (params: {
       id: number;
       database?: string;
       cursor?: string;
       pattern?: string;
       limit?: number;
-    }) => invoke<RedisScanResponse>("redis_scan_keys", params),
+    }) => invoke<RedisScanResponse>(COMMANDS.REDIS_SCAN_KEYS, params),
     getKey: (id: number, database: string | undefined, key: string) =>
-      invoke<RedisKeyValue>("redis_get_key", { id, database, key }),
+      invoke<RedisKeyValue>(COMMANDS.REDIS_GET_KEY, { id, database, key }),
     setKey: (
       id: number,
       database: string | undefined,
       payload: RedisSetKeyPayload,
     ) =>
-      invoke<RedisMutationResult>("redis_set_key", { id, database, payload }),
+      invoke<RedisMutationResult>(COMMANDS.REDIS_SET_KEY, { id, database, payload }),
     updateKey: (
       id: number,
       database: string | undefined,
       payload: RedisSetKeyPayload,
     ) =>
-      invoke<RedisMutationResult>("redis_update_key", {
+      invoke<RedisMutationResult>(COMMANDS.REDIS_UPDATE_KEY, {
         id,
         database,
         payload,
       }),
     deleteKey: (id: number, database: string | undefined, key: string) =>
-      invoke<RedisMutationResult>("redis_delete_key", { id, database, key }),
+      invoke<RedisMutationResult>(COMMANDS.REDIS_DELETE_KEY, { id, database, key }),
     renameKey: (
       id: number,
       database: string | undefined,
@@ -71,7 +72,7 @@ export const redisApi = {
       newKey: string,
       force?: boolean,
     ) =>
-      invoke<RedisMutationResult>("redis_rename_key", {
+      invoke<RedisMutationResult>(COMMANDS.REDIS_RENAME_KEY, {
         id,
         database,
         oldKey,
@@ -84,7 +85,7 @@ export const redisApi = {
       key: string,
       ttlSeconds?: number | null,
     ) =>
-      invoke<RedisMutationResult>("redis_set_ttl", {
+      invoke<RedisMutationResult>(COMMANDS.REDIS_SET_TTL, {
         id,
         database,
         key,
@@ -97,7 +98,7 @@ export const redisApi = {
       offset: number,
       limit: number,
     ) =>
-      invoke<RedisKeyValue>("redis_get_key_page", {
+      invoke<RedisKeyValue>(COMMANDS.REDIS_GET_KEY_PAGE, {
         id,
         database,
         key,
@@ -111,7 +112,7 @@ export const redisApi = {
       startId: string,
       count: number,
     ) =>
-      invoke<RedisStreamEntry[]>("redis_get_stream_range", {
+      invoke<RedisStreamEntry[]>(COMMANDS.REDIS_GET_STREAM_RANGE, {
         id,
         database,
         key,
@@ -126,7 +127,7 @@ export const redisApi = {
       endId: string,
       count: number,
     ) =>
-      invoke<RedisStreamView>("redis_get_stream_view", {
+      invoke<RedisStreamView>(COMMANDS.REDIS_GET_STREAM_VIEW, {
         id,
         database,
         key,
@@ -142,7 +143,7 @@ export const redisApi = {
       startId: string,
       mkstream?: boolean,
     ) =>
-      invoke<boolean>("redis_xgroup_create", {
+      invoke<boolean>(COMMANDS.REDIS_XGROUP_CREATE, {
         id,
         database,
         key,
@@ -155,7 +156,7 @@ export const redisApi = {
       database: string | undefined,
       key: string,
       group: string,
-    ) => invoke<boolean>("redis_xgroup_del", { id, database, key, group }),
+    ) => invoke<boolean>(COMMANDS.REDIS_XGROUP_DEL, { id, database, key, group }),
     xgroupSetId: (
       id: number,
       database: string | undefined,
@@ -163,7 +164,7 @@ export const redisApi = {
       group: string,
       startId: string,
     ) =>
-      invoke<boolean>("redis_xgroup_setid", {
+      invoke<boolean>(COMMANDS.REDIS_XGROUP_SETID, {
         id,
         database,
         key,
@@ -176,7 +177,7 @@ export const redisApi = {
       key: string,
       group: string,
       ids: string[],
-    ) => invoke<number>("redis_xack", { id, database, key, group, ids }),
+    ) => invoke<number>(COMMANDS.REDIS_XACK, { id, database, key, group, ids }),
     xpending: (
       id: number,
       database: string | undefined,
@@ -187,7 +188,7 @@ export const redisApi = {
       count?: number,
       consumer?: string,
     ) =>
-      invoke<RedisXPendingSummary | RedisXPendingEntry[]>("redis_xpending", {
+      invoke<RedisXPendingSummary | RedisXPendingEntry[]>(COMMANDS.REDIS_XPENDING, {
         id,
         database,
         key,
@@ -206,7 +207,7 @@ export const redisApi = {
       minIdleMs: number,
       ids: string[],
     ) =>
-      invoke<RedisXClaimEntry[]>("redis_xclaim", {
+      invoke<RedisXClaimEntry[]>(COMMANDS.REDIS_XCLAIM, {
         id,
         database,
         key,
@@ -223,7 +224,7 @@ export const redisApi = {
       threshold: string,
       approximate?: boolean,
     ) =>
-      invoke<number>("redis_xtrim", {
+      invoke<number>(COMMANDS.REDIS_XTRIM, {
         id,
         database,
         key,
@@ -240,7 +241,7 @@ export const redisApi = {
       startId: string,
       count?: number,
     ) =>
-      invoke<RedisStreamEntry[]>("redis_xreadgroup", {
+      invoke<RedisStreamEntry[]>(COMMANDS.REDIS_XREADGROUP, {
         id,
         database,
         key,
@@ -250,19 +251,19 @@ export const redisApi = {
         count,
       }),
     executeRaw: (id: number, database: string | undefined, command: string) =>
-      invoke<RedisRawResult>("redis_execute_raw", { id, database, command }),
+      invoke<RedisRawResult>(COMMANDS.REDIS_EXECUTE_RAW, { id, database, command }),
     patchKey: (
       id: number,
       database: string | undefined,
       payload: RedisKeyPatchPayload,
     ) =>
-      invoke<RedisMutationResult>("redis_patch_key", { id, database, payload }),
+      invoke<RedisMutationResult>(COMMANDS.REDIS_PATCH_KEY, { id, database, payload }),
     bitmapGetBit: (
       id: number,
       database: string | undefined,
       key: string,
       offset: number,
-    ) => invoke<boolean>("redis_bitmap_get_bit", { id, database, key, offset }),
+    ) => invoke<boolean>(COMMANDS.REDIS_BITMAP_GET_BIT, { id, database, key, offset }),
     bitmapCount: (
       id: number,
       database: string | undefined,
@@ -270,7 +271,7 @@ export const redisApi = {
       start?: number,
       end?: number,
     ) =>
-      invoke<number>("redis_bitmap_count", { id, database, key, start, end }),
+      invoke<number>(COMMANDS.REDIS_BITMAP_COUNT, { id, database, key, start, end }),
     bitmapPos: (
       id: number,
       database: string | undefined,
@@ -280,7 +281,7 @@ export const redisApi = {
       end?: number,
       count?: number,
     ) =>
-      invoke<number[]>("redis_bitmap_pos", {
+      invoke<number[]>(COMMANDS.REDIS_BITMAP_POS, {
         id,
         database,
         key,
@@ -294,20 +295,20 @@ export const redisApi = {
       database: string | undefined,
       key: string,
       elements: string[],
-    ) => invoke<boolean>("redis_hll_pfadd", { id, database, key, elements }),
+    ) => invoke<boolean>(COMMANDS.REDIS_HLL_PFADD, { id, database, key, elements }),
     geoAdd: (
       id: number,
       database: string | undefined,
       key: string,
       members: RedisGeoMember[],
-    ) => invoke<number>("redis_geo_add", { id, database, key, members }),
+    ) => invoke<number>(COMMANDS.REDIS_GEO_ADD, { id, database, key, members }),
     geoPos: (
       id: number,
       database: string | undefined,
       key: string,
       members: string[],
     ) =>
-      invoke<(RedisGeoPosition | null)[]>("redis_geo_pos", {
+      invoke<(RedisGeoPosition | null)[]>(COMMANDS.REDIS_GEO_POS, {
         id,
         database,
         key,
@@ -321,7 +322,7 @@ export const redisApi = {
       member2: string,
       unit?: string,
     ) =>
-      invoke<number>("redis_geo_dist", {
+      invoke<number>(COMMANDS.REDIS_GEO_DIST, {
         id,
         database,
         key,
@@ -345,18 +346,18 @@ export const redisApi = {
         count?: number;
       },
     ) =>
-      invoke<RedisGeoSearchResult[]>("redis_geo_search", {
+      invoke<RedisGeoSearchResult[]>(COMMANDS.REDIS_GEO_SEARCH, {
         id,
         database,
         key,
         ...params,
       }),
     serverInfo: (id: number, database: string | undefined) =>
-      invoke<RedisServerInfo>("redis_server_info", { id, database }),
+      invoke<RedisServerInfo>(COMMANDS.REDIS_SERVER_INFO, { id, database }),
     serverConfig: (id: number, database: string | undefined) =>
-      invoke<Record<string, string>>("redis_server_config", { id, database }),
+      invoke<Record<string, string>>(COMMANDS.REDIS_SERVER_CONFIG, { id, database }),
     slowlogGet: (id: number, database: string | undefined, count?: number) =>
-      invoke<RedisSlowlogEntry[]>("redis_slowlog_get", { id, database, count }),
+      invoke<RedisSlowlogEntry[]>(COMMANDS.REDIS_SLOWLOG_GET, { id, database, count }),
     zrangebyscore: (
       id: number,
       database: string | undefined,
@@ -366,7 +367,7 @@ export const redisApi = {
       offset?: number,
       limit?: number,
     ) =>
-      invoke<RedisZRangeByScoreResult>("redis_zrangebyscore", {
+      invoke<RedisZRangeByScoreResult>(COMMANDS.REDIS_ZRANGEBYSCORE, {
         id,
         database,
         key,
@@ -382,7 +383,7 @@ export const redisApi = {
       member: string,
       reverse?: boolean,
     ) =>
-      invoke<number | null>("redis_zrank", {
+      invoke<number | null>(COMMANDS.REDIS_ZRANK, {
         id,
         database,
         key,
@@ -394,13 +395,13 @@ export const redisApi = {
       database: string | undefined,
       keys: string[],
       op: RedisSetOperation,
-    ) => invoke<string[]>("redis_set_operation", { id, database, keys, op }),
+    ) => invoke<string[]>(COMMANDS.REDIS_SET_OPERATION, { id, database, keys, op }),
     sismember: (
       id: number,
       database: string | undefined,
       key: string,
       member: string,
-    ) => invoke<boolean>("redis_sismember", { id, database, key, member }),
+    ) => invoke<boolean>(COMMANDS.REDIS_SISMEMBER, { id, database, key, member }),
     smove: (
       id: number,
       database: string | undefined,
@@ -408,7 +409,7 @@ export const redisApi = {
       destination: string,
       member: string,
     ) =>
-      invoke<boolean>("redis_smove", {
+      invoke<boolean>(COMMANDS.REDIS_SMOVE, {
         id,
         database,
         source,
@@ -420,33 +421,33 @@ export const redisApi = {
       database: string | undefined,
       operations: RedisBatchKeyOp[],
     ) =>
-      invoke<RedisBatchKeyOpResult[]>("redis_batch_key_ops", {
+      invoke<RedisBatchKeyOpResult[]>(COMMANDS.REDIS_BATCH_KEY_OPS, {
         id,
         database,
         operations,
       }),
     mget: (id: number, database: string | undefined, keys: string[]) =>
-      invoke<RedisMgetEntry[]>("redis_mget", { id, database, keys }),
+      invoke<RedisMgetEntry[]>(COMMANDS.REDIS_MGET, { id, database, keys }),
     mset: (
       id: number,
       database: string | undefined,
       entries: Record<string, string>,
-    ) => invoke<RedisMutationResult>("redis_mset", { id, database, entries }),
+    ) => invoke<RedisMutationResult>(COMMANDS.REDIS_MSET, { id, database, entries }),
     clusterInfo: (id: number, database: string | undefined) =>
-      invoke<RedisClusterInfo>("redis_cluster_info", { id, database }),
+      invoke<RedisClusterInfo>(COMMANDS.REDIS_CLUSTER_INFO, { id, database }),
     zscore: (
       id: number,
       database: string | undefined,
       key: string,
       member: string,
-    ) => invoke<number | null>("redis_zscore", { id, database, key, member }),
+    ) => invoke<number | null>(COMMANDS.REDIS_ZSCORE, { id, database, key, member }),
     zmscore: (
       id: number,
       database: string | undefined,
       key: string,
       members: string[],
     ) =>
-      invoke<(number | null)[]>("redis_zmscore", {
+      invoke<(number | null)[]>(COMMANDS.REDIS_ZMSCORE, {
         id,
         database,
         key,
@@ -461,7 +462,7 @@ export const redisApi = {
       offset?: number,
       limit?: number,
     ) =>
-      invoke<RedisZRangeByLexResult>("redis_zrangebylex", {
+      invoke<RedisZRangeByLexResult>(COMMANDS.REDIS_ZRANGEBYLEX, {
         id,
         database,
         key,
@@ -476,14 +477,14 @@ export const redisApi = {
       key: string,
       min: string,
       max: string,
-    ) => invoke<number>("redis_zlexcount", { id, database, key, min, max }),
+    ) => invoke<number>(COMMANDS.REDIS_ZLEXCOUNT, { id, database, key, min, max }),
     zpopmin: (
       id: number,
       database: string | undefined,
       key: string,
       count?: number,
     ) =>
-      invoke<{ member: string; score: number }[]>("redis_zpopmin", {
+      invoke<{ member: string; score: number }[]>(COMMANDS.REDIS_ZPOPMIN, {
         id,
         database,
         key,
@@ -495,7 +496,7 @@ export const redisApi = {
       key: string,
       count?: number,
     ) =>
-      invoke<{ member: string; score: number }[]>("redis_zpopmax", {
+      invoke<{ member: string; score: number }[]>(COMMANDS.REDIS_ZPOPMAX, {
         id,
         database,
         key,
@@ -506,7 +507,7 @@ export const redisApi = {
       database: string | undefined,
       key: string,
       index: number,
-    ) => invoke<string | null>("redis_lindex", { id, database, key, index }),
+    ) => invoke<string | null>(COMMANDS.REDIS_LINDEX, { id, database, key, index }),
     lpos: (
       id: number,
       database: string | undefined,
@@ -516,7 +517,7 @@ export const redisApi = {
       count?: number,
       maxlen?: number,
     ) =>
-      invoke<number[]>("redis_lpos", {
+      invoke<number[]>(COMMANDS.REDIS_LPOS, {
         id,
         database,
         key,
@@ -531,7 +532,7 @@ export const redisApi = {
       key: string,
       start: number,
       stop: number,
-    ) => invoke<boolean>("redis_ltrim", { id, database, key, start, stop }),
+    ) => invoke<boolean>(COMMANDS.REDIS_LTRIM, { id, database, key, start, stop }),
     linsert: (
       id: number,
       database: string | undefined,
@@ -540,7 +541,7 @@ export const redisApi = {
       pivot: string,
       element: string,
     ) =>
-      invoke<number>("redis_linsert", {
+      invoke<number>(COMMANDS.REDIS_LINSERT, {
         id,
         database,
         key,
@@ -556,7 +557,7 @@ export const redisApi = {
       srcDirection: RedisLMoveDirection,
       dstDirection: RedisLMoveDirection,
     ) =>
-      invoke<string | null>("redis_lmove", {
+      invoke<string | null>(COMMANDS.REDIS_LMOVE, {
         id,
         database,
         source,

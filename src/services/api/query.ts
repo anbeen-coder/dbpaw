@@ -1,4 +1,5 @@
 import { invoke } from "./core";
+import { COMMANDS } from "@/services/commands";
 import type {
   QueryResult,
   SqlExecutionLog,
@@ -15,7 +16,7 @@ export const queryApi = {
       source?: SqlExecutionSource,
       queryId?: string,
     ) =>
-      invoke<QueryResult>("execute_query", {
+      invoke<QueryResult>(COMMANDS.EXECUTE_QUERY, {
         id,
         query,
         database,
@@ -23,12 +24,12 @@ export const queryApi = {
         queryId,
       }),
     cancel: (uuid: string, queryId: string) =>
-      invoke<boolean>("cancel_query", { uuid, queryId }),
+      invoke<boolean>(COMMANDS.CANCEL_QUERY, { uuid, queryId }),
     executeByConn: (form: ConnectionForm, sql: string) =>
-      invoke<QueryResult>("execute_by_conn", { form, sql }),
+      invoke<QueryResult>(COMMANDS.EXECUTE_BY_CONN, { form, sql }),
   },
   sqlLogs: {
     list: (limit = 100) =>
-      invoke<SqlExecutionLog[]>("list_sql_execution_logs", { limit }),
+      invoke<SqlExecutionLog[]>(COMMANDS.LIST_SQL_EXECUTION_LOGS, { limit }),
   },
 };

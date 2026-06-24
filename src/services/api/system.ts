@@ -1,4 +1,5 @@
 import { invoke } from "./core";
+import { COMMANDS } from "@/services/commands";
 import type {
   McpConfig,
   McpDetectedClient,
@@ -8,15 +9,15 @@ import type {
 
 export const systemApi = {
   system: {
-    listFonts: () => invoke<string[]>("list_system_fonts"),
+    listFonts: () => invoke<string[]>(COMMANDS.LIST_SYSTEM_FONTS),
   },
   mcp: {
-    status: () => invoke<McpStatus>("mcp_status"),
-    start: (config: McpConfig) => invoke<McpStatus>("mcp_start", { config }),
-    stop: () => invoke<McpStatus>("mcp_stop"),
-    getTools: () => invoke<McpToolInfo[]>("mcp_get_tools"),
-    detectClients: () => invoke<McpDetectedClient[]>("mcp_detect_clients"),
+    status: () => invoke<McpStatus>(COMMANDS.MCP_STATUS),
+    start: (config: McpConfig) => invoke<McpStatus>(COMMANDS.MCP_START, { config }),
+    stop: () => invoke<McpStatus>(COMMANDS.MCP_STOP),
+    getTools: () => invoke<McpToolInfo[]>(COMMANDS.MCP_GET_TOOLS),
+    detectClients: () => invoke<McpDetectedClient[]>(COMMANDS.MCP_DETECT_CLIENTS),
     configureClient: (clientName: string) =>
-      invoke<string>("mcp_configure_client", { clientName }),
+      invoke<string>(COMMANDS.MCP_CONFIGURE_CLIENT, { clientName }),
   },
 };

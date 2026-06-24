@@ -1,4 +1,5 @@
 import { invoke } from "./core";
+import { COMMANDS } from "@/services/commands";
 import type {
   ElasticsearchBulkExportResult,
   ElasticsearchBulkImportResult,
@@ -14,35 +15,35 @@ import type {
 export const elasticsearchApi = {
   elasticsearch: {
     testConnection: (id: number) =>
-      invoke<ElasticsearchConnectionInfo>("elasticsearch_test_connection", {
+      invoke<ElasticsearchConnectionInfo>(COMMANDS.ELASTICSEARCH_TEST_CONNECTION, {
         id,
       }),
     listIndices: (id: number) =>
-      invoke<ElasticsearchIndexInfo[]>("elasticsearch_list_indices", { id }),
+      invoke<ElasticsearchIndexInfo[]>(COMMANDS.ELASTICSEARCH_LIST_INDICES, { id }),
     getIndexMapping: (id: number, index: string) =>
-      invoke<any>("elasticsearch_get_index_mapping", { id, index }),
+      invoke<any>(COMMANDS.ELASTICSEARCH_GET_INDEX_MAPPING, { id, index }),
     createIndex: (params: { id: number; index: string; body?: any }) =>
       invoke<ElasticsearchIndexOperationResult>(
-        "elasticsearch_create_index",
+        COMMANDS.ELASTICSEARCH_CREATE_INDEX,
         params,
       ),
     deleteIndex: (id: number, index: string) =>
-      invoke<ElasticsearchIndexOperationResult>("elasticsearch_delete_index", {
+      invoke<ElasticsearchIndexOperationResult>(COMMANDS.ELASTICSEARCH_DELETE_INDEX, {
         id,
         index,
       }),
     refreshIndex: (id: number, index: string) =>
-      invoke<ElasticsearchIndexOperationResult>("elasticsearch_refresh_index", {
+      invoke<ElasticsearchIndexOperationResult>(COMMANDS.ELASTICSEARCH_REFRESH_INDEX, {
         id,
         index,
       }),
     openIndex: (id: number, index: string) =>
-      invoke<ElasticsearchIndexOperationResult>("elasticsearch_open_index", {
+      invoke<ElasticsearchIndexOperationResult>(COMMANDS.ELASTICSEARCH_OPEN_INDEX, {
         id,
         index,
       }),
     closeIndex: (id: number, index: string) =>
-      invoke<ElasticsearchIndexOperationResult>("elasticsearch_close_index", {
+      invoke<ElasticsearchIndexOperationResult>(COMMANDS.ELASTICSEARCH_CLOSE_INDEX, {
         id,
         index,
       }),
@@ -55,11 +56,11 @@ export const elasticsearchApi = {
       size: number;
     }) =>
       invoke<ElasticsearchSearchResponse>(
-        "elasticsearch_search_documents",
+        COMMANDS.ELASTICSEARCH_SEARCH_DOCUMENTS,
         params,
       ),
     getDocument: (id: number, index: string, documentId: string) =>
-      invoke<ElasticsearchDocument>("elasticsearch_get_document", {
+      invoke<ElasticsearchDocument>(COMMANDS.ELASTICSEARCH_GET_DOCUMENT, {
         id,
         index,
         documentId,
@@ -72,7 +73,7 @@ export const elasticsearchApi = {
       refresh?: boolean;
     }) =>
       invoke<ElasticsearchMutationResult>(
-        "elasticsearch_upsert_document",
+        COMMANDS.ELASTICSEARCH_UPSERT_DOCUMENT,
         params,
       ),
     deleteDocument: (params: {
@@ -82,7 +83,7 @@ export const elasticsearchApi = {
       refresh?: boolean;
     }) =>
       invoke<ElasticsearchMutationResult>(
-        "elasticsearch_delete_document",
+        COMMANDS.ELASTICSEARCH_DELETE_DOCUMENT,
         params,
       ),
     exportDocuments: (params: {
@@ -94,7 +95,7 @@ export const elasticsearchApi = {
       batchSize?: number;
     }) =>
       invoke<ElasticsearchBulkExportResult>(
-        "elasticsearch_export_documents",
+        COMMANDS.ELASTICSEARCH_EXPORT_DOCUMENTS,
         params,
       ),
     importDocuments: (params: {
@@ -105,7 +106,7 @@ export const elasticsearchApi = {
       refresh?: boolean;
     }) =>
       invoke<ElasticsearchBulkImportResult>(
-        "elasticsearch_import_documents",
+        COMMANDS.ELASTICSEARCH_IMPORT_DOCUMENTS,
         params,
       ),
     executeRaw: (params: {
@@ -113,6 +114,6 @@ export const elasticsearchApi = {
       method: string;
       path: string;
       body?: string;
-    }) => invoke<ElasticsearchRawResponse>("elasticsearch_execute_raw", params),
+    }) => invoke<ElasticsearchRawResponse>(COMMANDS.ELASTICSEARCH_EXECUTE_RAW, params),
   },
 };

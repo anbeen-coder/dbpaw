@@ -1,4 +1,5 @@
 import { invoke } from "./core";
+import { COMMANDS } from "@/services/commands";
 import type {
   ConnectionForm,
   RoutineInfo,
@@ -16,20 +17,20 @@ import type {
 export const metadataApi = {
   metadata: {
     listTables: (id: number, database?: string, schema?: string) =>
-      invoke<{ schema: string; name: string; type: string }[]>("list_tables", {
+      invoke<{ schema: string; name: string; type: string }[]>(COMMANDS.LIST_TABLES, {
         id,
         database,
         schema,
       }),
     listRoutines: (id: number, database?: string, schema?: string) =>
-      invoke<RoutineInfo[]>("list_routines", {
+      invoke<RoutineInfo[]>(COMMANDS.LIST_ROUTINES, {
         id,
         database,
         schema,
       }),
     getTableStructure: (id: number, schema: string, table: string) =>
       invoke<{ columns: { name: string; type: string; nullable: boolean }[] }>(
-        "get_table_structure",
+        COMMANDS.GET_TABLE_STRUCTURE,
         { id, schema, table },
       ),
     getTableDDL: (
@@ -37,7 +38,7 @@ export const metadataApi = {
       database: string | undefined,
       schema: string,
       table: string,
-    ) => invoke<string>("get_table_ddl", { id, database, schema, table }),
+    ) => invoke<string>(COMMANDS.GET_TABLE_DDL, { id, database, schema, table }),
     getRoutineDDL: (
       id: number,
       database: string | undefined,
@@ -45,7 +46,7 @@ export const metadataApi = {
       name: string,
       routineType: RoutineType,
     ) =>
-      invoke<string>("get_routine_ddl", {
+      invoke<string>(COMMANDS.GET_ROUTINE_DDL, {
         id,
         database,
         schema,
@@ -58,7 +59,7 @@ export const metadataApi = {
       schema: string,
       table: string,
     ) =>
-      invoke<TableMetadata>("get_table_metadata", {
+      invoke<TableMetadata>(COMMANDS.GET_TABLE_METADATA, {
         id,
         database,
         schema,
@@ -66,33 +67,33 @@ export const metadataApi = {
       }),
     listTablesByConn: (form: ConnectionForm) =>
       invoke<{ schema: string; name: string; type: string }[]>(
-        "list_tables_by_conn",
+        COMMANDS.LIST_TABLES_BY_CONN,
         { form },
       ),
     listDatabases: (form: ConnectionForm) =>
-      invoke<string[]>("list_databases", { form }),
+      invoke<string[]>(COMMANDS.LIST_DATABASES, { form }),
     listDatabasesById: (id: number) =>
-      invoke<string[]>("list_databases_by_id", { id }),
+      invoke<string[]>(COMMANDS.LIST_DATABASES_BY_ID, { id }),
     getSchemaOverview: (id: number, database?: string, schema?: string) =>
-      invoke<SchemaOverview>("get_schema_overview", { id, database, schema }),
+      invoke<SchemaOverview>(COMMANDS.GET_SCHEMA_OVERVIEW, { id, database, schema }),
     getSchemaForeignKeys: (id: number, database?: string, schema?: string) =>
-      invoke<SchemaForeignKey[]>("get_schema_foreign_keys", {
+      invoke<SchemaForeignKey[]>(COMMANDS.GET_SCHEMA_FOREIGN_KEYS, {
         id,
         database,
         schema,
       }),
     listEvents: (connectionId: string, database: string) =>
-      invoke<EventInfo[]>("list_events", { connectionId, database }),
+      invoke<EventInfo[]>(COMMANDS.LIST_EVENTS, { connectionId, database }),
     listSequences: (connectionId: string, database: string) =>
-      invoke<SequenceInfo[]>("list_sequences", { connectionId, database }),
+      invoke<SequenceInfo[]>(COMMANDS.LIST_SEQUENCES, { connectionId, database }),
     listTypes: (connectionId: string, database: string) =>
-      invoke<TypeInfo[]>("list_types", { connectionId, database }),
+      invoke<TypeInfo[]>(COMMANDS.LIST_TYPES, { connectionId, database }),
     listSynonyms: (connectionId: string, database: string) =>
-      invoke<SynonymInfo[]>("list_synonyms", { connectionId, database }),
+      invoke<SynonymInfo[]>(COMMANDS.LIST_SYNONYMS, { connectionId, database }),
     listPackages: (connectionId: string, database: string) =>
-      invoke<PackageInfo[]>("list_packages", { connectionId, database }),
+      invoke<PackageInfo[]>(COMMANDS.LIST_PACKAGES, { connectionId, database }),
     getCapabilities: (connectionId: number) =>
-      invoke<number>("get_driver_capabilities", { id: connectionId }),
+      invoke<number>(COMMANDS.GET_DRIVER_CAPABILITIES, { id: connectionId }),
   },
   tableData: {
     get: (params: {
@@ -114,7 +115,7 @@ export const metadataApi = {
         page: number;
         limit: number;
         executionTimeMs: number;
-      }>("get_table_data", params),
+      }>(COMMANDS.GET_TABLE_DATA, params),
     getByConn: (
       form: ConnectionForm,
       schema: string,
@@ -129,7 +130,7 @@ export const metadataApi = {
         page: number;
         limit: number;
         executionTimeMs: number;
-      }>("get_table_data_by_conn", {
+      }>(COMMANDS.GET_TABLE_DATA_BY_CONN, {
         form,
         schema,
         table,

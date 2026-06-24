@@ -4,6 +4,7 @@ import {
   SchemaOverview,
   ConnectionForm,
 } from "../types";
+import { COMMANDS } from "../commands";
 
 const DriverCapabilities = {
   ROUTINES:      0b0000_0001,
@@ -457,39 +458,39 @@ export async function mockGetSchemaOverview(
 
 export function handleMetadata(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "list_tables":
+    case COMMANDS.LIST_TABLES:
       return mockListTables(args.id, args.database, args.schema);
-    case "list_routines":
+    case COMMANDS.LIST_ROUTINES:
       return mockListRoutines(args.id, args.database, args.schema);
-    case "list_events":
+    case COMMANDS.LIST_EVENTS:
       return mockListEvents(args.connectionId, args.database);
-    case "list_sequences":
+    case COMMANDS.LIST_SEQUENCES:
       return mockListSequences(args.connectionId, args.database);
-    case "list_types":
+    case COMMANDS.LIST_TYPES:
       return mockListTypes(args.connectionId, args.database);
-    case "list_synonyms":
+    case COMMANDS.LIST_SYNONYMS:
       return mockListSynonyms(args.connectionId, args.database);
-    case "list_packages":
+    case COMMANDS.LIST_PACKAGES:
       return mockListPackages(args.connectionId, args.database);
-    case "get_table_structure":
+    case COMMANDS.GET_TABLE_STRUCTURE:
       return mockGetTableStructure(args.id, args.schema, args.table);
-    case "get_table_ddl":
+    case COMMANDS.GET_TABLE_DDL:
       return mockGetTableDDL(args.id, args.database, args.schema, args.table);
-    case "get_routine_ddl":
+    case COMMANDS.GET_ROUTINE_DDL:
       return mockGetRoutineDDL(args.id, args.database, args.schema, args.name, args.routineType);
-    case "get_table_metadata":
+    case COMMANDS.GET_TABLE_METADATA:
       return mockGetTableMetadata(args.id, args.database, args.schema, args.table);
-    case "list_tables_by_conn":
+    case COMMANDS.LIST_TABLES_BY_CONN:
       return mockListTablesByConn(args.form);
-    case "list_databases":
+    case COMMANDS.LIST_DATABASES:
       return mockListDatabases(args.form);
-    case "list_databases_by_id":
+    case COMMANDS.LIST_DATABASES_BY_ID:
       return mockListDatabasesById(args.id);
-    case "get_schema_overview":
+    case COMMANDS.GET_SCHEMA_OVERVIEW:
       return mockGetSchemaOverview(args.id, args.database, args.schema);
-    case "get_schema_foreign_keys":
+    case COMMANDS.GET_SCHEMA_FOREIGN_KEYS:
       return mockGetSchemaForeignKeys(args.id, args.database, args.schema);
-    case "get_driver_capabilities":
+    case COMMANDS.GET_DRIVER_CAPABILITIES:
       return Promise.resolve(
         DriverCapabilities.ROUTINES | DriverCapabilities.EVENTS | DriverCapabilities.FOREIGN_KEYS
       );

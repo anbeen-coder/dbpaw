@@ -1,4 +1,5 @@
 import { ConnectionForm } from "../types";
+import { COMMANDS } from "../commands";
 import { mockComplexTypeData, mockArrayTypeData } from "./query";
 
 const seedRows = [
@@ -240,9 +241,9 @@ export async function mockGetTableDataByConn(
 
 export function handleTableData(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "get_table_data":
+    case COMMANDS.GET_TABLE_DATA:
       return mockGetTableData(args);
-    case "get_table_data_by_conn":
+    case COMMANDS.GET_TABLE_DATA_BY_CONN:
       return mockGetTableDataByConn(
         args.form,
         args.schema,

@@ -1,6 +1,8 @@
+import { COMMANDS } from "../commands";
+
 export function handleSystem(cmd: string, _args?: any): Promise<any> | null {
   switch (cmd) {
-    case "list_system_fonts":
+    case COMMANDS.LIST_SYSTEM_FONTS:
       return Promise.resolve([
         "Arial",
         "Helvetica",

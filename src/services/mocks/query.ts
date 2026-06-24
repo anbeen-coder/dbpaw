@@ -4,6 +4,7 @@ import {
   RedisCommandLog,
   ConnectionForm,
 } from "../types";
+import { COMMANDS } from "../commands";
 import { mockTableData } from "./tableData";
 
 // Dedicated dataset for querying "SELECT * FROM json_test" in mock mode.
@@ -359,15 +360,15 @@ export async function mockListSqlExecutionLogs(
 
 export function handleQuery(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "execute_query":
+    case COMMANDS.EXECUTE_QUERY:
       return mockExecuteQuery(args.id, args.query, args.database, args.source);
-    case "cancel_query":
+    case COMMANDS.CANCEL_QUERY:
       return mockCancelQuery(args.uuid, args.queryId);
-    case "execute_by_conn":
+    case COMMANDS.EXECUTE_BY_CONN:
       return mockExecuteByConn(args.form, args.sql);
-    case "list_sql_execution_logs":
+    case COMMANDS.LIST_SQL_EXECUTION_LOGS:
       return mockListSqlExecutionLogs(args?.limit);
-    case "list_redis_command_logs":
+    case COMMANDS.LIST_REDIS_COMMAND_LOGS:
       return mockListRedisCommandLogs(args?.limit);
     default:
       return null;

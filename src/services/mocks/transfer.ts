@@ -1,4 +1,5 @@
 import { ExportResult, ImportSqlResult } from "../types";
+import { COMMANDS } from "../commands";
 import { mockTableData } from "./tableData";
 import { mockQueryResult } from "./query";
 
@@ -55,13 +56,13 @@ export async function mockImportSqlFile(
 
 export function handleTransfer(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "export_table_data":
+    case COMMANDS.EXPORT_TABLE_DATA:
       return mockExportTableData(args);
-    case "export_database_sql":
+    case COMMANDS.EXPORT_DATABASE_SQL:
       return mockExportDatabaseSql(args);
-    case "export_query_result":
+    case COMMANDS.EXPORT_QUERY_RESULT:
       return mockExportQueryResult(args);
-    case "import_sql_file":
+    case COMMANDS.IMPORT_SQL_FILE:
       return mockImportSqlFile(args);
     default:
       return null;

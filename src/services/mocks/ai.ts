@@ -1,4 +1,5 @@
 import { AIProviderConfig, AIConversation, AIConversationDetail } from "../types";
+import { COMMANDS } from "../commands";
 
 const mockAiProviders: AIProviderConfig[] = [
   {
@@ -162,10 +163,10 @@ const mockAiMessages: Record<number, AIConversationDetail["messages"]> = {
 
 export function handleAi(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "ai_list_providers":
+    case COMMANDS.AI_LIST_PROVIDERS:
       return Promise.resolve([...mockAiProviders]);
 
-    case "ai_create_provider": {
+    case COMMANDS.AI_CREATE_PROVIDER: {
       const requestedType = String(args.config.providerType || "openai");
 
       const now = new Date().toISOString();
@@ -206,7 +207,7 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
       return Promise.resolve(created);
     }
 
-    case "ai_update_provider": {
+    case COMMANDS.AI_UPDATE_PROVIDER: {
       const idx = mockAiProviders.findIndex((p) => p.id === args.id);
       if (idx < 0) throw new Error("Provider not found");
       const requestedType = String(
@@ -230,21 +231,21 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
       return Promise.resolve(mockAiProviders[idx]);
     }
 
-    case "ai_delete_provider": {
+    case COMMANDS.AI_DELETE_PROVIDER: {
       const idx = mockAiProviders.findIndex((p) => p.id === args.id);
       if (idx >= 0) mockAiProviders.splice(idx, 1);
       return Promise.resolve(undefined);
     }
 
-    case "ai_set_default_provider": {
+    case COMMANDS.AI_SET_DEFAULT_PROVIDER: {
       mockAiProviders.forEach((p) => (p.isDefault = p.id === args.id));
       return Promise.resolve(undefined);
     }
 
-    case "ai_list_conversations":
+    case COMMANDS.AI_LIST_CONVERSATIONS:
       return Promise.resolve([...mockAiConversations]);
 
-    case "ai_get_conversation": {
+    case COMMANDS.AI_GET_CONVERSATION: {
       const c = mockAiConversations.find((x) => x.id === args.conversationId);
       if (!c) throw new Error("Conversation not found");
       return Promise.resolve({
@@ -253,7 +254,7 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
       });
     }
 
-    case "ai_delete_conversation": {
+    case COMMANDS.AI_DELETE_CONVERSATION: {
       const idx = mockAiConversations.findIndex(
         (x) => x.id === args.conversationId,
       );
@@ -262,8 +263,8 @@ export function handleAi(cmd: string, args?: any): Promise<any> | null {
       return Promise.resolve(undefined);
     }
 
-    case "ai_chat_start":
-    case "ai_chat_continue": {
+    case COMMANDS.AI_CHAT_START:
+    case COMMANDS.AI_CHAT_CONTINUE: {
       const input = args.request.input as string;
       const selectedTables =
         (args.request.selectedTables as

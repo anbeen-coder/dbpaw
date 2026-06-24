@@ -1,4 +1,5 @@
 import { ConnectionForm, TestConnectionResult } from "../types";
+import { COMMANDS } from "../commands";
 
 export const mockConnections: any[] = [
   {
@@ -66,6 +67,20 @@ export const mockConnections: any[] = [
     host: "localhost",
     port: 27017,
     database: "testdb",
+    username: "",
+    ssl: false,
+    sshEnabled: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 6,
+    uuid: "mock-6",
+    name: "Elasticsearch Dev",
+    dbType: "elasticsearch",
+    host: "localhost",
+    port: 9200,
+    database: "",
     username: "",
     ssl: false,
     sshEnabled: false,
@@ -285,23 +300,23 @@ export async function mockTestConnectionEphemeral(
 
 export function handleConnections(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "get_connections":
+    case COMMANDS.GET_CONNECTIONS:
       return mockGetConnections();
-    case "create_connection":
+    case COMMANDS.CREATE_CONNECTION:
       return mockCreateConnection(args.form);
-    case "update_connection":
+    case COMMANDS.UPDATE_CONNECTION:
       return mockUpdateConnection(args.id, args.form);
-    case "delete_connection":
+    case COMMANDS.DELETE_CONNECTION:
       return mockDeleteConnection(args.id);
-    case "import_connections":
+    case COMMANDS.IMPORT_CONNECTIONS:
       return Promise.resolve({ imported: [], skipped: 0 });
-    case "create_database_by_id":
+    case COMMANDS.CREATE_DATABASE_BY_ID:
       return mockCreateDatabaseById(args.id, args.payload);
-    case "get_mysql_charsets_by_id":
+    case COMMANDS.GET_MYSQL_CHARSETS_BY_ID:
       return mockGetMysqlCharsets(args.id);
-    case "get_mysql_collations_by_id":
+    case COMMANDS.GET_MYSQL_COLLATIONS_BY_ID:
       return mockGetMysqlCollations(args.id, args.charset);
-    case "test_connection_ephemeral":
+    case COMMANDS.TEST_CONNECTION_EPHEMERAL:
       return mockTestConnectionEphemeral(args.form);
     default:
       return null;

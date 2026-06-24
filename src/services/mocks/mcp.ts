@@ -1,3 +1,5 @@
+import { COMMANDS } from "../commands";
+
 export async function mockMcpStatus(): Promise<any> {
   return {
     running: false,
@@ -57,17 +59,17 @@ export async function mockMcpConfigureClient(_clientName: string): Promise<strin
 
 export function handleMcp(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "mcp_status":
+    case COMMANDS.MCP_STATUS:
       return mockMcpStatus();
-    case "mcp_start":
+    case COMMANDS.MCP_START:
       return mockMcpStart(args.config);
-    case "mcp_stop":
+    case COMMANDS.MCP_STOP:
       return mockMcpStop();
-    case "mcp_get_tools":
+    case COMMANDS.MCP_GET_TOOLS:
       return mockMcpGetTools();
-    case "mcp_detect_clients":
+    case COMMANDS.MCP_DETECT_CLIENTS:
       return mockMcpDetectClients();
-    case "mcp_configure_client":
+    case COMMANDS.MCP_CONFIGURE_CLIENT:
       return mockMcpConfigureClient(args.clientName);
     default:
       return null;

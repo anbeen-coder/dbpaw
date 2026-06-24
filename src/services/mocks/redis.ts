@@ -1,3 +1,5 @@
+import { COMMANDS } from "../commands";
+
 export async function mockRedisListDatabases(_id: number): Promise<any[]> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return [
@@ -294,17 +296,17 @@ export async function mockRedisExecuteRaw(
 
 export function handleRedis(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "redis_list_databases":
+    case COMMANDS.REDIS_LIST_DATABASES:
       return mockRedisListDatabases(args.id);
-    case "redis_scan_keys":
+    case COMMANDS.REDIS_SCAN_KEYS:
       return mockRedisScanKeys(args);
-    case "redis_get_key":
+    case COMMANDS.REDIS_GET_KEY:
       return mockRedisGetKey(args.id, args.database, args.key);
-    case "redis_set_key":
+    case COMMANDS.REDIS_SET_KEY:
       return mockRedisSetKey(args.id, args.database, args.payload);
-    case "redis_delete_key":
+    case COMMANDS.REDIS_DELETE_KEY:
       return mockRedisDeleteKey(args.id, args.database, args.key);
-    case "redis_rename_key":
+    case COMMANDS.REDIS_RENAME_KEY:
       return mockRedisRenameKey(
         args.id,
         args.database,
@@ -312,20 +314,20 @@ export function handleRedis(cmd: string, args?: any): Promise<any> | null {
         args.newKey,
         args.force,
       );
-    case "redis_set_ttl":
+    case COMMANDS.REDIS_SET_TTL:
       return mockRedisSetTtl(
         args.id,
         args.database,
         args.key,
         args.ttlSeconds,
       );
-    case "redis_server_info":
+    case COMMANDS.REDIS_SERVER_INFO:
       return mockRedisServerInfo(args.id, args.database);
-    case "redis_server_config":
+    case COMMANDS.REDIS_SERVER_CONFIG:
       return mockRedisServerConfig(args.id, args.database);
-    case "redis_slowlog_get":
+    case COMMANDS.REDIS_SLOWLOG_GET:
       return mockRedisSlowlogGet(args.id, args.database, args.count);
-    case "redis_execute_raw":
+    case COMMANDS.REDIS_EXECUTE_RAW:
       return mockRedisExecuteRaw(args.id, args.database, args.command);
     default:
       return null;

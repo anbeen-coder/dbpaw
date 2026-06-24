@@ -1,4 +1,5 @@
 import { SavedQuery } from "../types";
+import { COMMANDS } from "../commands";
 
 export const mockSavedQueries: SavedQuery[] = [
   {
@@ -92,13 +93,13 @@ export async function mockDeleteSavedQuery(id: number): Promise<void> {
 
 export function handleQueries(cmd: string, args?: any): Promise<any> | null {
   switch (cmd) {
-    case "get_saved_queries":
+    case COMMANDS.GET_SAVED_QUERIES:
       return mockGetSavedQueries();
-    case "save_query":
+    case COMMANDS.SAVE_QUERY:
       return mockSaveQuery(args);
-    case "update_saved_query":
+    case COMMANDS.UPDATE_SAVED_QUERY:
       return mockUpdateSavedQuery(args.id, args);
-    case "delete_saved_query":
+    case COMMANDS.DELETE_SAVED_QUERY:
       return mockDeleteSavedQuery(args.id);
     default:
       return null;

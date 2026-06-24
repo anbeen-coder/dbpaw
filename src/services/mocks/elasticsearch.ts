@@ -1,9 +1,11 @@
+import { COMMANDS } from "../commands";
+
 export function handleElasticsearch(
   cmd: string,
   args?: any,
 ): Promise<any> | null {
   switch (cmd) {
-    case "elasticsearch_test_connection":
+    case COMMANDS.ELASTICSEARCH_TEST_CONNECTION:
       return Promise.resolve({
         clusterName: "mock-cluster",
         clusterUuid: "mock-uuid",
@@ -18,7 +20,7 @@ export function handleElasticsearch(
         latencyMs: 12,
       });
 
-    case "elasticsearch_list_indices":
+    case COMMANDS.ELASTICSEARCH_LIST_INDICES:
       return Promise.resolve([
         {
           name: "products",
@@ -55,7 +57,7 @@ export function handleElasticsearch(
         },
       ]);
 
-    case "elasticsearch_get_index_mapping": {
+    case COMMANDS.ELASTICSEARCH_GET_INDEX_MAPPING: {
       const idx = String(args.index || "products");
       return Promise.resolve({
         [idx]: {
@@ -72,7 +74,7 @@ export function handleElasticsearch(
       });
     }
 
-    case "elasticsearch_create_index":
+    case COMMANDS.ELASTICSEARCH_CREATE_INDEX:
       return Promise.resolve({
         index: String(args.index || "new-index"),
         acknowledged: true,
@@ -80,7 +82,7 @@ export function handleElasticsearch(
         status: 200,
       });
 
-    case "elasticsearch_delete_index":
+    case COMMANDS.ELASTICSEARCH_DELETE_INDEX:
       return Promise.resolve({
         index: String(args.index || "products"),
         acknowledged: true,
@@ -88,9 +90,9 @@ export function handleElasticsearch(
         status: 200,
       });
 
-    case "elasticsearch_refresh_index":
-    case "elasticsearch_open_index":
-    case "elasticsearch_close_index":
+    case COMMANDS.ELASTICSEARCH_REFRESH_INDEX:
+    case COMMANDS.ELASTICSEARCH_OPEN_INDEX:
+    case COMMANDS.ELASTICSEARCH_CLOSE_INDEX:
       return Promise.resolve({
         index: String(args.index || "products"),
         acknowledged: true,
@@ -98,7 +100,7 @@ export function handleElasticsearch(
         status: 200,
       });
 
-    case "elasticsearch_search_documents": {
+    case COMMANDS.ELASTICSEARCH_SEARCH_DOCUMENTS: {
       const hits = Array.from({ length: 3 }, (_, i) => ({
         index: String(args.index || "products"),
         id: `doc-${i + 1}`,
@@ -124,7 +126,7 @@ export function handleElasticsearch(
       });
     }
 
-    case "elasticsearch_get_document":
+    case COMMANDS.ELASTICSEARCH_GET_DOCUMENT:
       return Promise.resolve({
         index: String(args.index || "products"),
         id: String(args.documentId || "doc-1"),
@@ -139,7 +141,7 @@ export function handleElasticsearch(
         fields: null,
       });
 
-    case "elasticsearch_upsert_document":
+    case COMMANDS.ELASTICSEARCH_UPSERT_DOCUMENT:
       return Promise.resolve({
         index: String(args.index || "products"),
         id: args.documentId || `auto-${Date.now()}`,
@@ -147,7 +149,7 @@ export function handleElasticsearch(
         status: args.documentId ? 200 : 201,
       });
 
-    case "elasticsearch_delete_document":
+    case COMMANDS.ELASTICSEARCH_DELETE_DOCUMENT:
       return Promise.resolve({
         index: String(args.index || "products"),
         id: String(args.documentId || "doc-1"),
@@ -155,7 +157,7 @@ export function handleElasticsearch(
         status: 200,
       });
 
-    case "elasticsearch_execute_raw":
+    case COMMANDS.ELASTICSEARCH_EXECUTE_RAW:
       return Promise.resolve({
         status: 200,
         body: '{"count":3,"_shards":{"total":1,"successful":1,"skipped":0,"failed":0}}',

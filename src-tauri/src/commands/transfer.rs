@@ -314,6 +314,7 @@ pub async fn import_sql_file_direct(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::import_dialects::{parse_mssql_batches, statement_controls_transaction};
     use crate::models::{
         QueryResult, SchemaOverview, TableDataResponse, TableInfo, TableMetadata, TableStructure,
     };

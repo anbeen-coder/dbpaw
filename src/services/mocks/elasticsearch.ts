@@ -13,13 +13,6 @@ export function handleElasticsearch(
         tagline: "You Know, for Search",
       });
 
-    case "elasticsearch_test_connection_ephemeral":
-      return Promise.resolve({
-        success: true,
-        message: "Connected to Elasticsearch 8.13.0",
-        latencyMs: 12,
-      });
-
     case COMMANDS.ELASTICSEARCH_LIST_INDICES:
       return Promise.resolve([
         {
@@ -169,9 +162,23 @@ export function handleElasticsearch(
       });
 
     case COMMANDS.ELASTICSEARCH_EXPORT_DOCUMENTS:
-      return Promise.resolve({ documents: [], total: 0 });
+      return Promise.resolve({
+        filePath: "/tmp/mock-export.json",
+        index: String(args?.index || "products"),
+        documents: 0,
+        batches: 0,
+        timeTakenMs: 0,
+      });
     case COMMANDS.ELASTICSEARCH_IMPORT_DOCUMENTS:
-      return Promise.resolve({ imported: 0, errors: [] });
+      return Promise.resolve({
+        filePath: String(args?.filePath || "/tmp/mock-import.json"),
+        index: String(args?.index || "products"),
+        totalActions: 0,
+        successful: 0,
+        failed: 0,
+        errors: [],
+        timeTakenMs: 0,
+      });
 
     default:
       return null;

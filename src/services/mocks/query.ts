@@ -5,6 +5,7 @@ import {
   ConnectionForm,
 } from "../types";
 import { COMMANDS } from "../commands";
+import type { CommandArgs, CommandReturn } from "../commands";
 import { mockTableData } from "./tableData";
 
 // Dedicated dataset for querying "SELECT * FROM json_test" in mock mode.
@@ -358,18 +359,38 @@ export async function mockListSqlExecutionLogs(
   return mockSqlExecutionLogs.slice(0, safeLimit);
 }
 
-export function handleQuery(cmd: string, args?: any): Promise<any> | null {
+type QueryCommand =
+  | "execute_query"
+  | "cancel_query"
+  | "execute_by_conn"
+  | "list_sql_execution_logs"
+  | "list_redis_command_logs";
+
+export function handleQuery<T extends QueryCommand>(
+  cmd: T,
+  args: CommandArgs<T>,
+): Promise<CommandReturn<T>> | null {
   switch (cmd) {
-    case COMMANDS.EXECUTE_QUERY:
-      return mockExecuteQuery(args.id, args.query, args.database, args.source);
-    case COMMANDS.CANCEL_QUERY:
-      return mockCancelQuery(args.uuid, args.queryId);
-    case COMMANDS.EXECUTE_BY_CONN:
-      return mockExecuteByConn(args.form, args.sql);
-    case COMMANDS.LIST_SQL_EXECUTION_LOGS:
-      return mockListSqlExecutionLogs(args?.limit);
-    case COMMANDS.LIST_REDIS_COMMAND_LOGS:
-      return mockListRedisCommandLogs(args?.limit);
+    case COMMANDS.EXECUTE_QUERY: {
+      const a = args as CommandArgs<"execute_query">;
+      return mockExecuteQuery(a.id, a.query, a.database, a.source) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.CANCEL_QUERY: {
+      const a = args as CommandArgs<"cancel_query">;
+      return mockCancelQuery(a.uuid, a.queryId) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.EXECUTE_BY_CONN: {
+      const a = args as CommandArgs<"execute_by_conn">;
+      return mockExecuteByConn(a.form, a.sql) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_SQL_EXECUTION_LOGS: {
+      const a = args as CommandArgs<"list_sql_execution_logs">;
+      return mockListSqlExecutionLogs(a.limit) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_REDIS_COMMAND_LOGS: {
+      const a = args as CommandArgs<"list_redis_command_logs">;
+      return mockListRedisCommandLogs(a.limit) as Promise<CommandReturn<T>>;
+    }
     default:
       return null;
   }

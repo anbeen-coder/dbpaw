@@ -372,7 +372,7 @@ export function handleRedis(cmd: string, args?: any): Promise<any> | null {
     case COMMANDS.REDIS_GEO_SEARCH:
       return Promise.resolve([]);
     case COMMANDS.REDIS_ZRANGEBYSCORE:
-      return Promise.resolve([]);
+      return Promise.resolve({ members: [], total: 0 });
     case COMMANDS.REDIS_ZRANK:
       return Promise.resolve({ rank: 0 });
     case COMMANDS.REDIS_SET_OPERATION:
@@ -394,7 +394,7 @@ export function handleRedis(cmd: string, args?: any): Promise<any> | null {
     case COMMANDS.REDIS_ZMSCORE:
       return Promise.resolve([]);
     case COMMANDS.REDIS_ZRANGEBYLEX:
-      return Promise.resolve([]);
+      return Promise.resolve({ members: [], total: 0 });
     case COMMANDS.REDIS_ZLEXCOUNT:
       return Promise.resolve({ count: 0 });
     case COMMANDS.REDIS_ZPOPMIN:

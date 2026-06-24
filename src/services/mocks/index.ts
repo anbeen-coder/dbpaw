@@ -11,10 +11,12 @@ import { handleAi } from "./ai";
 import { handleSystem } from "./system";
 import { handleMcp } from "./mcp";
 
-const handlers = [
-  handleQuery,
+type Handler = (cmd: string, args: any) => Promise<any> | null;
+
+const handlers: Handler[] = [
+  handleQuery as Handler,
   handleRedis,
-  handleMetadata,
+  handleMetadata as Handler,
   handleTableData,
   handleConnections,
   handleQueries,

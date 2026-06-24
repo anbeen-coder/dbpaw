@@ -5,6 +5,27 @@ import {
   ConnectionForm,
 } from "../types";
 import { COMMANDS } from "../commands";
+import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
+
+type MetadataCommand = Extract<keyof CommandMap,
+  | "list_tables"
+  | "list_routines"
+  | "get_table_structure"
+  | "get_table_ddl"
+  | "get_routine_ddl"
+  | "get_table_metadata"
+  | "list_tables_by_conn"
+  | "list_databases"
+  | "list_databases_by_id"
+  | "get_schema_overview"
+  | "get_schema_foreign_keys"
+  | "list_events"
+  | "list_sequences"
+  | "list_types"
+  | "list_synonyms"
+  | "list_packages"
+  | "get_driver_capabilities"
+>;
 
 const DriverCapabilities = {
   ROUTINES:      0b0000_0001,
@@ -461,44 +482,79 @@ export async function mockGetSchemaOverview(
   return mockSchemaOverview;
 }
 
-export function handleMetadata(cmd: string, args?: any): Promise<any> | null {
+export function handleMetadata<T extends MetadataCommand>(
+  cmd: T,
+  args: CommandArgs<T>
+): Promise<CommandReturn<T>> | null {
   switch (cmd) {
-    case COMMANDS.LIST_TABLES:
-      return mockListTables(args.id, args.database, args.schema);
-    case COMMANDS.LIST_ROUTINES:
-      return mockListRoutines(args.id, args.database, args.schema);
-    case COMMANDS.LIST_EVENTS:
-      return mockListEvents(args.id, args.database, args.schema);
-    case COMMANDS.LIST_SEQUENCES:
-      return mockListSequences(args.id, args.database, args.schema);
-    case COMMANDS.LIST_TYPES:
-      return mockListTypes(args.id, args.database, args.schema);
-    case COMMANDS.LIST_SYNONYMS:
-      return mockListSynonyms(args.id, args.database, args.schema);
-    case COMMANDS.LIST_PACKAGES:
-      return mockListPackages(args.id, args.database, args.schema);
-    case COMMANDS.GET_TABLE_STRUCTURE:
-      return mockGetTableStructure(args.id, args.schema, args.table);
-    case COMMANDS.GET_TABLE_DDL:
-      return mockGetTableDDL(args.id, args.database, args.schema, args.table);
-    case COMMANDS.GET_ROUTINE_DDL:
-      return mockGetRoutineDDL(args.id, args.database, args.schema, args.name, args.routineType);
-    case COMMANDS.GET_TABLE_METADATA:
-      return mockGetTableMetadata(args.id, args.database, args.schema, args.table);
-    case COMMANDS.LIST_TABLES_BY_CONN:
-      return mockListTablesByConn(args.form);
-    case COMMANDS.LIST_DATABASES:
-      return mockListDatabases(args.form);
-    case COMMANDS.LIST_DATABASES_BY_ID:
-      return mockListDatabasesById(args.id);
-    case COMMANDS.GET_SCHEMA_OVERVIEW:
-      return mockGetSchemaOverview(args.id, args.database, args.schema);
-    case COMMANDS.GET_SCHEMA_FOREIGN_KEYS:
-      return mockGetSchemaForeignKeys(args.id, args.database, args.schema);
+    case COMMANDS.LIST_TABLES: {
+      const a = args as CommandArgs<"list_tables">;
+      return mockListTables(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_ROUTINES: {
+      const a = args as CommandArgs<"list_routines">;
+      return mockListRoutines(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_EVENTS: {
+      const a = args as CommandArgs<"list_events">;
+      return mockListEvents(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_SEQUENCES: {
+      const a = args as CommandArgs<"list_sequences">;
+      return mockListSequences(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_TYPES: {
+      const a = args as CommandArgs<"list_types">;
+      return mockListTypes(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_SYNONYMS: {
+      const a = args as CommandArgs<"list_synonyms">;
+      return mockListSynonyms(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_PACKAGES: {
+      const a = args as CommandArgs<"list_packages">;
+      return mockListPackages(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.GET_TABLE_STRUCTURE: {
+      const a = args as CommandArgs<"get_table_structure">;
+      return mockGetTableStructure(a.id, a.schema, a.table) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.GET_TABLE_DDL: {
+      const a = args as CommandArgs<"get_table_ddl">;
+      return mockGetTableDDL(a.id, a.database, a.schema, a.table) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.GET_ROUTINE_DDL: {
+      const a = args as CommandArgs<"get_routine_ddl">;
+      return mockGetRoutineDDL(a.id, a.database, a.schema, a.name, a.routineType) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.GET_TABLE_METADATA: {
+      const a = args as CommandArgs<"get_table_metadata">;
+      return mockGetTableMetadata(a.id, a.database, a.schema, a.table) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_TABLES_BY_CONN: {
+      const a = args as CommandArgs<"list_tables_by_conn">;
+      return mockListTablesByConn(a.form) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_DATABASES: {
+      const a = args as CommandArgs<"list_databases">;
+      return mockListDatabases(a.form) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_DATABASES_BY_ID: {
+      const a = args as CommandArgs<"list_databases_by_id">;
+      return mockListDatabasesById(a.id) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.GET_SCHEMA_OVERVIEW: {
+      const a = args as CommandArgs<"get_schema_overview">;
+      return mockGetSchemaOverview(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.GET_SCHEMA_FOREIGN_KEYS: {
+      const a = args as CommandArgs<"get_schema_foreign_keys">;
+      return mockGetSchemaForeignKeys(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+    }
     case COMMANDS.GET_DRIVER_CAPABILITIES:
       return Promise.resolve(
         DriverCapabilities.ROUTINES | DriverCapabilities.EVENTS | DriverCapabilities.FOREIGN_KEYS
-      );
+      ) as Promise<CommandReturn<T>>;
     default:
       return null;
   }

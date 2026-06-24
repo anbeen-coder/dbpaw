@@ -1,20 +1,9 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VirtualTableBody } from "./tableView/VirtualTableBody";
 import { ColumnViewBody } from "./tableView/ColumnViewBody";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { buildFilterExpression, sortRows } from "./tableView/utils";
 import { ComplexValueViewer } from "./ComplexValueViewer";
 import { TableToolbar } from "./tableView/TableToolbar";
 import { useTableSort } from "./tableView/hooks/useTableSort";
@@ -26,6 +15,10 @@ import { useTableMutation } from "./tableView/hooks/useTableMutation";
 import { useTableSearch } from "./tableView/hooks/useTableSearch";
 import { useTableClipboard } from "./tableView/hooks/useTableClipboard";
 import { useTableHotkeys } from "./tableView/hooks/useTableHotkeys";
+import { useTableData } from "./tableView/hooks/useTableData";
+import { useTableFilter } from "./tableView/hooks/useTableFilter";
+import { DeleteConfirmDialog } from "./tableView/DeleteConfirmDialog";
+import { SaveErrorBanner } from "./tableView/SaveErrorBanner";
 import { TableStatusBar } from "./tableView/TableStatusBar";
 import type { TableContext, TableRow } from "./tableView/types";
 
@@ -158,31 +151,16 @@ export function TableView({
     onSortChange,
   });
 
-  // Client-side sorting (used in uncontrolled mode, e.g. SQL query results)
-  const sortedData = useMemo(() => {
-    if (isControlledSort || !activeSortColumn || !activeSortDirection) {
-      return data;
-    }
-    return sortRows(data, activeSortColumn, activeSortDirection);
-  }, [data, isControlledSort, activeSortColumn, activeSortDirection]);
-
-  // If external pagination is used (onPageChange provided), we assume data is already the current page
-  // Otherwise we slice locally
-  const currentData = useMemo(
-    () =>
-      onPageChange
-        ? sortedData
-        : sortedData.slice((page - 1) * pageSize, page * pageSize),
-    [onPageChange, page, pageSize, sortedData],
-  );
-
-  const hasKnownTotal = typeof total === "number";
-  const totalPages = hasKnownTotal
-    ? Math.max(1, Math.ceil(total / pageSize))
-    : null;
-  const canGoNext = hasKnownTotal
-    ? page < Math.max(1, Math.ceil(total / pageSize))
-    : currentData.length >= pageSize;
+  const { sortedData, currentData, totalPages, canGoNext } = useTableData({
+    data,
+    activeSortColumn,
+    activeSortDirection,
+    isControlledSort,
+    total,
+    page,
+    pageSize,
+    onPageChange,
+  });
 
   const {
     whereInput,
@@ -371,34 +349,15 @@ export function TableView({
     setPendingChanges,
   });
 
-  const applyFilter = useCallback(
-    (operator: string) => {
-      if (!selectedCell || !tableContext || !onFilterChange) return;
-
-      const cellValue = currentData[selectedCell.row]?.[selectedCell.col];
-      const colMeta = tableColumns.find((c) => c.name === selectedCell.col);
-      const columnType = colMeta?.type || "";
-
-      const expression = buildFilterExpression(
-        tableContext.driver,
-        selectedCell.col,
-        operator,
-        cellValue,
-        columnType,
-      );
-
-      setWhereInput(expression);
-      onFilterChange(expression, orderByInput);
-    },
-    [
-      selectedCell,
-      currentData,
-      tableColumns,
-      tableContext,
-      orderByInput,
-      onFilterChange,
-    ],
-  );
+  const { applyFilter } = useTableFilter({
+    selectedCell,
+    currentData,
+    tableColumns,
+    tableContext,
+    orderByInput,
+    onFilterChange,
+    setWhereInput,
+  });
 
   // Correctly calculate start index for display
   const startIndex = (page - 1) * pageSize;
@@ -623,41 +582,18 @@ export function TableView({
         )}
       </div>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete selected rows?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action will permanently delete {selectedRows.size} row(s)
-              from the table.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isDeleting}
-              onClick={async (e) => {
-                e.preventDefault();
-                await handleConfirmDelete();
-              }}
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        selectedRowsSize={selectedRows.size}
+        isDeleting={isDeleting}
+        onConfirmDelete={handleConfirmDelete}
+      />
 
-      {saveError && (
-        <div className="px-4 py-2 border-t border-destructive/30 bg-destructive/10 text-destructive text-xs font-mono whitespace-pre-wrap">
-          {saveError}
-          <button
-            className="ml-2 underline hover:no-underline"
-            onClick={() => setSaveError(null)}
-          >
-            Close
-          </button>
-        </div>
-      )}
+      <SaveErrorBanner
+        error={saveError}
+        onDismiss={() => setSaveError(null)}
+      />
 
       {complexViewer && (
         <ComplexValueViewer

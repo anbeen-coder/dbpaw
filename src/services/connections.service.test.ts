@@ -48,16 +48,14 @@ describe("Connections模块", () => {
   });
 
   test("delete_connection - 删除连接", async () => {
-    const result = await invokeMock<void>("delete_connection", { id: 1 });
-    expect(result).toBeDefined();
+    await invokeMock<void>("delete_connection", { id: 1 });
   });
 
   test("create_database_by_id - 创建数据库", async () => {
-    const result = await invokeMock<void>("create_database_by_id", {
+    await invokeMock<void>("create_database_by_id", {
       id: 1,
       payload: { name: "new_database" }
     });
-    expect(result).toBeDefined();
   });
 
   test("get_mysql_charsets_by_id - 获取MySQL字符集", async () => {

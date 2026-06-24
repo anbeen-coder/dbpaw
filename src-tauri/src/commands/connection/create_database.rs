@@ -261,97 +261,7 @@ fn normalize_create_database_error(err: AppError, db_name: &str) -> AppError {
 
 
 
-#[tauri::command]
-pub async fn create_database_by_id(
-    state: State<'_, AppState>,
-    id: i64,
-    payload: CreateDatabasePayload,
-) -> Result<(), AppError> {
-    let db_name = validate_database_name(&payload.name)?;
-    let if_not_exists = payload.if_not_exists.unwrap_or(true);
-    let driver = {
-        let local_db = {
-            let lock = state.local_db.lock().await;
-            lock.clone()
-        };
-        let db = local_db.ok_or_else(|| AppError::internal("Local DB not initialized"))?;
-        db.get_connection_form_by_id(id)
-            .await?
-            .driver
-            .to_lowercase()
-    };
-
-    if matches!(driver.as_str(), "sqlite" | "duckdb") {
-        return Err(AppError::unsupported(format!(
-            "Driver {} does not support creating databases in this flow",
-            driver
-        )));
-    }
-
-    let exec_res = match driver.as_str() {
-        driver if crate::db::drivers::is_mysql_family_driver(driver) => {
-            let sql = build_mysql_create_database_sql(&payload, &db_name)?;
-            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
-                let sql_clone = sql.clone();
-                async move { driver.execute_query(sql_clone).await.map(|_| ()) }
-            })
-            .await
-        }
-        "postgres" => {
-            let create_sql = build_postgres_create_database_sql(&payload, &db_name)?;
-            let exists_check_sql = format!(
-                "SELECT 1 FROM pg_database WHERE datname = {} LIMIT 1",
-                quote_literal(&db_name)
-            );
-            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
-                let exists_sql = exists_check_sql.clone();
-                let create_sql = create_sql.clone();
-                async move {
-                    if if_not_exists {
-                        let exists_result = driver.execute_query(exists_sql).await?;
-                        if exists_result.row_count > 0 || !exists_result.data.is_empty() {
-                            return Ok(());
-                        }
-                    }
-                    driver.execute_query(create_sql).await.map(|_| ())
-                }
-            })
-            .await
-        }
-        "mssql" => {
-            let sql = build_mssql_create_database_sql(&payload, &db_name)?;
-            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
-                let sql_clone = sql.clone();
-                async move { driver.execute_query(sql_clone).await.map(|_| ()) }
-            })
-            .await
-        }
-        "clickhouse" => {
-            let sql = build_clickhouse_create_database_sql(&payload, &db_name)?;
-            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
-                let sql_clone = sql.clone();
-                async move { driver.execute_query(sql_clone).await.map(|_| ()) }
-            })
-            .await
-        }
-        "cassandra" => {
-            let sql = build_cassandra_create_database_sql(&payload, &db_name)?;
-            crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
-                let sql_clone = sql.clone();
-                async move { driver.execute_query(sql_clone).await.map(|_| ()) }
-            })
-            .await
-        }
-        _ => Err(AppError::unsupported(format!(
-            "Driver {} not supported for create database",
-            driver
-        ))),
-    };
-
-    exec_res.map_err(|e| normalize_create_database_error(e, &db_name))
-}
-
-pub async fn create_database_by_id_direct(
+async fn create_database_core(
     state: &AppState,
     id: i64,
     payload: CreateDatabasePayload,
@@ -440,68 +350,26 @@ pub async fn create_database_by_id_direct(
     exec_res.map_err(|e| normalize_create_database_error(e, &db_name))
 }
 
-
-
 #[tauri::command]
-pub async fn get_mysql_charsets_by_id(
+pub async fn create_database_by_id(
     state: State<'_, AppState>,
     id: i64,
-) -> Result<Vec<String>, AppError> {
-    crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| async move {
-        let result = driver
-            .execute_query("SHOW CHARACTER SET".to_string())
-            .await?;
-        let mut charsets: Vec<String> = result
-            .data
-            .iter()
-            .filter_map(|row| {
-                row.get("Charset")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-            .collect();
-        charsets.sort();
-        Ok::<Vec<String>, AppError>(charsets)
-    })
-    .await
+    payload: CreateDatabasePayload,
+) -> Result<(), AppError> {
+    create_database_core(state.inner(), id, payload).await
 }
 
-#[tauri::command]
-pub async fn get_mysql_collations_by_id(
-    state: State<'_, AppState>,
+pub async fn create_database_by_id_direct(
+    state: &AppState,
     id: i64,
-    charset: Option<String>,
-) -> Result<Vec<String>, AppError> {
-    let sql = match &charset {
-        Some(cs) if is_safe_option_token(cs) => {
-            format!("SHOW COLLATION WHERE Charset = '{}'", cs)
-        }
-        Some(cs) => {
-            return Err(AppError::validation(format!("Invalid charset: {}", cs)));
-        }
-        None => "SHOW COLLATION".to_string(),
-    };
-    crate::commands::execute_with_retry(&state, id, None, |driver: std::sync::Arc<dyn DatabaseDriver>| {
-        let sql = sql.clone();
-        async move {
-            let result = driver.execute_query(sql).await?;
-            let mut collations: Vec<String> = result
-                .data
-                .iter()
-                .filter_map(|row| {
-                    row.get("Collation")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                })
-                .collect();
-            collations.sort();
-            Ok::<Vec<String>, AppError>(collations)
-        }
-    })
-    .await
+    payload: CreateDatabasePayload,
+) -> Result<(), AppError> {
+    create_database_core(state, id, payload).await
 }
 
-pub async fn get_mysql_charsets_by_id_direct(
+
+
+async fn get_mysql_charsets_core(
     state: &AppState,
     id: i64,
 ) -> Result<Vec<String>, AppError> {
@@ -524,7 +392,7 @@ pub async fn get_mysql_charsets_by_id_direct(
     .await
 }
 
-pub async fn get_mysql_collations_by_id_direct(
+async fn get_mysql_collations_core(
     state: &AppState,
     id: i64,
     charset: Option<String>,
@@ -556,6 +424,38 @@ pub async fn get_mysql_collations_by_id_direct(
         }
     })
     .await
+}
+
+#[tauri::command]
+pub async fn get_mysql_charsets_by_id(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<Vec<String>, AppError> {
+    get_mysql_charsets_core(state.inner(), id).await
+}
+
+#[tauri::command]
+pub async fn get_mysql_collations_by_id(
+    state: State<'_, AppState>,
+    id: i64,
+    charset: Option<String>,
+) -> Result<Vec<String>, AppError> {
+    get_mysql_collations_core(state.inner(), id, charset).await
+}
+
+pub async fn get_mysql_charsets_by_id_direct(
+    state: &AppState,
+    id: i64,
+) -> Result<Vec<String>, AppError> {
+    get_mysql_charsets_core(state, id).await
+}
+
+pub async fn get_mysql_collations_by_id_direct(
+    state: &AppState,
+    id: i64,
+    charset: Option<String>,
+) -> Result<Vec<String>, AppError> {
+    get_mysql_collations_core(state, id, charset).await
 }
 
 

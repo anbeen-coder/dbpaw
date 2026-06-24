@@ -11,7 +11,7 @@ use self::export_service::{
     DEFAULT_CHUNK_SIZE, do_database_export, do_query_export, do_table_export,
 };
 #[cfg(test)]
-use self::import_plan::*;
+use self::import_parser::*;
 #[cfg(test)]
 use self::import_types::*;
 use self::import_service::{execute_sql_import, prepare_sql_import};

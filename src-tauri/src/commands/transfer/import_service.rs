@@ -1,4 +1,4 @@
-use super::import_plan::{prepare_import_plan, truncate_error_message};
+use super::import_parser::{prepare_import_plan, truncate_error_message};
 use super::import_types::{
     PreparedImportPlan, import_transaction_sql, normalize_driver_name,
     should_use_outer_import_transaction, validate_import_file_size, validate_import_path,

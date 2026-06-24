@@ -1,8 +1,8 @@
 # ADD_NEW_DB — DbPaw 新增数据库驱动操作手册
 
-本文档记录新增一个数据库驱动类型时需要修改的全部文件，包含精确路径、行号和改法。
+本文档记录新增一个数据库驱动类型时需要修改的全部文件，包含精确路径和改法。
 
-> 适用范围：本手册主体适用于 SQL/表模型数据库。Redis、Elasticsearch、MongoDB 等非 SQL 数据源不要实现 `DatabaseDriver`，应走 `src-tauri/src/datasources/` 下的数据源能力模型，并新增独立 command/UI。
+> 适用范围：本手册主体适用于 SQL/表模型数据库。Redis、Elasticsearch、MongoDB、Cassandra 等非 SQL 数据源走独立的数据源能力模型，见 [非 SQL 数据源接入原则](#非-sql-数据源接入原则)。
 
 ---
 
@@ -12,23 +12,58 @@
 - `{DriverName}` — PascalCase（例：`Oracle`）
 - `network` 型 — 通过 host:port 连接（postgres、mysql、mssql、clickhouse 等）
 - `file` 型 — 通过本地文件路径连接（sqlite、duckdb）
-- `datasource` 型 — 非 SQL 数据源（redis、elasticsearch、mongodb），按 key/document/search 能力接入
+- `datasource` 型 — 非 SQL 数据源（redis、elasticsearch、mongodb、cassandra），按原生能力模型接入
+
+---
+
+## 架构概览
+
+### 后端 Rust 结构
+
+```
+src-tauri/src/db/drivers/
+├── mod.rs          ← pub mod 声明 + re-export
+├── traits.rs       ← DatabaseDriver trait 定义
+├── registry.rs     ← connect() 分发 + is_mysql_family_driver()
+├── postgres.rs     ← 各 driver 实现
+├── mysql.rs
+└── ...
+```
+
+- **trait 定义**在 `src-tauri/src/db/drivers/traits.rs`
+- **driver 注册**在 `src-tauri/src/db/drivers/registry.rs`（`connect()` match arms）
+- **mod 声明**在 `src-tauri/src/db/drivers/mod.rs`
+- **错误必须返回 `Result<T, AppError>`**，`AppError` 定义在 `src-tauri/src/error.rs`
+- 连接失败错误使用 `conn_failed_error()` 工具函数（`src-tauri/src/db/errors/connection.rs`），提供上下文感知的 hint（TLS、auth、网络等）
+
+### 前端 TypeScript 结构
+
+```
+src/lib/driver-registry.tsx   ← DRIVER_IDS + DRIVER_REGISTRY（唯一入口）
+src/services/api/             ← 按领域拆分的 API wrapper（core.ts 是唯一调 invoke 的文件）
+src/services/commands.ts      ← COMMANDS 常量映射
+src/services/mocks/           ← Mock 实现（VITE_USE_MOCK=true 时使用）
+```
 
 ---
 
 ## 非 SQL 数据源接入原则
 
 - 后端不要把非 SQL 数据源伪装成 `DatabaseDriver`，避免实现伪 `list_tables/get_table_data/execute_query`。
-- 在 `src-tauri/src/datasources/{driver}.rs` 中定义该数据源的原生模型，例如 Redis 的 database/key/value，MongoDB 的 database/collection/document，Elasticsearch 的 index/document/search。
+- 在 `src-tauri/src/datasources/{driver}.rs` 中定义该数据源的原生模型。
 - 在 `src-tauri/src/commands/{driver}.rs` 中暴露专用 Tauri commands，并在 `src-tauri/src/lib.rs` 注册。
-- 前端在 `src/lib/driver-registry.tsx` 中设置 `kind`，例如 `kv`、`document`、`search`，Sidebar 和主视图按 `kind` 分流。
-- SQL 的 `SqlEditor`、`TableView`、import/export 和 `sql_execution_logs` 默认不复用于非 SQL 数据源，除非该数据源明确提供 SQL 兼容接口。
+- 前端在 `src/lib/driver-registry.tsx` 中设置 `kind`（`kv`、`document`、`search`、`widecolumn`），Sidebar 和主视图按 `kind` 分流。
+- 前端 API wrapper 放在 `src/services/api/{driver}.ts`，Mock 放在 `src/services/mocks/{driver}.ts`。
+- SQL 的 `SqlEditor`、`TableView`、import/export 和 `sql_execution_logs` 默认不复用于非 SQL 数据源。
 
-Redis 参考实现：
+已有参考实现：
 
-- 后端：`src-tauri/src/datasources/redis.rs`、`src-tauri/src/commands/redis.rs`
-- 前端：`src/components/business/Redis/RedisKeyView.tsx`
-- API：`src/services/api.ts` 的 `api.redis.*`
+| 数据源 | 后端 | 前端 API | 前端树配置 |
+|--------|------|----------|------------|
+| Redis | `src-tauri/src/datasources/redis.rs`、`commands/redis.rs` | `src/services/api/redis.ts` | `createRedisTreeConfig` |
+| Elasticsearch | `src-tauri/src/datasources/elasticsearch.rs`、`commands/elasticsearch.rs` | `src/services/api/elasticsearch.ts` | `createElasticsearchTreeConfig` |
+| MongoDB | `src-tauri/src/datasources/mongodb.rs`、`commands/mongodb.rs` | `src/services/api/mongodb.ts` | `createMongodbTreeConfig` |
+| Cassandra | `src-tauri/src/datasources/cassandra.rs`、`commands/cassandra.rs` | — | `createCassandraTreeConfig` |
 
 ---
 
@@ -38,44 +73,91 @@ Redis 参考实现：
 
 参考模板选择：
 
-- **PostgreSQL-like**（独立 schema、SSl CA、sqlx）→ 复制 `postgres.rs`
+- **PostgreSQL-like**（独立 schema、SSL CA、sqlx）→ 复制 `postgres.rs`
 - **MySQL-like**（共享驱动、MySQL 协议）→ 复制 `mysql.rs`
 - **HTTP API 型**（ClickHouse-like）→ 复制 `clickhouse.rs`
 - **嵌入式/文件型**（无网络连接）→ 复制 `duckdb.rs`
 
-必须实现 `DatabaseDriver` trait 的全部方法（定义见 `src-tauri/src/db/drivers/mod.rs:64-121`）：
+必须实现 `DatabaseDriver` trait 的**必需方法**（定义见 `src-tauri/src/db/drivers/traits.rs`）：
 
+```rust
+#[async_trait]
+pub trait DatabaseDriver: Send + Sync {
+    fn capabilities(&self) -> DriverCapabilities { DriverCapabilities::empty() }
+
+    // === 必需方法 ===
+    async fn test_connection(&self) -> DriverResult<()>;
+    async fn list_databases(&self) -> DriverResult<Vec<String>>;
+    async fn list_tables(&self, schema: Option<String>) -> DriverResult<Vec<TableInfo>>;
+    async fn get_table_structure(&self, schema: String, table: String) -> DriverResult<TableStructure>;
+    async fn get_table_metadata(&self, schema: String, table: String) -> DriverResult<TableMetadata>;
+    async fn get_table_ddl(&self, schema: String, table: String) -> DriverResult<String>;
+    async fn get_table_data(&self, schema: String, table: String, page: i64, limit: i64,
+        sort_column: Option<String>, sort_direction: Option<String>,
+        filter: Option<String>, order_by: Option<String>, include_total: bool,
+    ) -> DriverResult<TableDataResponse>;
+    async fn get_table_data_chunk(&self, /* 同 get_table_data 但无 include_total */) -> DriverResult<TableDataResponse>;
+    async fn execute_query(&self, sql: String) -> DriverResult<QueryResult>;
+    async fn get_schema_overview(&self, schema: Option<String>) -> DriverResult<SchemaOverview>;
+    async fn close(&self);
+
+    // === 可选方法（有默认实现，返回 unsupported） ===
+    async fn execute_query_with_id(&self, sql: String, query_id: Option<&str>) -> DriverResult<QueryResult>;
+    async fn list_routines(&self, schema: Option<String>) -> DriverResult<Vec<RoutineInfo>>;
+    async fn list_events(&self, schema: Option<String>) -> DriverResult<Vec<EventInfo>>;
+    async fn list_sequences(&self, schema: Option<String>) -> DriverResult<Vec<SequenceInfo>>;
+    async fn list_types(&self, schema: Option<String>) -> DriverResult<Vec<TypeInfo>>;
+    async fn list_synonyms(&self, schema: Option<String>) -> DriverResult<Vec<SynonymInfo>>;
+    async fn list_packages(&self, schema: Option<String>) -> DriverResult<Vec<PackageInfo>>;
+    async fn get_routine_ddl(&self, schema: String, name: String, routine_type: String) -> DriverResult<String>;
+    async fn get_schema_foreign_keys(&self, database: Option<&str>) -> DriverResult<Vec<SchemaForeignKey>>;
+}
 ```
-test_connection, get_databases, get_table_names, get_table_structure,
-get_table_info, get_table_data, execute_query, cancel_query,
-get_schema_names, get_table_ddl, get_schema_overview, close
+
+**关键类型：**
+- `DriverResult<T>` = `Result<T, AppError>`（`AppError` 来自 `src-tauri/src/error.rs`）
+- `DriverCapabilities` 是 bitflags，用于声明可选能力（`ROUTINES`、`EVENTS`、`SEQUENCES`、`TYPES`、`SYNONYMS`、`PACKAGES`、`FOREIGN_KEYS`、`QUERY_WITH_ID`）
+
+**可选能力子 trait：** 如果 driver 支持额外能力，实现对应的子 trait 并在 `capabilities()` 中返回对应 flag：
+
+```rust
+// 例：支持 routines 的 driver
+impl RoutineDriver for MyDriver { ... }
+
+fn capabilities(&self) -> DriverCapabilities {
+    DriverCapabilities::ROUTINES
+}
 ```
+
+子 trait 列表：`RoutineDriver`、`EventDriver`、`SequenceDriver`、`TypeDriver`、`SynonymDriver`、`PackageDriver`、`ForeignKeyDriver`。
+
+**错误处理规则：**
+- 连接失败 → 使用 `conn_failed_error(e)` 工具函数（自动推断 hint）
+- 查询失败 → `AppError::query_failed("...")` 或 `AppError::query_failed_with("...", source)`
+- 不支持的操作 → `AppError::unsupported("...")`
+- **禁止** 使用 `.map_err(String::from)` 在 command 边界
 
 ---
 
-## Step 2：注册到 `drivers/mod.rs`
+## Step 2：注册到 Rust Driver 层
 
-**文件：** `src-tauri/src/db/drivers/mod.rs`
+需要改 **3 个文件**：
 
-### 2a. 顶部 use 语句（第 1-6 行附近）
-
-在现有的 `use self::...` 行中加入：
-
-```rust
-use self::{driver}::{DriverName}Driver;
-```
-
-### 2b. mod 声明（第 13-18 行附近）
-
-在现有的 `pub mod ...` 行中加入：
+### 2a. `src-tauri/src/db/drivers/mod.rs` — 添加 mod 声明
 
 ```rust
 pub mod {driver};
 ```
 
-### 2c. `connect()` match 分支（第 133-163 行）
+### 2b. `src-tauri/src/db/drivers/registry.rs` — 注册 connect 分发
 
-在 `_ =>` 分支前加入：
+**顶部添加 use：**
+
+```rust
+use super::{driver}::{DriverName}Driver;
+```
+
+**在 `connect()` match 中添加分支（`_ =>` 之前）：**
 
 ```rust
 "{driver}" => {
@@ -84,109 +166,137 @@ pub mod {driver};
 }
 ```
 
-**注意（MySQL family）：** 如果是 MySQL 协议兼容的变体（如 PolarDB），可以复用 `MysqlDriver`，直接在第 139 行的现有 arm 里加 `| "{driver}"`：
+**MySQL family 变体：** 如果新 driver 复用 MySQL 协议（如 PolarDB），在 `is_mysql_family_driver()` 中加入：
 
 ```rust
-"mysql" | "tidb" | "mariadb" | "{driver}" => {
+pub fn is_mysql_family_driver(driver: &str) -> bool {
+    matches!(driver, "mysql" | "mariadb" | "tidb" | "starrocks" | "doris" | "{driver}")
+}
 ```
 
----
+然后 `connect()` 会自动通过 `driver if is_mysql_family_driver(driver)` 分支复用 `MysqlDriver`。
 
-## Step 3：SSH 默认端口（仅 network 型）
+### 2c. `src-tauri/src/ssh.rs` — SSH 默认端口（仅 network 型）
 
-**文件：** `src-tauri/src/ssh.rs`，第 48-54 行
-
-在 `_ => 5432` 之前加入一行：
+在 `default_target_port()` 函数的 match 中加入：
 
 ```rust
 "{driver}" => {PORT},
 ```
 
-**示例（当前内容）：**
+当前结构（第 10-30 行）：
 
 ```rust
-let default_port: i64 = match config.driver.to_ascii_lowercase().as_str() {
-    "mysql" => 3306,
-    "mssql" => 1433,
-    "clickhouse" => 9000,
-    "sqlite" => 0,
-    // ← 在这里加新 driver
-    _ => 5432, // postgres and unknown drivers
-};
+fn default_target_port(driver: &str) -> i64 {
+    if crate::db::drivers::is_mysql_family_driver(driver) {
+        return if matches!(driver, "starrocks" | "doris") { 9030 } else { 3306 };
+    }
+    match driver {
+        "mssql" => 1433,
+        "oracle" => 1521,
+        "db2" => 50000,
+        "clickhouse" => 9000,
+        "redis" => 6379,
+        "elasticsearch" => 9200,
+        "mongodb" => 27017,
+        "sqlite" => 0,
+        // ← 在这里加新 driver
+        _ => 5432, // postgres and unknown drivers
+    }
+}
 ```
 
-**注意：**
-
-- file 型 driver 不走 SSH 隧道的端口逻辑，但若要防止 fallback 到 5432，可加 `"sqlite" => 0,` 同款的占位。
-- 端口 0 不会通过第 56-58 行的校验（`1..=65535`），file 型 driver 传 `port=None` 即可，无需额外处理。
-- 忘记加这一行不会 crash，但 SSH 连接会用 5432 作为默认端口，导致隧道目标端口错误。
+**注意：** file 型 driver 不走 SSH 隧道，但加 `"sqlite" => 0` 同款占位可防止 fallback 到 5432。
 
 ---
 
-## Step 4：连接表单校验
+## Step 3：连接表单校验
 
 **文件：** `src-tauri/src/connection_input/mod.rs`
 
-### 4a. network 型 — 无需修改
+`normalize_connection_form()` 函数（第 147-248 行）处理所有 driver 的连接参数校验。
 
-第 69-71 行的 `else if form.host.is_none()` 已覆盖所有 network 型 driver。
+### 3a. network 型 — 无需额外修改
 
-### 4b. file 型 — 第 65 行
+第 226 行的 `else if form.host.is_none()` 已覆盖所有未特别处理的 network 型 driver。
 
-在现有的 `matches!` 中加入新 driver：
+### 3b. file 型
+
+在第 203 行的 `matches!` 中加入新 driver：
 
 ```rust
 if matches!(driver.as_str(), "sqlite" | "duckdb" | "{driver}") {
 ```
 
-### 4c. MySQL family（支持 host:port 嵌入语法）— 第 57 行
+### 3c. MySQL family（支持 host:port 嵌入语法）
 
-如果新 driver 允许 `host:port` 写法（如 `localhost:3307`），在现有 `matches!` 中加入：
+第 179 行已通过 `is_mysql_family_driver()` 自动覆盖。如果新 driver 不属于 MySQL family 但也需要 host:port 解析（如 elasticsearch、mongodb），在第 179-182 行的条件中加入：
 
 ```rust
-if matches!(driver.as_str(), "mysql" | "mariadb" | "tidb" | "{driver}") {
+if crate::db::drivers::is_mysql_family_driver(&driver)
+    || driver == "elasticsearch"
+    || driver == "mongodb"
+    || driver == "{driver}"  // ← 加在这里
+{
 ```
 
 ---
 
-## Step 5：import/export 事务语法（如支持 import）
+## Step 4：import/export 事务语法（如支持 import）
 
-**文件：** `src-tauri/src/commands/transfer.rs`，第 615-628 行（`import_transaction_sql` 函数）
+**文件：** `src-tauri/src/commands/transfer/import_plan.rs`（`import_transaction_sql` 函数，第 36-62 行）
 
 根据 driver 支持的事务语法加入 match arm：
 
 ```rust
-// BEGIN / COMMIT / ROLLBACK（与 postgres 相同）
+// BEGIN / COMMIT / ROLLBACK
 "postgres" | "sqlite" | "duckdb" | "{driver}" => Ok(("BEGIN", "COMMIT", "ROLLBACK")),
 
-// 或 START TRANSACTION（MySQL 系）
-"mysql" | "mariadb" | "tidb" | "{driver}" => Ok(("START TRANSACTION", "COMMIT", "ROLLBACK")),
+// START TRANSACTION（MySQL 系）
+"mysql" | "mariadb" | "tidb" => Ok(("START TRANSACTION", "COMMIT", "ROLLBACK")),
 
 // 不支持 import
-"{driver}" => Err("[UNSUPPORTED] Driver {driver} is read-only in this import flow".to_string()),
+"{driver}" => Err(AppError::unsupported(format!(
+    "Driver {} does not support transactional SQL import in this flow",
+    original_driver
+))),
 ```
+
+**注意：** `starrocks`、`doris`、`clickhouse` 当前不支持 import，会返回 `AppError::unsupported`。
 
 ---
 
-## Step 6：create_database 支持（如支持）
+## Step 5：create_database 支持（如支持）
 
-**文件：** `src-tauri/src/commands/connection.rs`
+**文件：** `src-tauri/src/commands/connection/create_database.rs`
 
-两处需要改（`create_database_by_id` 约第 262 行，`create_database_by_id_direct` 约第 343 行）：
+### 5a. 从"不支持"排除列表移除（file 型专用）
 
-**6a. 从"不支持"排除列表移除**（file 型专用黑名单，network 型无需改）：
+第 284 行：
 
 ```rust
-// 第 262、343 行：
 if matches!(driver.as_str(), "sqlite" | "duckdb") {  // 不要在此加 network 型 driver
 ```
 
-**6b. 在 match 中加入建库 SQL**（第 269-319、350-400 行）：
+### 5b. 添加建库 SQL 构建函数
+
+在文件中添加专用函数（参考已有的 `build_mysql_create_database_sql`、`build_postgres_create_database_sql` 等）：
+
+```rust
+fn build_{driver}_create_database_sql(
+    payload: &CreateDatabasePayload,
+    db_name: &str,
+) -> Result<String, AppError> {
+    // 实现建库 SQL
+}
+```
+
+### 5c. 在 `create_database_by_id` 和 `create_database_by_id_direct` 的 match 中加入分支
 
 ```rust
 "{driver}" => {
-    let sql = format!("CREATE DATABASE {}", quote_ident(&db_name));
-    super::execute_with_retry(&state, id, None, |driver| {
+    let sql = build_{driver}_create_database_sql(&payload, &db_name)?;
+    crate::commands::execute_with_retry(&state, id, None, |driver| {
         let sql_clone = sql.clone();
         async move { driver.execute_query(sql_clone).await.map(|_| ()) }
     })
@@ -196,11 +306,11 @@ if matches!(driver.as_str(), "sqlite" | "duckdb") {  // 不要在此加 network 
 
 ---
 
-## Step 7：前端 driver-registry.tsx（必改）
+## Step 6：前端 driver-registry.tsx（必改）
 
 **文件：** `src/lib/driver-registry.tsx`
 
-### 7a. DRIVER_IDS（第 16-25 行）
+### 6a. DRIVER_IDS（第 29-46 行）
 
 在 `as const` 数组中加入新 driver ID：
 
@@ -213,46 +323,51 @@ const DRIVER_IDS = [
 ] as const;
 ```
 
-### 7b. DRIVER_REGISTRY（第 55-152 行）
+### 6b. DRIVER_REGISTRY（第 92-392 行）
 
-在数组末尾（`];` 之前）加入一条记录：
+在数组末尾（`];` 之前）加入一条 `DriverConfig` 记录：
 
 ```typescript
 {
   id: "{driver}",
   label: "DisplayName",
-  defaultPort: 1234,        // file 型填 null
-  isFileBased: false,       // file 型填 true
-  isMysqlFamily: false,     // MySQL 协议兼容时填 true
-  supportsSSLCA: false,     // 支持 SSL CA 证书验证时填 true（需后端也支持）
-  supportsSchemaBrowsing: false,   // 支持 schema 列表时填 true
-  supportsCreateDatabase: true,    // 支持 CREATE DATABASE 时填 true
-  importCapability: "supported",   // "supported" | "read_only_not_supported" | "unsupported"
-  icon: () => renderSimpleIcon(si{DriverName}),  // 或 <Database className="w-4 h-4" />
+  kind: "sql",                    // "sql" | "kv" | "document" | "search" | "widecolumn"
+  defaultPort: 1234,              // file 型填 null
+  isFileBased: false,             // file 型填 true
+  isMysqlFamily: false,           // MySQL 协议兼容时填 true
+  isDatabaseScoped: false,        // MySQL/ClickHouse 等以 database 为顶层作用域时填 true
+  defaultSchema: "public",        // file 型通常填 "main"
+  unqualifiedSchemas: [],         // 不需要 schema 前缀的 schema 列表，如 ["", "main", "public"]
+  identifierQuote: "double",      // "double" → "name" | "backtick" → `name` | "bracket" → [name]
+  supportsSSLCA: false,           // 支持 SSL CA 证书验证时填 true
+  supportsSchemaBrowsing: false,  // 支持 schema 列表时填 true
+  supportsCreateDatabase: true,   // 支持 CREATE DATABASE 时填 true
+  importCapability: "supported",  // "supported" | "read_only_not_supported" | "unsupported"
+  icon: () => renderSimpleIcon(si{DriverName}),  // 或 renderLocalIcon("/icons/db/{driver}.svg")
+  treeConfig: (callbacks) => createSqlTreeConfig(callbacks, { supportsSchemaNode: true }, "{driver}"),
 },
 ```
 
 **图标规则：**
-
 - 优先从 `simple-icons` 导入：`import { si{DriverName} } from "simple-icons";`
-- 无 simple-icons 时用 `<Server className="w-4 h-4" />`（通用服务器图标）或 `<Database className="w-4 h-4" />`
+- 无 simple-icons 时用 `renderLocalIcon("/icons/db/{driver}.svg")` 或 `<Server className="w-4 h-4" />`
 
 **这一个文件改完，以下前端逻辑自动生效（无需再改）：**
-
-- `src/services/api.ts` — `Driver` 类型
+- `src/services/commands.ts` — `Driver` 类型由 `DRIVER_IDS` 推导
 - `src/lib/connection-form/rules.ts` — MySQL family / file-based 数组
 - `src/components/business/Sidebar/connection-list/helpers.tsx` — 图标映射
 - `src/components/business/Sidebar/ConnectionList.tsx` — SelectItem、默认 port、SSL/file 条件渲染
+- `quoteIdentifierForDriver()`、`getQualifiedTableName()` 等工具函数
 
 ---
 
-## Step 8：i18n（仅 file 型 driver）
+## Step 7：i18n（仅 file 型 driver）
 
-**文件：** `src/lib/i18n/locales/en.ts`、`zh.ts`
+**文件：** `src/lib/i18n/locales/en.ts`、`zh.ts`（以及 `ja.ts` 如有）
 
-file 型 driver 需要在两个 locale 文件里加"文件路径"标签和占位符。
+file 型 driver 需要在 locale 文件里加"文件路径"标签和占位符。
 
-在 `en.ts` 中搜索 `duckdbFilePath`（约第 221 行）附近加入：
+在 `en.ts` 中搜索 `duckdbFilePath` 附近加入：
 
 ```typescript
 {driver}FilePath: "{DriverName} File Path",
@@ -263,7 +378,7 @@ zh.ts 同理加入对应翻译。
 
 ---
 
-## Step 9：Cargo.toml 依赖
+## Step 8：Cargo.toml 依赖
 
 **文件：** `src-tauri/Cargo.toml`
 
@@ -271,14 +386,14 @@ zh.ts 同理加入对应翻译。
 
 | 类型                           | 做法                                                      |
 | ------------------------------ | --------------------------------------------------------- |
-| 使用 sqlx（postgres/mysql 系） | 在 sqlx `features` 列表加 driver 名（第 34 行）           |
+| 使用 sqlx（postgres/mysql 系） | 在 sqlx `features` 列表加 driver 名                       |
 | 独立 crate（如 DuckDB）        | 加一行 `{driver} = { version = "x.y", features = [...] }` |
 | HTTP 协议（如 ClickHouse）     | 加 HTTP client 依赖（参考 clickhouse.rs 的 import）       |
 | 微软协议（MSSQL）              | 使用 `tiberius`（已有，无需重复加）                       |
 
 ---
 
-## Step 10：集成测试骨架
+## Step 9：集成测试骨架
 
 **新建 3 个文件**（参考同类 driver 复制修改）：
 
@@ -303,6 +418,8 @@ src-tauri/tests/{driver}_stateful_command_integration.rs
 ```
 
 参考 `postgres_stateful_command_integration.rs`。
+
+**注意：** 集成测试标记 `#[ignore]`，需要 `IT_DB={driver}` 环境变量和 Docker 才能运行。Oracle 测试还需要本地安装 Oracle Instant Client。
 
 ---
 
@@ -333,13 +450,15 @@ bun run test:smoke   # typecheck + lint + unit tests
 
 | 陷阱                                                          | 后果                                                  | 解法                                               |
 | ------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------- |
-| 忘记改 `ssh.rs` 默认端口                                      | SSH 隧道目标端口错误（fallback 到 5432）              | Step 3                                             |
-| file 型 driver 未加入 `connection_input` 的 matches!          | 校验报"host cannot be empty"而不是"file path"         | Step 4b                                            |
-| 前端 `DRIVER_IDS` 加了但 `DRIVER_REGISTRY` 没加               | TypeScript 编译报错，图标/port 逻辑异常               | Step 7                                             |
+| 忘记改 `ssh.rs` 默认端口                                      | SSH 隧道目标端口错误（fallback 到 5432）              | Step 2c                                            |
+| file 型 driver 未加入 `connection_input` 的 matches!          | 校验报"host cannot be empty"而不是"file path"         | Step 3b                                            |
+| 前端 `DRIVER_IDS` 加了但 `DRIVER_REGISTRY` 没加               | TypeScript 编译报错，图标/port 逻辑异常               | Step 6                                             |
 | 图标使用了不存在的 simple-icons 导出名                        | 前端运行时崩溃                                        | 验证 `si{DriverName}` 是否存在于 `simple-icons` 包 |
-| 忘记改 `import_transaction_sql`                               | import 功能对新 driver 返回"不支持"或使用错误事务语法 | Step 5                                             |
-| MySQL family 新 driver 未加入 `connection_input` 的 mysql arm | `host:port` 嵌入写法不被解析                          | Step 4c                                            |
-| i18n 只改了 en.ts                                             | 中文/日文界面显示 key 字符串而非翻译文本              | Step 8 三个文件都要改                              |
+| 忘记改 `import_transaction_sql`                               | import 功能对新 driver 返回"不支持"或使用错误事务语法 | Step 4                                             |
+| MySQL family 新 driver 未加入 `is_mysql_family_driver()`      | `connect()` 不走 MySQL 分支，host:port 不被解析       | Step 2b                                            |
+| i18n 只改了 en.ts                                             | 中文/日文界面显示 key 字符串而非翻译文本              | Step 7 所有 locale 文件都要改                      |
+| 错误用了 `.map_err(String::from)` 而非 `AppError`             | 前端收不到结构化错误码和 hint                         | 始终返回 `Result<T, AppError>`                     |
+| 连接失败没用 `conn_failed_error()`                            | 用户看到原始错误信息，缺少上下文 hint                 | 连接失败统一用 `conn_failed_error(e)`              |
 
 ---
 
@@ -348,11 +467,12 @@ bun run test:smoke   # typecheck + lint + unit tests
 | 文件                                              | 类型 | 条件                    |
 | ------------------------------------------------- | ---- | ----------------------- |
 | `src-tauri/src/db/drivers/{driver}.rs`            | 新建 | 必须                    |
-| `src-tauri/src/db/drivers/mod.rs`                 | 改   | 必须（3处）             |
+| `src-tauri/src/db/drivers/mod.rs`                 | 改   | 必须（1处：pub mod）    |
+| `src-tauri/src/db/drivers/registry.rs`            | 改   | 必须（2处：use + match）|
 | `src-tauri/src/ssh.rs`                            | 改   | network 型              |
-| `src-tauri/src/connection_input/mod.rs`           | 改   | file 型或 MySQL family  |
-| `src-tauri/src/commands/transfer.rs`              | 改   | 支持 import 时          |
-| `src-tauri/src/commands/connection.rs`            | 改   | 支持 create database 时 |
+| `src-tauri/src/connection_input/mod.rs`           | 改   | file 型或特殊 network 型|
+| `src-tauri/src/commands/transfer/import_plan.rs`  | 改   | 支持 import 时          |
+| `src-tauri/src/commands/connection/create_database.rs` | 改 | 支持 create database 时 |
 | `src-tauri/Cargo.toml`                            | 改   | 必须                    |
 | `src/lib/driver-registry.tsx`                     | 改   | 必须（前端唯一入口）    |
 | `src/lib/i18n/locales/en.ts`                      | 改   | file 型                 |

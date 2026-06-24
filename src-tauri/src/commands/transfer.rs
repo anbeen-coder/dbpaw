@@ -1,6 +1,7 @@
 mod export_service;
 mod import_plan;
 mod import_service;
+mod import_types;
 mod sql_writer;
 mod writer;
 
@@ -9,6 +10,8 @@ use self::export_service::{
 };
 #[cfg(test)]
 use self::import_plan::*;
+#[cfg(test)]
+use self::import_types::*;
 use self::import_service::{execute_sql_import, prepare_sql_import};
 #[cfg(test)]
 use self::sql_writer::{quote_ident, quote_target, sql_value};
@@ -322,7 +325,7 @@ mod tests {
     #[test]
     fn transfer_module_boundaries_are_explicit() {
         let _ = super::export_service::DEFAULT_CHUNK_SIZE;
-        let _ = super::import_plan::MAX_IMPORT_STATEMENTS;
+        let _ = super::import_types::MAX_IMPORT_STATEMENTS;
         let _ = super::writer::extension_for_format(&ExportFormat::Csv);
         let _ = super::sql_writer::quote_ident("id", "postgres");
     }

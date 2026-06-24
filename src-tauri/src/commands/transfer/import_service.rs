@@ -1,7 +1,8 @@
-use super::import_plan::{
-    import_transaction_sql, normalize_driver_name, prepare_import_plan,
-    should_use_outer_import_transaction, truncate_error_message, validate_import_file_size,
-    validate_import_path, MAX_IMPORT_STATEMENTS,
+use super::import_plan::{prepare_import_plan, truncate_error_message};
+use super::import_types::{
+    PreparedImportPlan, import_transaction_sql, normalize_driver_name,
+    should_use_outer_import_transaction, validate_import_file_size, validate_import_path,
+    MAX_IMPORT_STATEMENTS,
 };
 use super::ImportSqlResult;
 use crate::db::drivers::DatabaseDriver;
@@ -13,7 +14,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(super) struct PreparedSqlImport {
     import_path: PathBuf,
-    import_plan: super::import_plan::PreparedImportPlan,
+    import_plan: PreparedImportPlan,
     begin_sql: String,
     commit_sql: String,
     rollback_sql: String,

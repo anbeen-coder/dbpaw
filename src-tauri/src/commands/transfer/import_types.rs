@@ -26,6 +26,10 @@ pub(super) fn should_use_outer_import_transaction(
         return false;
     }
 
+    // MSSQL imports are executed batch-by-batch through pooled connections.
+    // Wrapping those batches in a separate outer transaction is not reliable in
+    // the current driver model because transaction state does not persist across
+    // independent execute_query calls.
     normalized_driver != "mssql"
 }
 

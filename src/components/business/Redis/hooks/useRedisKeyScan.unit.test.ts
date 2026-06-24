@@ -52,7 +52,7 @@ describe("useRedisKeyScan", () => {
       useRedisKeyScan({ connectionId: 1, database: "0" }),
     );
 
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(result.current.keys).toEqual(keys));
 
     expect(listDatabasesMock).toHaveBeenCalledWith(1);
     expect(scanKeysMock).toHaveBeenCalledWith({
@@ -62,7 +62,7 @@ describe("useRedisKeyScan", () => {
       pattern: undefined,
       limit: 200,
     });
-    expect(result.current.keys).toEqual(keys);
+    expect(result.current.isLoading).toBe(false);
     expect(result.current.isClusterMode).toBe(false);
   });
 

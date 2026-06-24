@@ -18,7 +18,7 @@ const handlers: Handler[] = [
   handleRedis,
   handleMetadata as Handler,
   handleTableData,
-  handleConnections,
+  handleConnections as unknown as Handler,
   handleQueries,
   handleTransfer,
   handleElasticsearch,

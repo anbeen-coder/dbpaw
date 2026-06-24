@@ -176,6 +176,7 @@ export function getDatasourceTreeAdapter(params: {
             columns: [],
             isSystem: index.isSystem,
             indexStatus: index.status,
+            type: "table" as const,
           }));
       }
       if (connection.type === "mongodb") {
@@ -195,6 +196,7 @@ export function getDatasourceTreeAdapter(params: {
             schema: databaseName,
             columns: [],
             isSystem: col.name.startsWith("system."),
+            type: "table" as const,
           }));
       }
       return deps.fetchSqlTablesAsTableInfo(connection.id, databaseName);

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { DatabaseGroupConfig } from "@/lib/tree-adapters/types";
 import { getConnectionIcon, supportsSchemaBrowsing, type Driver } from "@/lib/driver-registry";
 import { TreeNode } from "./TreeNode";
-import { GroupNodeRenderer, type TreeNodeDeps } from "./TreeNodeRenderers";
+import { GroupNodeRenderer, TableNodeRenderer, type TreeNodeDeps } from "./TreeNodeRenderers";
 import type {
   Connection,
   DatabaseInfo,
@@ -248,6 +248,17 @@ export function ConnectionTreeContent(props: ConnectionTreeContentProps) {
                   />
                 );
               })}
+              {dbGroups.length === 0 &&
+                (database.tables || []).map((table) => (
+                  <TableNodeRenderer
+                    key={`${connection.id}-${database.name}-${table.schema || database.name}-${table.name}`}
+                    table={table}
+                    tableLevel={level + 1}
+                    database={database}
+                    connection={connection}
+                    deps={treeNodeDeps}
+                  />
+                ))}
               {datasourceAdapter.renderDatabaseFooter(database, level)}
             </>
           );

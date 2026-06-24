@@ -10,6 +10,7 @@ import { handleMongodb } from "./mongodb";
 import { handleAi } from "./ai";
 import { handleSystem } from "./system";
 import { handleMcp } from "./mcp";
+import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
 
 type Handler = (cmd: string, args: any) => Promise<any> | null;
 
@@ -28,11 +29,16 @@ const handlers: Handler[] = [
   handleMcp,
 ];
 
-export async function invokeMock<T>(cmd: string, args?: any): Promise<T> {
+export function invokeMock<T extends keyof CommandMap>(
+  cmd: T,
+  args: CommandArgs<T>
+): Promise<CommandReturn<T>>;
+export function invokeMock(cmd: string, args?: Record<string, unknown>): Promise<unknown>;
+export async function invokeMock(cmd: string, args?: any): Promise<any> {
   console.log(`[Mock] ${cmd}`, args);
   for (const handler of handlers) {
     const result = handler(cmd, args);
-    if (result !== null) return result as Promise<T>;
+    if (result !== null) return result;
   }
   console.warn(`[Mock] Unknown command: ${cmd}`);
   throw new Error(`Mock: Unknown command '${cmd}'`);

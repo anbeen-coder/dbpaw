@@ -29,7 +29,7 @@ export async function invoke<T>(cmd: string, args?: any): Promise<T> {
     return tauriInvoke(cmd, args);
   }
   if (isMockModeEnabled()) {
-    return invokeMock<T>(cmd, args);
+    return invokeMock(cmd, args) as Promise<T>;
   }
   console.warn(`[API] invoke ${cmd}`, args);
   throw new Error(

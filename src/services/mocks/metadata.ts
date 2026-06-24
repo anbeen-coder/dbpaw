@@ -326,40 +326,45 @@ export async function mockGetTableDDL(
 }
 
 export async function mockListEvents(
-  _connectionId: string,
-  _database: string,
+  _id: number,
+  _database?: string,
+  _schema?: string,
 ): Promise<{ schema: string; name: string; status: string; eventType: string; executeAt: string | null; intervalValue: string | null; lastExecuted: string | null; definition: string | null }[]> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return [];
 }
 
 export async function mockListSequences(
-  _connectionId: string,
-  _database: string,
+  _id: number,
+  _database?: string,
+  _schema?: string,
 ): Promise<{ schema: string; name: string; dataType: string; startValue: string | null; increment: string | null }[]> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return [];
 }
 
 export async function mockListTypes(
-  _connectionId: string,
-  _database: string,
+  _id: number,
+  _database?: string,
+  _schema?: string,
 ): Promise<{ schema: string; name: string; category: string }[]> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return [];
 }
 
 export async function mockListSynonyms(
-  _connectionId: string,
-  _database: string,
+  _id: number,
+  _database?: string,
+  _schema?: string,
 ): Promise<{ schema: string; name: string; baseObjectType: string }[]> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return [];
 }
 
 export async function mockListPackages(
-  _connectionId: string,
-  _database: string,
+  _id: number,
+  _database?: string,
+  _schema?: string,
 ): Promise<{ schema: string; name: string; objectType: string }[]> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return [];
@@ -463,15 +468,15 @@ export function handleMetadata(cmd: string, args?: any): Promise<any> | null {
     case COMMANDS.LIST_ROUTINES:
       return mockListRoutines(args.id, args.database, args.schema);
     case COMMANDS.LIST_EVENTS:
-      return mockListEvents(args.connectionId, args.database);
+      return mockListEvents(args.id, args.database, args.schema);
     case COMMANDS.LIST_SEQUENCES:
-      return mockListSequences(args.connectionId, args.database);
+      return mockListSequences(args.id, args.database, args.schema);
     case COMMANDS.LIST_TYPES:
-      return mockListTypes(args.connectionId, args.database);
+      return mockListTypes(args.id, args.database, args.schema);
     case COMMANDS.LIST_SYNONYMS:
-      return mockListSynonyms(args.connectionId, args.database);
+      return mockListSynonyms(args.id, args.database, args.schema);
     case COMMANDS.LIST_PACKAGES:
-      return mockListPackages(args.connectionId, args.database);
+      return mockListPackages(args.id, args.database, args.schema);
     case COMMANDS.GET_TABLE_STRUCTURE:
       return mockGetTableStructure(args.id, args.schema, args.table);
     case COMMANDS.GET_TABLE_DDL:

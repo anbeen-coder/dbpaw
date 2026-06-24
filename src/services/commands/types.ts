@@ -243,23 +243,23 @@ export interface CommandMap {
     return: SchemaForeignKey[];
   };
   list_events: {
-    args: { connectionId: string; database: string };
+    args: { id: number; database?: string; schema?: string };
     return: EventInfo[];
   };
   list_sequences: {
-    args: { connectionId: string; database: string };
+    args: { id: number; database?: string; schema?: string };
     return: SequenceInfo[];
   };
   list_types: {
-    args: { connectionId: string; database: string };
+    args: { id: number; database?: string; schema?: string };
     return: TypeInfo[];
   };
   list_synonyms: {
-    args: { connectionId: string; database: string };
+    args: { id: number; database?: string; schema?: string };
     return: SynonymInfo[];
   };
   list_packages: {
-    args: { connectionId: string; database: string };
+    args: { id: number; database?: string; schema?: string };
     return: PackageInfo[];
   };
   get_driver_capabilities: {
@@ -752,6 +752,10 @@ export interface CommandMap {
   elasticsearch_test_connection: {
     args: { id: number };
     return: ElasticsearchConnectionInfo;
+  };
+  elasticsearch_test_connection_ephemeral: {
+    args: { form: ConnectionForm };
+    return: TestConnectionResult;
   };
   elasticsearch_list_indices: {
     args: { id: number };

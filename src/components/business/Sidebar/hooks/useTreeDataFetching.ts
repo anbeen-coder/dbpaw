@@ -102,11 +102,12 @@ export function useTreeDataFetching(params: {
   };
 
   const fetchEvents = async (
-    connectionId: string,
-    databaseName: string,
+    id: number,
+    databaseName?: string,
+    schema?: string,
   ): Promise<EventInfo[]> => {
     try {
-      return await api.metadata.listEvents(connectionId, databaseName);
+      return await api.metadata.listEvents(id, databaseName, schema);
     } catch (err) {
       console.error("Failed to fetch events:", err);
       return [];
@@ -114,11 +115,12 @@ export function useTreeDataFetching(params: {
   };
 
   const fetchSequences = async (
-    connectionId: string,
-    databaseName: string,
+    id: number,
+    databaseName?: string,
+    schema?: string,
   ): Promise<SequenceInfo[]> => {
     try {
-      return await api.metadata.listSequences(connectionId, databaseName);
+      return await api.metadata.listSequences(id, databaseName, schema);
     } catch (err) {
       console.error("Failed to fetch sequences:", err);
       return [];
@@ -126,11 +128,12 @@ export function useTreeDataFetching(params: {
   };
 
   const fetchTypes = async (
-    connectionId: string,
-    databaseName: string,
+    id: number,
+    databaseName?: string,
+    schema?: string,
   ): Promise<TypeInfo[]> => {
     try {
-      return await api.metadata.listTypes(connectionId, databaseName);
+      return await api.metadata.listTypes(id, databaseName, schema);
     } catch (err) {
       console.error("Failed to fetch types:", err);
       return [];
@@ -138,11 +141,12 @@ export function useTreeDataFetching(params: {
   };
 
   const fetchSynonyms = async (
-    connectionId: string,
-    databaseName: string,
+    id: number,
+    databaseName?: string,
+    schema?: string,
   ): Promise<SynonymInfo[]> => {
     try {
-      return await api.metadata.listSynonyms(connectionId, databaseName);
+      return await api.metadata.listSynonyms(id, databaseName, schema);
     } catch (err) {
       console.error("Failed to fetch synonyms:", err);
       return [];
@@ -150,11 +154,12 @@ export function useTreeDataFetching(params: {
   };
 
   const fetchPackages = async (
-    connectionId: string,
-    databaseName: string,
+    id: number,
+    databaseName?: string,
+    schema?: string,
   ): Promise<PackageInfo[]> => {
     try {
-      return await api.metadata.listPackages(connectionId, databaseName);
+      return await api.metadata.listPackages(id, databaseName, schema);
     } catch (err) {
       console.error("Failed to fetch packages:", err);
       return [];
@@ -190,7 +195,7 @@ export function useTreeDataFetching(params: {
       const groups = datasourceAdapter.databaseGroups || [];
       const eventsGroup = groups.find((g) => g.source === "events");
       if (eventsGroup) {
-        const events = await fetchEvents(connectionId, databaseName);
+        const events = await fetchEvents(Number(connectionId), databaseName);
         setDatabaseEvents((prev) =>
           new Map(prev).set(`${connectionId}-${databaseName}`, events),
         );
@@ -199,7 +204,7 @@ export function useTreeDataFetching(params: {
       // Load sequences if the group exists
       const sequencesGroup = groups.find((g) => g.source === "sequences");
       if (sequencesGroup) {
-        const sequences = await fetchSequences(connectionId, databaseName);
+        const sequences = await fetchSequences(Number(connectionId), databaseName);
         setDatabaseSequences((prev) =>
           new Map(prev).set(`${connectionId}-${databaseName}`, sequences),
         );
@@ -208,7 +213,7 @@ export function useTreeDataFetching(params: {
       // Load types if the group exists
       const typesGroup = groups.find((g) => g.source === "types");
       if (typesGroup) {
-        const types = await fetchTypes(connectionId, databaseName);
+        const types = await fetchTypes(Number(connectionId), databaseName);
         setDatabaseTypes((prev) =>
           new Map(prev).set(`${connectionId}-${databaseName}`, types),
         );
@@ -217,7 +222,7 @@ export function useTreeDataFetching(params: {
       // Load synonyms if the group exists
       const synonymsGroup = groups.find((g) => g.source === "synonyms");
       if (synonymsGroup) {
-        const synonyms = await fetchSynonyms(connectionId, databaseName);
+        const synonyms = await fetchSynonyms(Number(connectionId), databaseName);
         setDatabaseSynonyms((prev) =>
           new Map(prev).set(`${connectionId}-${databaseName}`, synonyms),
         );
@@ -226,7 +231,7 @@ export function useTreeDataFetching(params: {
       // Load packages if the group exists
       const packagesGroup = groups.find((g) => g.source === "packages");
       if (packagesGroup) {
-        const packages = await fetchPackages(connectionId, databaseName);
+        const packages = await fetchPackages(Number(connectionId), databaseName);
         setDatabasePackages((prev) =>
           new Map(prev).set(`${connectionId}-${databaseName}`, packages),
         );

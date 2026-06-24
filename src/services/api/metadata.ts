@@ -82,16 +82,16 @@ export const metadataApi = {
         database,
         schema,
       }),
-    listEvents: (connectionId: string, database: string) =>
-      invoke<EventInfo[]>(COMMANDS.LIST_EVENTS, { connectionId, database }),
-    listSequences: (connectionId: string, database: string) =>
-      invoke<SequenceInfo[]>(COMMANDS.LIST_SEQUENCES, { connectionId, database }),
-    listTypes: (connectionId: string, database: string) =>
-      invoke<TypeInfo[]>(COMMANDS.LIST_TYPES, { connectionId, database }),
-    listSynonyms: (connectionId: string, database: string) =>
-      invoke<SynonymInfo[]>(COMMANDS.LIST_SYNONYMS, { connectionId, database }),
-    listPackages: (connectionId: string, database: string) =>
-      invoke<PackageInfo[]>(COMMANDS.LIST_PACKAGES, { connectionId, database }),
+    listEvents: (id: number, database?: string, schema?: string) =>
+      invoke<EventInfo[]>(COMMANDS.LIST_EVENTS, { id, database, schema }),
+    listSequences: (id: number, database?: string, schema?: string) =>
+      invoke<SequenceInfo[]>(COMMANDS.LIST_SEQUENCES, { id, database, schema }),
+    listTypes: (id: number, database?: string, schema?: string) =>
+      invoke<TypeInfo[]>(COMMANDS.LIST_TYPES, { id, database, schema }),
+    listSynonyms: (id: number, database?: string, schema?: string) =>
+      invoke<SynonymInfo[]>(COMMANDS.LIST_SYNONYMS, { id, database, schema }),
+    listPackages: (id: number, database?: string, schema?: string) =>
+      invoke<PackageInfo[]>(COMMANDS.LIST_PACKAGES, { id, database, schema }),
     getCapabilities: (connectionId: number) =>
       invoke<number>(COMMANDS.GET_DRIVER_CAPABILITIES, { id: connectionId }),
   },

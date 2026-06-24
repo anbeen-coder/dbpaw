@@ -135,7 +135,7 @@ describe("Metadata模块", () => {
   test("list_events - 列出事件", async () => {
     const result = await invokeMock<any[]>(
       "list_events",
-      { connectionId: "1", database: "testdb" }
+      { id: 1, database: "testdb" }
     );
     expect(result).toBeDefined();
     expect(Array.isArray(result)).toBe(true);
@@ -144,7 +144,7 @@ describe("Metadata模块", () => {
   test("list_sequences - 列出序列", async () => {
     const result = await invokeMock<any[]>(
       "list_sequences",
-      { connectionId: "1", database: "testdb" }
+      { id: 1, database: "testdb" }
     );
     expect(result).toBeDefined();
     expect(Array.isArray(result)).toBe(true);
@@ -153,7 +153,7 @@ describe("Metadata模块", () => {
   test("list_types - 列出类型", async () => {
     const result = await invokeMock<any[]>(
       "list_types",
-      { connectionId: "1", database: "testdb" }
+      { id: 1, database: "testdb" }
     );
     expect(result).toBeDefined();
     expect(Array.isArray(result)).toBe(true);
@@ -162,7 +162,7 @@ describe("Metadata模块", () => {
   test("list_synonyms - 列出同义词", async () => {
     const result = await invokeMock<any[]>(
       "list_synonyms",
-      { connectionId: "1", database: "testdb" }
+      { id: 1, database: "testdb" }
     );
     expect(result).toBeDefined();
     expect(Array.isArray(result)).toBe(true);
@@ -171,7 +171,7 @@ describe("Metadata模块", () => {
   test("list_packages - 列出包", async () => {
     const result = await invokeMock<any[]>(
       "list_packages",
-      { connectionId: "1", database: "testdb" }
+      { id: 1, database: "testdb" }
     );
     expect(result).toBeDefined();
     expect(Array.isArray(result)).toBe(true);

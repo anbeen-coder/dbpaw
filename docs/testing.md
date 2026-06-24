@@ -52,6 +52,19 @@ bun run test:smoke   # typecheck + lint + rust:check + unit + service + rust:uni
 bun run test:ci      # smoke + all integration tests
 ```
 
+## Architecture Lint
+
+```bash
+bun run lint:arch    # or: bash scripts/check-architecture.sh
+```
+
+Enforces frontend architecture rules (included in `bun run lint`):
+
+1. **No direct Tauri imports** — only `src/services/api/core.ts` may import `@tauri-apps/api/core`
+2. **No direct `invoke()` calls** — all Tauri invocations go through `core.ts`
+3. **No `@ts-ignore`** — fix the type instead
+4. **No `as any` in non-test files** — use proper types
+
 ## Change → Validation Mapping
 
 When you modify files, run the appropriate test suite:
@@ -64,11 +77,29 @@ When you modify files, run the appropriate test suite:
 | `src-tauri/src/commands/` | Command integration tests | `IT_DB=mysql bun run test:integration` |
 | Cross-layer changes | Full suite | `bun run test:all` |
 
+## E2E Test Tiers (Playwright)
+
+E2E tests are split into priority tiers. Each tier has a corresponding npm script.
+
+| Tier | Command | What's Covered | When to Run |
+|------|---------|---------------|-------------|
+| **P0** | `bun run test:e2e:mock:p0` | Connection tree, SQL editor, DataGrid, metadata panel, saved queries | Every PR / before merge |
+| **P1** | `bun run test:e2e:mock:p1` | MongoDB browser, Redis browser, Elasticsearch, create table, tab management, connection lifecycle | When related module changes |
+| **P2** | `bun run test:e2e:mock:p2` | Settings, keyboard shortcuts | When settings/shortcut UI changes |
+| **Full** | `bun run test:e2e:mock` | All E2E tests | Before release |
+
+### Rules
+
+- **P0** — Must pass before every merge. Covers the core SQL workflow: connection browsing, query editing, data grid interaction, metadata inspection, and saved queries.
+- **P1** — Run when you touch NoSQL browser components, `src/components/business/Sidebar/`, `src/components/business/DataGrid/`, connection-related code, create-table UI, or NoSQL/Elasticsearch driver code.
+- **P2** — Run when you touch `src/components/settings/`, `src/lib/shortcuts/`, or keyboard-shortcut handlers.
+- **Full** — Run the complete suite before any release tag. Never skip.
+
 ## Integration Test Details
 
 ### Environment Variables
 
-- `IT_DB` - Which database to test: `mysql`, `starrocks`, `doris`, `postgres`, `mariadb`, `mssql`, `clickhouse`, `sqlite`, `duckdb`, `all`
+- `IT_DB` - Which database to test: `mysql`, `starrocks`, `doris`, `postgres`, `mariadb`, `mssql`, `clickhouse`, `sqlite`, `duckdb`, `oracle`, `redis`, `elasticsearch`, `mongodb`, `cassandra`, `db2`, `all`
 - `IT_REUSE_LOCAL_DB=1` - Reuse existing local database (faster for development)
 - `IT_CONTAINER_PREFIX` - Custom container name prefix (default: `dbpaw-it-$$-`)
 
@@ -128,13 +159,20 @@ cargo test --manifest-path src-tauri/Cargo.toml \
 |----------|-------------|---------------|----------------------|-------|
 | **MySQL** | ✅ | ✅ | ✅ | Complete coverage |
 | **PostgreSQL** | ✅ | ✅ | ✅ | Complete coverage |
-| **MariaDB** | ✅ | ✅ | ⏳ | Driver + Command (stateful pending) |
-| **SQL Server** | ✅ | ✅ | ⏳ | Driver + Command (stateful pending) |
+| **MariaDB** | ✅ | ✅ | ✅ | Complete coverage |
+| **SQL Server** | ✅ | ✅ | ✅ | Complete coverage |
 | **Apache Doris** | 🟢 | 🟢 | ⏳ | Reuses MySQL driver, command coverage added |
 | **ClickHouse** | ✅ | ✅ | ⏳ | Driver + Command (stateful pending) |
-| **SQLite** | ✅ | ✅ | ⏳ | Driver + Command (stateful pending) |
+| **SQLite** | ✅ | ✅ | ✅ | Complete coverage |
 | **DuckDB** | ✅ | ✅ | ⏳ | Driver + Command (stateful pending) |
+| **StarRocks** | ✅ | ✅ | ✅ | Complete coverage |
+| **Oracle** | 🟢 | 🟢 | ⏳ | Requires Oracle Instant Client locally |
 | **TiDB** | N/A | N/A | N/A | Uses MySQL driver |
+| **Redis** | ✅ | — | — | Driver tests only; cluster tests need Docker Compose |
+| **Elasticsearch** | ✅ | — | — | Driver tests only |
+| **MongoDB** | ✅ | — | — | Driver tests only |
+| **Cassandra** | ✅ | — | — | Driver tests only |
+| **DB2** | 🟡 | — | — | Requires local DB2 instance |
 
 ## Test File Naming Conventions
 
@@ -244,7 +282,7 @@ all)
 ### Assertions
 - Don't just assert `is_ok()` - verify actual data
 - For errors, assert error message is non-empty
-- Check for specific error prefixes: `[CONN_FAILED]`, `[VALIDATION_ERROR]`, etc.
+- Verify error structure: `AppError` serializes as `{code, message, hint, category}` — assert on `code` and `category` rather than parsing string prefixes
 - Verify row counts, column names, and data values
 
 ### Docker/Testcontainers
@@ -269,10 +307,12 @@ assert_eq!(result.data[0]["name"].as_str(), Some("DbPaw"));
 // ❌ Bad - generic error check
 assert!(result.is_err());
 
-// ✅ Good - verifies error content
+// ✅ Good - verifies structured error content
 let error = result.err().unwrap();
-assert!(!error.trim().is_empty());
-assert!(error.contains("[CONN_FAILED]"));
+assert!(!error.to_string().trim().is_empty());
+// Prefer asserting on AppError fields when possible:
+// assert_eq!(error.code(), 1001);
+// assert_eq!(error.category(), "connection");
 ```
 
 ## CI Integration
@@ -281,7 +321,7 @@ assert!(error.contains("[CONN_FAILED]"));
 
 The `.github/workflows/ci.yml` runs:
 1. TypeScript type checking
-2. Frontend linting
+2. Frontend linting (includes `lint:arch`)
 3. Rust cargo check
 4. Frontend unit tests
 5. Frontend service tests
@@ -350,7 +390,8 @@ IT_DB=mysql bun run test:integration
 ## Future Improvements
 
 ### P0 (High Priority)
-- [ ] Add command integration tests for MariaDB, MSSQL, ClickHouse, SQLite, DuckDB
+- [ ] Add stateful command tests for ClickHouse, DuckDB, Doris
+- [ ] Add command/stateful tests for Redis, Elasticsearch, MongoDB
 - [ ] Document test data setup patterns
 - [ ] Create test helper library for common assertions
 

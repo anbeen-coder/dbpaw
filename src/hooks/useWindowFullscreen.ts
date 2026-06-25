@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { isTauri } from "@/services/api";
+import { isTauri } from "@/services/platform";
 
 export function useWindowFullscreen() {
   const [isFullscreen, setIsFullscreen] = useState(false);

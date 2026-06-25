@@ -91,4 +91,72 @@ test.describe("AI Chat", () => {
       runtimeErrors.assertClean("验证mock响应内容");
     });
   });
+
+  test.describe("Conversation History", () => {
+    test("打开对话历史popover", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Open AI sidebar
+      await page.getByLabel(/Show AI panel/i).click();
+      await expect(page.locator("#ai-sidebar")).toBeVisible();
+
+      // Click history button
+      await page.getByLabel(/Open conversation history/i).click();
+
+      // Verify popover opens with conversation list
+      await expect(page.getByText("Conversation History")).toBeVisible();
+
+      // Verify existing mock conversations are visible
+      await expect(page.getByText(/Generate.*Order/i).first()).toBeVisible();
+
+      runtimeErrors.assertClean("打开对话历史popover");
+    });
+
+    test("切换到指定对话", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Open AI sidebar
+      await page.getByLabel(/Show AI panel/i).click();
+      await expect(page.locator("#ai-sidebar")).toBeVisible();
+
+      // Click history button
+      await page.getByLabel(/Open conversation history/i).click();
+      await expect(page.getByText("Conversation History")).toBeVisible();
+
+      // Click on a conversation
+      await page.getByText(/Generate.*Order/i).first().click();
+
+      // Verify conversation messages load (the mock conversation has "order count" in its messages)
+      await expect(page.getByText(/order count/i).first()).toBeVisible();
+
+      // Verify popover closes
+      await expect(page.getByText("Conversation History")).toBeHidden();
+
+      runtimeErrors.assertClean("切换到指定对话");
+    });
+
+    test("删除对话", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Open AI sidebar
+      await page.getByLabel(/Show AI panel/i).click();
+      await expect(page.locator("#ai-sidebar")).toBeVisible();
+
+      // Click history button
+      await page.getByLabel(/Open conversation history/i).click();
+      await expect(page.getByText("Conversation History")).toBeVisible();
+
+      // Count initial conversations
+      const initialCount = await page.getByText(/Generate.*Order|Optimize.*Slow|Explain.*JOIN|Test.*Markdown/i).count();
+
+      // Click delete button on first conversation
+      await page.getByLabel(/Delete conversation/i).first().click();
+
+      // Verify conversation is removed from list
+      const newCount = await page.getByText(/Generate.*Order|Optimize.*Slow|Explain.*JOIN|Test.*Markdown/i).count();
+      expect(newCount).toBeLessThan(initialCount);
+
+      runtimeErrors.assertClean("删除对话");
+    });
+  });
 });

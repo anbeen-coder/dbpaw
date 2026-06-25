@@ -1,4 +1,4 @@
-import { Database, FileBox, Plus, Trash2, Edit3 } from "lucide-react";
+import { Database, FileBox, Plus, Trash2, Edit3, ExternalLink } from "lucide-react";
 import type {
   TreeConfig,
   TreeMenuItem,
@@ -55,6 +55,15 @@ export function createMongodbTreeConfig(callbacks: {
 
     getLeafContextMenuItems: (ctx) => {
       const items: TreeMenuItem[] = [];
+
+      if (callbacks.onCollectionSelect) {
+        items.push({
+          key: "open",
+          label: "Open collection",
+          icon: <ExternalLink className="mr-2 h-4 w-4" />,
+          onClick: () => callbacks.onCollectionSelect!(ctx),
+        });
+      }
 
       if (callbacks.onCollectionAction) {
         items.push({

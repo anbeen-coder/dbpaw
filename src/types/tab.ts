@@ -160,6 +160,17 @@ export interface ERDiagramTabItem {
   schema?: string;
 }
 
+export interface MongoDbDocumentTabItem {
+  type: "mongodb-documents";
+  id: string;
+  title: string;
+  connection?: string;
+  database?: string;
+  collection?: string;
+  connectionId?: number;
+  driver?: string;
+}
+
 export type TabItem =
   | EditorTabItem
   | TableTabItem
@@ -172,4 +183,5 @@ export type TabItem =
   | RedisBrowserTabItem
   | RedisServerInfoTabItem
   | ElasticsearchIndexTabItem
-  | ERDiagramTabItem;
+  | ERDiagramTabItem
+  | MongoDbDocumentTabItem;

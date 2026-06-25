@@ -59,7 +59,7 @@ export const en = {
     queries: {
       title: "Saved Queries",
       newQuery: "New",
-      searchPlaceholder: "Search queries...",
+      searchPlaceholder: "Find queries...",
       empty: "No saved queries found.",
       open: "Open",
       delete: "Delete",
@@ -289,7 +289,7 @@ export const en = {
   },
   connection: {
     title: "Connections",
-    searchTables: "Search tables...",
+    searchTables: "Find tables...",
     sqliteMainLabel: "main (SQLite)",
     duckdbMainLabel: "main (DuckDB)",
     status: {
@@ -788,7 +788,7 @@ export const en = {
     selectedLabel: "Schema: {{count}} selected",
     triggerAria: "Only schema, no data",
     clearSelection: "Clear table selection",
-    searchTables: "Search tables...",
+    searchTables: "Find tables...",
     noTablesFound: "No tables found",
     tablesHeading: "Tables",
   },

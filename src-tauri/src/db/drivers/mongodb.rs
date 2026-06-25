@@ -6,7 +6,7 @@ use crate::models::{
 };
 use async_trait::async_trait;
 use mongodb::Client;
-use mongodb::bson::{Bson, Document, doc};
+use mongodb::bson::{Bson, Document, doc, oid::ObjectId};
 use mongodb::options::{ClientOptions, Tls, TlsOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -436,6 +436,152 @@ impl MongoDBDriver {
         }
 
         Ok(result)
+    }
+
+    pub async fn find_documents(
+        &self,
+        database: &str,
+        collection: &str,
+        filter: Option<&str>,
+        page: Option<i64>,
+        page_size: Option<i64>,
+    ) -> DriverResult<Value> {
+        let safe_page = page.unwrap_or(1).max(1);
+        let safe_page_size = page_size.unwrap_or(50).clamp(1, 10_000);
+        let skip = (safe_page - 1) * safe_page_size;
+
+        let db = self.client.database(database);
+        let coll = db.collection::<Document>(collection);
+
+        let filter_doc = match filter {
+            Some(f) => parse_json_doc(f, "filter")?,
+            None => Document::new(),
+        };
+
+        let total = coll
+            .count_documents(filter_doc.clone())
+            .await
+            .map_err(normalize_mongo_error)? as i64;
+
+        let cursor = coll
+            .find(filter_doc)
+            .skip(skip as u64)
+            .limit(safe_page_size)
+            .await
+            .map_err(normalize_mongo_error)?;
+
+        let documents = self.collect_cursor(cursor).await?;
+
+        Ok(serde_json::json!({
+            "documents": documents,
+            "total": total,
+            "page": safe_page,
+            "pageSize": safe_page_size,
+        }))
+    }
+
+    pub async fn get_document(
+        &self,
+        database: &str,
+        collection: &str,
+        document_id: &str,
+    ) -> DriverResult<Value> {
+        let db = self.client.database(database);
+        let coll = db.collection::<Document>(collection);
+
+        let oid = ObjectId::parse_str(document_id)
+            .map_err(|e| AppError::validation(format!("Invalid document ID '{}': {}", document_id, e)))?;
+
+        let doc = coll
+            .find_one(doc! { "_id": oid })
+            .await
+            .map_err(normalize_mongo_error)?;
+
+        match doc {
+            Some(d) => Ok(bson_to_json(&Bson::Document(d))),
+            None => Err(AppError::not_found(format!(
+                "Document '{}' not found in {}.{}",
+                document_id, database, collection
+            ))),
+        }
+    }
+
+    pub async fn insert_document(
+        &self,
+        database: &str,
+        collection: &str,
+        document: &Value,
+    ) -> DriverResult<Value> {
+        let db = self.client.database(database);
+        let coll = db.collection::<Document>(collection);
+
+        let bson_doc = mongodb::bson::to_document(document)
+            .map_err(|e| AppError::validation(format!("Invalid document: {}", e)))?;
+
+        let result = coll
+            .insert_one(bson_doc)
+            .await
+            .map_err(normalize_mongo_error)?;
+
+        let inserted_id = match result.inserted_id {
+            Bson::ObjectId(oid) => oid.to_hex(),
+            other => format!("{}", other),
+        };
+
+        Ok(serde_json::json!({
+            "success": true,
+            "insertedId": inserted_id,
+        }))
+    }
+
+    pub async fn update_document(
+        &self,
+        database: &str,
+        collection: &str,
+        document_id: &str,
+        update: &Value,
+    ) -> DriverResult<Value> {
+        let db = self.client.database(database);
+        let coll = db.collection::<Document>(collection);
+
+        let oid = ObjectId::parse_str(document_id)
+            .map_err(|e| AppError::validation(format!("Invalid document ID '{}': {}", document_id, e)))?;
+
+        let update_doc = mongodb::bson::to_document(update)
+            .map_err(|e| AppError::validation(format!("Invalid update document: {}", e)))?;
+
+        let result = coll
+            .update_one(doc! { "_id": oid }, doc! { "$set": update_doc })
+            .await
+            .map_err(normalize_mongo_error)?;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "modifiedCount": result.modified_count as i64,
+        }))
+    }
+
+    pub async fn delete_document(
+        &self,
+        database: &str,
+        collection: &str,
+        document_id: &str,
+    ) -> DriverResult<Value> {
+        let db = self.client.database(database);
+        let coll = db.collection::<Document>(collection);
+
+        let oid = ObjectId::parse_str(document_id)
+            .map_err(|e| AppError::validation(format!("Invalid document ID '{}': {}", document_id, e)))?;
+
+        let result = coll
+            .delete_one(doc! { "_id": oid })
+            .await
+            .map_err(normalize_mongo_error)?;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "deletedCount": result.deleted_count as i64,
+        }))
     }
 }
 

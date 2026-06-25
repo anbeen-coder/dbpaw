@@ -23,5 +23,56 @@ export const mongodbApi = {
         id,
         database,
       }),
+    findDocuments: (params: {
+      id: number;
+      database: string;
+      collection: string;
+      filter?: string;
+      page?: number;
+      pageSize?: number;
+    }) =>
+      invoke<{
+        documents: Record<string, unknown>[];
+        total: number;
+        page: number;
+        pageSize: number;
+      }>(COMMANDS.MONGODB_FIND_DOCUMENTS, params),
+    getDocument: (params: {
+      id: number;
+      database: string;
+      collection: string;
+      documentId: string;
+    }) => invoke<Record<string, unknown>>(COMMANDS.MONGODB_GET_DOCUMENT, params),
+    insertDocument: (params: {
+      id: number;
+      database: string;
+      collection: string;
+      document: Record<string, unknown>;
+    }) =>
+      invoke<{ success: boolean; insertedId: string }>(
+        COMMANDS.MONGODB_INSERT_DOCUMENT,
+        params,
+      ),
+    updateDocument: (params: {
+      id: number;
+      database: string;
+      collection: string;
+      documentId: string;
+      update: Record<string, unknown>;
+    }) =>
+      invoke<{ success: boolean; modifiedCount: number }>(
+        COMMANDS.MONGODB_UPDATE_DOCUMENT,
+        params,
+      ),
+    deleteDocument: (params: {
+      id: number;
+      database: string;
+      collection: string;
+      documentId: string;
+    }) =>
+      invoke<{ success: boolean; deletedCount: number }>(
+        COMMANDS.MONGODB_DELETE_DOCUMENT,
+        params,
+      ),
   },
 };

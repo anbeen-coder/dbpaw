@@ -6,7 +6,7 @@ export const sidebar = {
   queries: {
     title: "Saved Queries",
     newQuery: "New",
-    searchPlaceholder: "Search queries...",
+    searchPlaceholder: "Find queries...",
     empty: "No saved queries found.",
     open: "Open",
     delete: "Delete",

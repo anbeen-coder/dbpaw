@@ -61,7 +61,7 @@ export const tableSelector = {
   selectedLabel: "Schema: {{count}} selected",
   triggerAria: "Only schema, no data",
   clearSelection: "Clear table selection",
-  searchTables: "Search tables...",
+  searchTables: "Find tables...",
   noTablesFound: "No tables found",
   tablesHeading: "Tables",
 } as const;

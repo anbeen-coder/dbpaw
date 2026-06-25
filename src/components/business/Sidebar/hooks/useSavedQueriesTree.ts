@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -17,37 +17,36 @@ export function useSavedQueriesTree(options: {
     Record<string, SavedQuery[]>
   >({});
 
-  useEffect(() => {
+  const fetchSavedQueriesByConnection = useCallback(async () => {
     if (!showSavedQueriesInTree) return;
+    setIsLoadingQueries(true);
+    try {
+      const queries = await api.queries.list();
+      const grouped: Record<string, SavedQuery[]> = {};
+      queries.forEach((query) => {
+        if (!query.connectionId) return;
+        const key = String(query.connectionId);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(query);
+      });
+      Object.values(grouped).forEach((items) =>
+        items.sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setSavedQueriesByConnection(grouped);
+    } catch (e) {
+      const message = errorMessage(e);
+      console.error("Failed to fetch saved queries for tree", message);
+      toast.error(t("connection.toast.loadQueriesFailed"), {
+        description: message,
+      });
+    } finally {
+      setIsLoadingQueries(false);
+    }
+  }, [showSavedQueriesInTree, t]);
 
-    const fetchSavedQueriesByConnection = async () => {
-      setIsLoadingQueries(true);
-      try {
-        const queries = await api.queries.list();
-        const grouped: Record<string, SavedQuery[]> = {};
-        queries.forEach((query) => {
-          if (!query.connectionId) return;
-          const key = String(query.connectionId);
-          if (!grouped[key]) grouped[key] = [];
-          grouped[key].push(query);
-        });
-        Object.values(grouped).forEach((items) =>
-          items.sort((a, b) => a.name.localeCompare(b.name)),
-        );
-        setSavedQueriesByConnection(grouped);
-      } catch (e) {
-        const message = errorMessage(e);
-        console.error("Failed to fetch saved queries for tree", message);
-        toast.error(t("connection.toast.loadQueriesFailed"), {
-          description: message,
-        });
-      } finally {
-        setIsLoadingQueries(false);
-      }
-    };
-
+  useEffect(() => {
     void fetchSavedQueriesByConnection();
-  }, [showSavedQueriesInTree, lastUpdated, t]);
+  }, [fetchSavedQueriesByConnection, lastUpdated]);
 
   return {
     isLoadingQueries,

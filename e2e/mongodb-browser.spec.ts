@@ -44,7 +44,6 @@ test.describe("MongoDB Browser", () => {
   });
 
   test("双击集合打开文档浏览器", async ({ page }) => {
-    test.skip(true, "MongoDB document browser tab is not yet implemented");
     const runtimeErrors = collectRuntimeErrors(page);
 
     // Double-click users collection
@@ -58,7 +57,6 @@ test.describe("MongoDB Browser", () => {
   });
 
   test("查看文档详情", async ({ page }) => {
-    test.skip(true, "MongoDB document browser tab is not yet implemented");
     const runtimeErrors = collectRuntimeErrors(page);
 
     // Open users collection
@@ -75,7 +73,6 @@ test.describe("MongoDB Browser", () => {
   });
 
   test("搜索/过滤文档", async ({ page }) => {
-    test.skip(true, "MongoDB document browser tab is not yet implemented");
     const runtimeErrors = collectRuntimeErrors(page);
 
     // Open users collection
@@ -97,7 +94,6 @@ test.describe("MongoDB Browser", () => {
   });
 
   test("新建文档", async ({ page }) => {
-    test.skip(true, "MongoDB document browser tab is not yet implemented");
     const runtimeErrors = collectRuntimeErrors(page);
 
     // Open users collection
@@ -134,7 +130,6 @@ test.describe("MongoDB Browser", () => {
   });
 
   test("删除文档确认对话框", async ({ page }) => {
-    test.skip(true, "MongoDB document browser tab is not yet implemented");
     const runtimeErrors = collectRuntimeErrors(page);
 
     // Open users collection
@@ -163,7 +158,6 @@ test.describe("MongoDB Browser", () => {
   });
 
   test("右键菜单操作", async ({ page }) => {
-    test.skip(true, "MongoDB collection context menu is not yet wired up");
     const runtimeErrors = collectRuntimeErrors(page);
 
     // Right-click on a collection

@@ -4,6 +4,7 @@ use crate::db::drivers::mongodb::{
 use crate::error::AppError;
 use crate::models::TestConnectionResult;
 use crate::state::AppState;
+use serde_json::Value;
 use std::time::Instant;
 use tauri::State;
 
@@ -83,6 +84,79 @@ pub async fn mongodb_list_collections(
         .await
 }
 
+#[tauri::command]
+pub async fn mongodb_find_documents(
+    state: State<'_, AppState>,
+    id: i64,
+    database: String,
+    collection: String,
+    filter: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+) -> Result<Value, AppError> {
+    driver_from_id(&state, id)
+        .await?
+        .find_documents(&database, &collection, filter.as_deref(), page, page_size)
+        .await
+}
+
+#[tauri::command]
+pub async fn mongodb_get_document(
+    state: State<'_, AppState>,
+    id: i64,
+    database: String,
+    collection: String,
+    document_id: String,
+) -> Result<Value, AppError> {
+    driver_from_id(&state, id)
+        .await?
+        .get_document(&database, &collection, &document_id)
+        .await
+}
+
+#[tauri::command]
+pub async fn mongodb_insert_document(
+    state: State<'_, AppState>,
+    id: i64,
+    database: String,
+    collection: String,
+    document: Value,
+) -> Result<Value, AppError> {
+    driver_from_id(&state, id)
+        .await?
+        .insert_document(&database, &collection, &document)
+        .await
+}
+
+#[tauri::command]
+pub async fn mongodb_update_document(
+    state: State<'_, AppState>,
+    id: i64,
+    database: String,
+    collection: String,
+    document_id: String,
+    update: Value,
+) -> Result<Value, AppError> {
+    driver_from_id(&state, id)
+        .await?
+        .update_document(&database, &collection, &document_id, &update)
+        .await
+}
+
+#[tauri::command]
+pub async fn mongodb_delete_document(
+    state: State<'_, AppState>,
+    id: i64,
+    database: String,
+    collection: String,
+    document_id: String,
+) -> Result<Value, AppError> {
+    driver_from_id(&state, id)
+        .await?
+        .delete_document(&database, &collection, &document_id)
+        .await
+}
+
 #[macro_export]
 macro_rules! mongodb_commands {
     () => {
@@ -90,5 +164,10 @@ macro_rules! mongodb_commands {
         $crate::commands::mongodb::mongodb_test_connection_ephemeral,
         $crate::commands::mongodb::mongodb_list_databases,
         $crate::commands::mongodb::mongodb_list_collections,
+        $crate::commands::mongodb::mongodb_find_documents,
+        $crate::commands::mongodb::mongodb_get_document,
+        $crate::commands::mongodb::mongodb_insert_document,
+        $crate::commands::mongodb::mongodb_update_document,
+        $crate::commands::mongodb::mongodb_delete_document,
     };
 }

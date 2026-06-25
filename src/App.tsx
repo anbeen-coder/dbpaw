@@ -160,6 +160,7 @@ export default function App() {
     openRedisServerInfo,
     openRedisKey,
     openElasticsearchIndex,
+    openMongoDbDocuments,
     openTableDDL,
     openRoutine,
     openCreateTable,
@@ -175,6 +176,7 @@ export default function App() {
     openRedisConsole,
     openRedisServerInfo,
     openElasticsearchIndex,
+    openMongoDbDocuments,
   });
 
   const revealSidebarForTab = useCallback(

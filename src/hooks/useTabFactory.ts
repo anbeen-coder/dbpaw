@@ -87,6 +87,21 @@ export function useTabFactory({
     [openOrCreateTab],
   );
 
+  const openMongoDbDocuments = useCallback(
+    (connection: string, database: string, collection: string, connectionId: number, driver: string) => {
+      openOrCreateTab(`mongodb-${connectionId}-${database}-${collection}`, {
+        type: "mongodb-documents",
+        title: `${collection}`,
+        connection,
+        database,
+        collection,
+        connectionId,
+        driver,
+      } as Omit<TabItem, "id">);
+    },
+    [openOrCreateTab],
+  );
+
   const openTableDDL = useCallback(
     (ctx: { connectionId: number; database: string; schema: string; table: string }) => {
       openOrCreateTab(
@@ -280,6 +295,7 @@ export function useTabFactory({
     openRedisServerInfo,
     openRedisKey,
     openElasticsearchIndex,
+    openMongoDbDocuments,
     openTableDDL,
     openRoutine,
     openCreateTable,

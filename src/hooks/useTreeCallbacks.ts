@@ -33,6 +33,13 @@ interface UseTreeCallbacksParams {
     connectionId: number,
     driver: string,
   ) => void;
+  openMongoDbDocuments: (
+    connection: string,
+    database: string,
+    collection: string,
+    connectionId: number,
+    driver: string,
+  ) => void;
 }
 
 export function useTreeCallbacks({
@@ -41,6 +48,7 @@ export function useTreeCallbacks({
   openRedisConsole,
   openRedisServerInfo,
   openElasticsearchIndex,
+  openMongoDbDocuments,
 }: UseTreeCallbacksParams): TreeCallbacks {
   const handlersRef = useRef({
     openRedisKey,
@@ -48,6 +56,7 @@ export function useTreeCallbacks({
     openRedisConsole,
     openRedisServerInfo,
     openElasticsearchIndex,
+    openMongoDbDocuments,
   });
 
   useEffect(() => {
@@ -57,6 +66,7 @@ export function useTreeCallbacks({
       openRedisConsole,
       openRedisServerInfo,
       openElasticsearchIndex,
+      openMongoDbDocuments,
     };
   });
 
@@ -111,6 +121,18 @@ export function useTreeCallbacks({
           Number(ctx.connectionId),
           ctx.connectionType,
         );
+      },
+      onCollectionSelect: (ctx) => {
+        handlersRef.current.openMongoDbDocuments(
+          ctx.connectionName,
+          ctx.databaseName,
+          ctx.leafName,
+          Number(ctx.connectionId),
+          ctx.connectionType,
+        );
+      },
+      onCollectionAction: (_ctx, _action) => {
+        // Placeholder for collection drop/rename actions
       },
     }),
     [],

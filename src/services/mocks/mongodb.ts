@@ -47,17 +47,29 @@ export function handleMongodb<T extends MongodbCommand>(
       ]) as Promise<CommandReturn<T>>;
     }
 
-    case COMMANDS.MONGODB_FIND_DOCUMENTS:
+    case COMMANDS.MONGODB_FIND_DOCUMENTS: {
+      const a = args as CommandArgs<"mongodb_find_documents">;
+      const allDocs = [
+        { _id: "507f1f77bcf86cd799439011", name: "Alice", email: "alice@example.com", age: 30 },
+        { _id: "507f1f77bcf86cd799439012", name: "Bob", email: "bob@example.com", age: 25 },
+        { _id: "507f1f77bcf86cd799439013", name: "Charlie", email: "charlie@example.com", age: 35 },
+      ];
+      let filtered = allDocs;
+      if (a.filter) {
+        const term = a.filter.toLowerCase();
+        filtered = allDocs.filter((doc) =>
+          Object.values(doc).some(
+            (v) => typeof v === "string" && v.toLowerCase().includes(term),
+          ),
+        );
+      }
       return Promise.resolve({
-        documents: [
-          { _id: "507f1f77bcf86cd799439011", name: "Alice", email: "alice@example.com", age: 30 },
-          { _id: "507f1f77bcf86cd799439012", name: "Bob", email: "bob@example.com", age: 25 },
-          { _id: "507f1f77bcf86cd799439013", name: "Charlie", email: "charlie@example.com", age: 35 },
-        ],
-        total: 3,
-        page: 1,
-        pageSize: 50,
+        documents: filtered,
+        total: filtered.length,
+        page: a.page || 1,
+        pageSize: a.pageSize || 50,
       }) as Promise<CommandReturn<T>>;
+    }
 
     case COMMANDS.MONGODB_INSERT_DOCUMENT:
       return Promise.resolve({

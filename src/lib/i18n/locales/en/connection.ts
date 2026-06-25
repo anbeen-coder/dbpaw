@@ -1,6 +1,6 @@
 export const connection = {
   title: "Connections",
-  searchTables: "Search tables...",
+  searchTables: "Find tables...",
   sqliteMainLabel: "main (SQLite)",
   duckdbMainLabel: "main (DuckDB)",
   status: {

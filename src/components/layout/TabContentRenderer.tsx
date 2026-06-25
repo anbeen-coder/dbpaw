@@ -33,6 +33,7 @@ import type {
   RedisServerInfoTabItem,
   ElasticsearchIndexTabItem,
   ERDiagramTabItem,
+  MongoDbDocumentTabItem,
 } from "@/types/tab";
 
 const SqlEditor = lazy(async () => {
@@ -79,6 +80,11 @@ const ElasticsearchIndexView = lazy(async () => {
 const ERDiagramView = lazy(async () => {
   const mod = await import("@/components/business/ERDiagram/ERDiagramView");
   return { default: mod.default };
+});
+
+const MongoDbDocumentView = lazy(async () => {
+  const mod = await import("@/components/business/MongoDB/MongoDbDocumentView");
+  return { default: mod.MongoDbDocumentView };
 });
 
 function LazyPanelFallback({
@@ -394,6 +400,22 @@ function ERDiagramTab({ tab }: { tab: ERDiagramTabItem }) {
   );
 }
 
+function MongoDbDocumentTab({ tab }: { tab: MongoDbDocumentTabItem }) {
+  if (tab.connectionId === undefined || !tab.database || !tab.collection)
+    return null;
+  return (
+    <Suspense
+      fallback={<LazyPanelFallback label="Loading MongoDB documents..." />}
+    >
+      <MongoDbDocumentView
+        connectionId={tab.connectionId}
+        database={tab.database}
+        collection={tab.collection}
+      />
+    </Suspense>
+  );
+}
+
 function CreateTableTab({ tab }: { tab: CreateTableTabItem }) {
   const { t } = useTranslation();
   const { handleCreateTableSuccess } = useSchemaActions();
@@ -516,6 +538,8 @@ function renderTab(tab: TabItem) {
       return <AlterTableTab tab={tab} />;
     case "ddl":
       return <MetadataFallbackTab tab={tab} />;
+    case "mongodb-documents":
+      return <MongoDbDocumentTab tab={tab} />;
   }
 }
 

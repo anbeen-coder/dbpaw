@@ -90,7 +90,7 @@ export function useConnectionRevealSync(options: {
         void loadRedisKeysPage(conn.id, db.name, "0", false);
       });
     });
-  }, [searchTerm, loadRedisKeysPage]);
+  }, [searchTerm, loadRedisKeysPage, connectionsRef, expandedDatabasesRef]);
 
   useEffect(() => {
     if (!activeTableTarget) {
@@ -168,7 +168,7 @@ export function useConnectionRevealSync(options: {
     return () => {
       cancelled = true;
     };
-  }, [activeTableTarget, connections]);
+  }, [activeTableTarget, connections, fetchAndSetTables, setExpandedConnections, setExpandedDatabases, setExpandedSchemas]);
 
   useEffect(() => {
     if (!sidebarRevealRequest || !activeTableTarget || !selectedTableNode)
@@ -214,7 +214,7 @@ export function useConnectionRevealSync(options: {
       "0",
       false,
     );
-  }, [redisRefreshRequest, loadRedisKeysPage]);
+  }, [redisRefreshRequest, loadRedisKeysPage, expandedDatabasesRef]);
 
   useEffect(() => {
     if (!autoScrollRequest) return;

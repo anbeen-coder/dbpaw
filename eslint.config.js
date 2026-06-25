@@ -51,7 +51,7 @@ export default tseslint.config(
     rules: {
       "prefer-const": "warn",
       "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn",
+      "react-hooks/exhaustive-deps": "error",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
@@ -61,13 +61,20 @@ export default tseslint.config(
         },
       ],
       "@typescript-eslint/no-explicit-any": "warn",
-      "react/jsx-no-literals": [
-        "warn",
-        {
-          noAttributeStrings: false,
-          ignoreProps: false,
-        },
-      ],
+      "react/jsx-no-literals": "off",
+    },
+  },
+  {
+    files: [
+      "**/*.test.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
+      "**/__tests__/**/*.{ts,tsx}",
+      "**/mocks/**/*.{ts,tsx}",
+      "**/test/**/*.{ts,tsx}",
+    ],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
     },
   },
 );

@@ -125,7 +125,7 @@ export function RedisGeoViewer({
         });
       }
     },
-    [connectionId, database, redisKey, posLookup, loadingPos],
+    [connectionId, database, redisKey, posLookup, loadingPos, t],
   );
 
   const handleAdd = useCallback(async () => {
@@ -162,7 +162,7 @@ export function RedisGeoViewer({
     } finally {
       setAdding(false);
     }
-  }, [newMember, newLon, newLat, connectionId, database, redisKey, onRefresh]);
+  }, [newMember, newLon, newLat, connectionId, database, redisKey, onRefresh, t]);
 
   const handleDist = useCallback(async () => {
     if (!distMember1 || !distMember2) return;
@@ -185,7 +185,7 @@ export function RedisGeoViewer({
     } finally {
       setDistLoading(false);
     }
-  }, [distMember1, distMember2, distUnit, connectionId, database, redisKey]);
+  }, [distMember1, distMember2, distUnit, connectionId, database, redisKey, t]);
 
   const handleSearch = useCallback(async () => {
     const center = searchCenter.trim();
@@ -221,6 +221,7 @@ export function RedisGeoViewer({
     connectionId,
     database,
     redisKey,
+    t,
   ]);
 
   const deleteMember = useCallback(

@@ -380,7 +380,7 @@ export function useQueryEditor({
         });
       }
     },
-    [fetchEditorSchemaOverview, t, tabs],
+    [fetchEditorSchemaOverview, t, tabs, setTabs],
   );
 
   const handleCrossDbSchemaLoad = useCallback(

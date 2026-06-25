@@ -48,7 +48,7 @@ export function useStreamBrowser({
     setShowNewRow(false);
     setNewId("*");
     setNewFieldsRaw("");
-  }, [connectionId, database, redisKey, totalLen, extra]);
+  }, [connectionId, database, redisKey, totalLen, extra, value]);
 
   const hasMore = useMemo(() => {
     if (isCreateMode) return false;

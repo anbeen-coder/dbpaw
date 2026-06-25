@@ -159,4 +159,50 @@ test.describe("AI Chat", () => {
       runtimeErrors.assertClean("删除对话");
     });
   });
+
+  test.describe("New Conversation", () => {
+    test("新建对话清空当前消息", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Open AI sidebar
+      await page.getByLabel(/Show AI panel/i).click();
+      await expect(page.locator("#ai-sidebar")).toBeVisible();
+
+      // Click history button and select a conversation with messages
+      await page.getByLabel(/Open conversation history/i).click();
+      await page.getByText(/Generate.*Order/i).first().click();
+
+      // Verify messages are loaded
+      await expect(page.getByText(/order count/i).first()).toBeVisible();
+
+      // Click new chat button
+      await page.getByLabel(/Start new chat/i).click();
+
+      // Verify message list is empty (the pre-existing messages should be hidden)
+      await expect(page.getByText(/order count/i)).toBeHidden();
+
+      runtimeErrors.assertClean("新建对话清空当前消息");
+    });
+
+    test("新建对话后发送消息", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Open AI sidebar
+      await page.getByLabel(/Show AI panel/i).click();
+      await expect(page.locator("#ai-sidebar")).toBeVisible();
+
+      // Click new chat button
+      await page.getByLabel(/Start new chat/i).click();
+
+      // Send a message
+      const textarea = page.getByPlaceholder(/Describe SQL to generate/i);
+      await textarea.fill("Show all tables");
+      await page.getByLabel("Send message").click();
+
+      // Verify response appears
+      await expect(page.locator("#ai-sidebar").getByText(/SELECT/i).first()).toBeVisible();
+
+      runtimeErrors.assertClean("新建对话后发送消息");
+    });
+  });
 });

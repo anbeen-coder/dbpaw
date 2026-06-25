@@ -372,6 +372,458 @@ pub async fn get_mysql_collations_by_id(
     .await
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::codes;
+
+    fn empty_payload() -> CreateDatabasePayload {
+        CreateDatabasePayload {
+            name: "testdb".to_string(),
+            if_not_exists: None,
+            charset: None,
+            collation: None,
+            encoding: None,
+            lc_collate: None,
+            lc_ctype: None,
+        }
+    }
+
+    // --- validate_database_name ---
+
+    #[test]
+    fn validate_database_name_trims_whitespace() {
+        assert_eq!(validate_database_name("  mydb  ").unwrap(), "mydb");
+    }
+
+    #[test]
+    fn validate_database_name_rejects_empty() {
+        let err = validate_database_name("   ").unwrap_err();
+        assert!(err.to_string().contains("cannot be empty"));
+    }
+
+    #[test]
+    fn validate_database_name_rejects_null_byte() {
+        let err = validate_database_name("my\0db").unwrap_err();
+        assert!(err.to_string().contains("null byte"));
+    }
+
+    #[test]
+    fn validate_database_name_rejects_too_long() {
+        let long_name = "a".repeat(129);
+        let err = validate_database_name(&long_name).unwrap_err();
+        assert!(err.to_string().contains("too long"));
+    }
+
+    #[test]
+    fn validate_database_name_accepts_128_chars() {
+        let name = "a".repeat(128);
+        assert_eq!(validate_database_name(&name).unwrap(), name);
+    }
+
+    // --- is_safe_option_token ---
+
+    #[test]
+    fn is_safe_option_token_accepts_alphanumeric() {
+        assert!(is_safe_option_token("utf8mb4"));
+    }
+
+    #[test]
+    fn is_safe_option_token_accepts_special_chars() {
+        assert!(is_safe_option_token("en_US.UTF-8"));
+        assert!(is_safe_option_token("some_option-name@test"));
+    }
+
+    #[test]
+    fn is_safe_option_token_rejects_empty() {
+        assert!(!is_safe_option_token(""));
+    }
+
+    #[test]
+    fn is_safe_option_token_rejects_spaces() {
+        assert!(!is_safe_option_token("has space"));
+    }
+
+    #[test]
+    fn is_safe_option_token_rejects_semicolons() {
+        assert!(!is_safe_option_token("utf8;DROP"));
+    }
+
+    #[test]
+    fn is_safe_option_token_rejects_quotes() {
+        assert!(!is_safe_option_token("utf8'"));
+        assert!(!is_safe_option_token("utf8\""));
+    }
+
+    // --- normalize_option_token ---
+
+    #[test]
+    fn normalize_option_token_returns_none_for_absent() {
+        assert_eq!(normalize_option_token(&None, "charset").unwrap(), None);
+    }
+
+    #[test]
+    fn normalize_option_token_returns_none_for_empty_string() {
+        assert_eq!(
+            normalize_option_token(&Some("  ".to_string()), "charset").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn normalize_option_token_trims_value() {
+        assert_eq!(
+            normalize_option_token(&Some("  utf8  ".to_string()), "charset").unwrap(),
+            Some("utf8".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_option_token_rejects_unsafe_chars() {
+        let err = normalize_option_token(&Some("bad;value".to_string()), "charset").unwrap_err();
+        assert!(err.to_string().contains("Invalid characters"));
+    }
+
+    // --- quote helpers ---
+
+    #[test]
+    fn quote_mysql_ident_basic() {
+        assert_eq!(quote_mysql_ident("users"), "`users`");
+    }
+
+    #[test]
+    fn quote_mysql_ident_escapes_backtick() {
+        assert_eq!(quote_mysql_ident("user`s"), "`user``s`");
+    }
+
+    #[test]
+    fn quote_clickhouse_ident_basic() {
+        assert_eq!(quote_clickhouse_ident("events"), "`events`");
+    }
+
+    #[test]
+    fn quote_pg_ident_basic() {
+        assert_eq!(quote_pg_ident("public"), "\"public\"");
+    }
+
+    #[test]
+    fn quote_pg_ident_escapes_double_quote() {
+        assert_eq!(quote_pg_ident("my\"table"), "\"my\"\"table\"");
+    }
+
+    #[test]
+    fn quote_mssql_ident_basic() {
+        assert_eq!(quote_mssql_ident("dbo"), "[dbo]");
+    }
+
+    #[test]
+    fn quote_mssql_ident_escapes_bracket() {
+        assert_eq!(quote_mssql_ident("my]table"), "[my]]table]");
+    }
+
+    #[test]
+    fn quote_literal_basic() {
+        assert_eq!(quote_literal("hello"), "'hello'");
+    }
+
+    #[test]
+    fn quote_literal_escapes_single_quote() {
+        assert_eq!(quote_literal("it's"), "'it''s'");
+    }
+
+    #[test]
+    fn quote_nliteral_basic() {
+        assert_eq!(quote_nliteral("test"), "N'test'");
+    }
+
+    #[test]
+    fn quote_nliteral_escapes_single_quote() {
+        assert_eq!(quote_nliteral("it's"), "N'it''s'");
+    }
+
+    #[test]
+    fn quote_cql_ident_basic() {
+        assert_eq!(quote_cql_ident("ks"), "\"ks\"");
+    }
+
+    #[test]
+    fn quote_cql_ident_escapes_double_quote() {
+        assert_eq!(quote_cql_ident("my\"ks"), "\"my\"\"ks\"");
+    }
+
+    // --- build_mysql_create_database_sql ---
+
+    #[test]
+    fn build_mysql_create_database_sql_basic() {
+        let payload = empty_payload();
+        let sql = build_mysql_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(sql, "CREATE DATABASE IF NOT EXISTS `mydb`");
+    }
+
+    #[test]
+    fn build_mysql_create_database_sql_no_if_not_exists() {
+        let mut payload = empty_payload();
+        payload.if_not_exists = Some(false);
+        let sql = build_mysql_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(sql, "CREATE DATABASE `mydb`");
+    }
+
+    #[test]
+    fn build_mysql_create_database_sql_with_charset() {
+        let mut payload = empty_payload();
+        payload.charset = Some("utf8mb4".to_string());
+        let sql = build_mysql_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(
+            sql,
+            "CREATE DATABASE IF NOT EXISTS `mydb` CHARACTER SET utf8mb4"
+        );
+    }
+
+    #[test]
+    fn build_mysql_create_database_sql_with_collation() {
+        let mut payload = empty_payload();
+        payload.collation = Some("utf8mb4_unicode_ci".to_string());
+        let sql = build_mysql_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(
+            sql,
+            "CREATE DATABASE IF NOT EXISTS `mydb` COLLATE utf8mb4_unicode_ci"
+        );
+    }
+
+    #[test]
+    fn build_mysql_create_database_sql_with_charset_and_collation() {
+        let mut payload = empty_payload();
+        payload.charset = Some("utf8mb4".to_string());
+        payload.collation = Some("utf8mb4_unicode_ci".to_string());
+        let sql = build_mysql_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(
+            sql,
+            "CREATE DATABASE IF NOT EXISTS `mydb` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        );
+    }
+
+    #[test]
+    fn build_mysql_create_database_sql_rejects_unsafe_charset() {
+        let mut payload = empty_payload();
+        payload.charset = Some("bad;injection".to_string());
+        assert!(build_mysql_create_database_sql(&payload, "mydb").is_err());
+    }
+
+    // --- build_postgres_create_database_sql ---
+
+    #[test]
+    fn build_postgres_create_database_sql_basic() {
+        let payload = empty_payload();
+        let sql = build_postgres_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(sql, "CREATE DATABASE \"mydb\"");
+    }
+
+    #[test]
+    fn build_postgres_create_database_sql_with_encoding() {
+        let mut payload = empty_payload();
+        payload.encoding = Some("UTF8".to_string());
+        let sql = build_postgres_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(sql, "CREATE DATABASE \"mydb\" WITH ENCODING = 'UTF8'");
+    }
+
+    #[test]
+    fn build_postgres_create_database_sql_with_all_options() {
+        let mut payload = empty_payload();
+        payload.encoding = Some("UTF8".to_string());
+        payload.lc_collate = Some("en_US.UTF-8".to_string());
+        payload.lc_ctype = Some("en_US.UTF-8".to_string());
+        let sql = build_postgres_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(
+            sql,
+            "CREATE DATABASE \"mydb\" WITH ENCODING = 'UTF8' LC_COLLATE = 'en_US.UTF-8' LC_CTYPE = 'en_US.UTF-8'"
+        );
+    }
+
+    #[test]
+    fn build_postgres_create_database_sql_escapes_name() {
+        let payload = empty_payload();
+        let sql = build_postgres_create_database_sql(&payload, "my\"db").unwrap();
+        assert_eq!(sql, "CREATE DATABASE \"my\"\"db\"");
+    }
+
+    // --- build_mssql_create_database_sql ---
+
+    #[test]
+    fn build_mssql_create_database_sql_basic_with_guard() {
+        let payload = empty_payload();
+        let sql = build_mssql_create_database_sql(&payload, "mydb").unwrap();
+        assert!(sql.contains("IF DB_ID"));
+        assert!(sql.contains("CREATE DATABASE [mydb]"));
+    }
+
+    #[test]
+    fn build_mssql_create_database_sql_no_guard() {
+        let mut payload = empty_payload();
+        payload.if_not_exists = Some(false);
+        let sql = build_mssql_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(sql, "CREATE DATABASE [mydb]");
+    }
+
+    #[test]
+    fn build_mssql_create_database_sql_with_collation() {
+        let mut payload = empty_payload();
+        payload.if_not_exists = Some(false);
+        payload.collation = Some("SQL_Latin1_General_CP1_CI_AS".to_string());
+        let sql = build_mssql_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(
+            sql,
+            "CREATE DATABASE [mydb] COLLATE SQL_Latin1_General_CP1_CI_AS"
+        );
+    }
+
+    // --- build_clickhouse_create_database_sql ---
+
+    #[test]
+    fn build_clickhouse_create_database_sql_basic() {
+        let payload = empty_payload();
+        let sql = build_clickhouse_create_database_sql(&payload, "mydb").unwrap();
+        assert_eq!(sql, "CREATE DATABASE IF NOT EXISTS `mydb`");
+    }
+
+    #[test]
+    fn build_clickhouse_create_database_sql_rejects_charset() {
+        let mut payload = empty_payload();
+        payload.charset = Some("utf8".to_string());
+        assert!(build_clickhouse_create_database_sql(&payload, "mydb").is_err());
+    }
+
+    #[test]
+    fn build_clickhouse_create_database_sql_rejects_collation() {
+        let mut payload = empty_payload();
+        payload.collation = Some("utf8_general_ci".to_string());
+        assert!(build_clickhouse_create_database_sql(&payload, "mydb").is_err());
+    }
+
+    #[test]
+    fn build_clickhouse_create_database_sql_rejects_encoding() {
+        let mut payload = empty_payload();
+        payload.encoding = Some("UTF8".to_string());
+        assert!(build_clickhouse_create_database_sql(&payload, "mydb").is_err());
+    }
+
+    #[test]
+    fn build_clickhouse_create_database_sql_rejects_lc_collate() {
+        let mut payload = empty_payload();
+        payload.lc_collate = Some("en_US".to_string());
+        assert!(build_clickhouse_create_database_sql(&payload, "mydb").is_err());
+    }
+
+    #[test]
+    fn build_clickhouse_create_database_sql_rejects_lc_ctype() {
+        let mut payload = empty_payload();
+        payload.lc_ctype = Some("en_US".to_string());
+        assert!(build_clickhouse_create_database_sql(&payload, "mydb").is_err());
+    }
+
+    // --- build_cassandra_create_database_sql ---
+
+    #[test]
+    fn build_cassandra_create_database_sql_basic() {
+        let payload = empty_payload();
+        let sql = build_cassandra_create_database_sql(&payload, "myks").unwrap();
+        assert_eq!(
+            sql,
+            "CREATE KEYSPACE IF NOT EXISTS \"myks\" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
+        );
+    }
+
+    #[test]
+    fn build_cassandra_create_database_sql_no_if_not_exists() {
+        let mut payload = empty_payload();
+        payload.if_not_exists = Some(false);
+        let sql = build_cassandra_create_database_sql(&payload, "myks").unwrap();
+        assert_eq!(
+            sql,
+            "CREATE KEYSPACE \"myks\" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
+        );
+    }
+
+    #[test]
+    fn build_cassandra_create_database_sql_rejects_charset() {
+        let mut payload = empty_payload();
+        payload.charset = Some("utf8".to_string());
+        assert!(build_cassandra_create_database_sql(&payload, "myks").is_err());
+    }
+
+    #[test]
+    fn build_cassandra_create_database_sql_rejects_collation() {
+        let mut payload = empty_payload();
+        payload.collation = Some("utf8_general_ci".to_string());
+        assert!(build_cassandra_create_database_sql(&payload, "myks").is_err());
+    }
+
+    #[test]
+    fn build_cassandra_create_database_sql_rejects_encoding() {
+        let mut payload = empty_payload();
+        payload.encoding = Some("UTF8".to_string());
+        assert!(build_cassandra_create_database_sql(&payload, "myks").is_err());
+    }
+
+    #[test]
+    fn build_cassandra_create_database_sql_rejects_lc_collate() {
+        let mut payload = empty_payload();
+        payload.lc_collate = Some("en_US".to_string());
+        assert!(build_cassandra_create_database_sql(&payload, "myks").is_err());
+    }
+
+    #[test]
+    fn build_cassandra_create_database_sql_rejects_lc_ctype() {
+        let mut payload = empty_payload();
+        payload.lc_ctype = Some("en_US".to_string());
+        assert!(build_cassandra_create_database_sql(&payload, "myks").is_err());
+    }
+
+    // --- normalize_create_database_error ---
+
+    #[test]
+    fn normalize_create_database_error_already_exists_mysql() {
+        let err = AppError::query_failed("Error 1007: Can't create database; database exists");
+        let normalized = normalize_create_database_error(err, "mydb");
+        assert_eq!(normalized.code(), codes::ALREADY_EXISTS);
+        assert!(normalized.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn normalize_create_database_error_already_exists_pg() {
+        let err = AppError::query_failed("42P04: database \"mydb\" already exists");
+        let normalized = normalize_create_database_error(err, "mydb");
+        assert_eq!(normalized.code(), codes::ALREADY_EXISTS);
+    }
+
+    #[test]
+    fn normalize_create_database_error_already_exists_duplicate() {
+        let err = AppError::query_failed("duplicate database name");
+        let normalized = normalize_create_database_error(err, "mydb");
+        assert_eq!(normalized.code(), codes::ALREADY_EXISTS);
+    }
+
+    #[test]
+    fn normalize_create_database_error_permission_denied() {
+        let err = AppError::query_failed("permission denied for database");
+        let normalized = normalize_create_database_error(err, "mydb");
+        assert_eq!(normalized.code(), codes::PERMISSION_DENIED);
+    }
+
+    #[test]
+    fn normalize_create_database_error_access_denied() {
+        let err = AppError::query_failed("Access denied for user");
+        let normalized = normalize_create_database_error(err, "mydb");
+        assert_eq!(normalized.code(), codes::PERMISSION_DENIED);
+    }
+
+    #[test]
+    fn normalize_create_database_error_passthrough_other() {
+        let err = AppError::query_failed("some other error");
+        let normalized = normalize_create_database_error(err, "mydb");
+        assert_eq!(normalized.code(), codes::QUERY_FAILED);
+    }
+}
+
 pub async fn test_connection_ephemeral(
     form: ConnectionForm,
 ) -> Result<TestConnectionResult, AppError> {

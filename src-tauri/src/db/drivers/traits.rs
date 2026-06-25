@@ -174,3 +174,82 @@ pub trait ForeignKeyDriver: DatabaseDriver {
         database: Option<&str>,
     ) -> DriverResult<Vec<SchemaForeignKey>>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capabilities_empty_by_default() {
+        let caps = DriverCapabilities::empty();
+        assert_eq!(caps.bits(), 0);
+        assert!(!caps.contains(DriverCapabilities::ROUTINES));
+        assert!(!caps.contains(DriverCapabilities::EVENTS));
+    }
+
+    #[test]
+    fn capabilities_single_flag() {
+        let caps = DriverCapabilities::ROUTINES;
+        assert!(caps.contains(DriverCapabilities::ROUTINES));
+        assert!(!caps.contains(DriverCapabilities::EVENTS));
+    }
+
+    #[test]
+    fn capabilities_combined_flags() {
+        let caps = DriverCapabilities::ROUTINES
+            | DriverCapabilities::EVENTS
+            | DriverCapabilities::SEQUENCES;
+        assert!(caps.contains(DriverCapabilities::ROUTINES));
+        assert!(caps.contains(DriverCapabilities::EVENTS));
+        assert!(caps.contains(DriverCapabilities::SEQUENCES));
+        assert!(!caps.contains(DriverCapabilities::TYPES));
+    }
+
+    #[test]
+    fn capabilities_all_flags() {
+        let caps = DriverCapabilities::all();
+        assert!(caps.contains(DriverCapabilities::ROUTINES));
+        assert!(caps.contains(DriverCapabilities::EVENTS));
+        assert!(caps.contains(DriverCapabilities::SEQUENCES));
+        assert!(caps.contains(DriverCapabilities::TYPES));
+        assert!(caps.contains(DriverCapabilities::SYNONYMS));
+        assert!(caps.contains(DriverCapabilities::PACKAGES));
+        assert!(caps.contains(DriverCapabilities::FOREIGN_KEYS));
+        assert!(caps.contains(DriverCapabilities::QUERY_WITH_ID));
+    }
+
+    #[test]
+    fn capabilities_bits_values() {
+        assert_eq!(DriverCapabilities::ROUTINES.bits(), 0b0000_0001);
+        assert_eq!(DriverCapabilities::EVENTS.bits(), 0b0000_0010);
+        assert_eq!(DriverCapabilities::SEQUENCES.bits(), 0b0000_0100);
+        assert_eq!(DriverCapabilities::TYPES.bits(), 0b0000_1000);
+        assert_eq!(DriverCapabilities::SYNONYMS.bits(), 0b0001_0000);
+        assert_eq!(DriverCapabilities::PACKAGES.bits(), 0b0010_0000);
+        assert_eq!(DriverCapabilities::FOREIGN_KEYS.bits(), 0b0100_0000);
+        assert_eq!(DriverCapabilities::QUERY_WITH_ID.bits(), 0b1000_0000);
+    }
+
+    #[test]
+    fn capabilities_from_bits_roundtrip() {
+        let original = DriverCapabilities::ROUTINES | DriverCapabilities::FOREIGN_KEYS;
+        let bits = original.bits();
+        let restored = DriverCapabilities::from_bits_truncate(bits);
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn capabilities_debug_format() {
+        let caps = DriverCapabilities::ROUTINES | DriverCapabilities::EVENTS;
+        let debug = format!("{:?}", caps);
+        assert!(debug.contains("ROUTINES"));
+        assert!(debug.contains("EVENTS"));
+    }
+
+    #[test]
+    fn capabilities_clone_and_eq() {
+        let caps = DriverCapabilities::SYNONYMS | DriverCapabilities::PACKAGES;
+        let cloned = caps.clone();
+        assert_eq!(caps, cloned);
+    }
+}

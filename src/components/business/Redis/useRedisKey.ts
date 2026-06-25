@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/services/api";
 import type { RedisKeyValue, RedisValue } from "@/services/api";
 import { toast } from "sonner";
@@ -99,7 +99,7 @@ export function useRedisKey({
   const jsonModuleMissing =
     value.kind === "json" && record?.extra?.subtype === "json-module-missing";
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (isCreateMode) {
       setRecord(null);
       setKeyName("");
@@ -135,11 +135,11 @@ export function useRedisKey({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isCreateMode, connectionId, database, redisKey, t]);
 
   useEffect(() => {
     void load();
-  }, [connectionId, database, redisKey, isCreateMode]);
+  }, [connectionId, database, redisKey, isCreateMode, load]);
 
   const handleLoadMore = async () => {
     if (!record) return;

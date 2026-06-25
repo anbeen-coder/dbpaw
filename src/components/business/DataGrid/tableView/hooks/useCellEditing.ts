@@ -171,12 +171,7 @@ export function useCellEditing({
         setTableColumns([]);
         setColumnComments({});
       });
-  }, [
-    tableContext?.connectionId,
-    tableContext?.database,
-    tableContext?.schema,
-    tableContext?.table,
-  ]);
+  }, [tableContext]);
 
   // Clear pending changes when data/page changes
   useEffect(() => {

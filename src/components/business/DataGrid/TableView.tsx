@@ -309,7 +309,7 @@ export function TableView({
       }
       handleCellClickBase(rowIndex, col);
     },
-    [handleCellClickBase],
+    [handleCellClickBase, commitEditRef, editingCellRef],
   );
 
   const handleCellMouseDownForRange = useCallback(
@@ -317,7 +317,7 @@ export function TableView({
       if (editingCellRef.current) return;
       handleCellMouseDownForRangeBase(e, rowIndex, colIndex, columns);
     },
-    [handleCellMouseDownForRangeBase, columns],
+    [handleCellMouseDownForRangeBase, columns, editingCellRef],
   );
 
   const {
@@ -389,7 +389,7 @@ export function TableView({
       target.focus();
       setPendingFocusDraftId(null);
     });
-  }, [insertDraftRows, pendingFocusDraftId]);
+  }, [insertDraftRows, pendingFocusDraftId, setPendingFocusDraftId]);
 
   useTableHotkeys({
     containerRef,

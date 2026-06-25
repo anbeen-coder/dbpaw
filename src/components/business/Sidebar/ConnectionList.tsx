@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import type { ConnectionForm, RoutineType, SavedQuery } from "@/services/api";
 import type { DatabaseGroupConfig } from "@/lib/tree-adapters/types";
@@ -177,6 +177,9 @@ export function ConnectionList({
     listDatabases: (connection) => getAdapter(connection).listDatabases(),
   });
 
+  const fetchConnectionsRef = useRef(fetchConnections);
+  fetchConnectionsRef.current = fetchConnections;
+
   const {
     databaseEvents,
     databaseSequences,
@@ -352,7 +355,7 @@ export function ConnectionList({
   });
 
   useEffect(() => {
-    fetchConnections();
+    fetchConnectionsRef.current();
   }, []);
 
   const handleTableClick = (

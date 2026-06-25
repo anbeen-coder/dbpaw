@@ -93,7 +93,7 @@ export function useRedisKeys(params: {
       );
       return newKeys;
     },
-    [searchTerm],
+    [searchTerm, connectionsRef, setConnections],
   );
 
   return { loadRedisKeysPage, redisKeyToTableInfo };

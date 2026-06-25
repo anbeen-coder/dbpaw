@@ -147,7 +147,7 @@ export function useConnectionTreeSearch(options: {
         return next;
       });
     }
-  }, [searchTerm, filteredConnections, showSavedQueriesInTree]);
+  }, [searchTerm, filteredConnections, showSavedQueriesInTree, setExpandedConnections, setExpandedDatabaseGroups, setExpandedDatabases, setExpandedQueryGroups, setExpandedSchemas]);
 
   return {
     searchTerm,

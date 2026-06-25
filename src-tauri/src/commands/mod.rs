@@ -235,6 +235,9 @@ mod tests {
         async fn list_databases(&self) -> DriverResult<Vec<String>> {
             Ok(vec![])
         }
+        async fn list_schemas(&self) -> DriverResult<Vec<String>> {
+            Ok(vec![])
+        }
         async fn list_tables(&self, _schema: Option<String>) -> DriverResult<Vec<TableInfo>> {
             Ok(vec![])
         }

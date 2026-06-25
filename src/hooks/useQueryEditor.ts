@@ -38,8 +38,19 @@ export function useQueryEditor({
   );
 
   const fetchEditorSchemaOverview = useCallback(
-    async (connectionId: number, database?: string) =>
-      api.metadata.getSchemaOverview(connectionId, database),
+    async (connectionId: number, database?: string, schema?: string) =>
+      api.metadata.getSchemaOverview(connectionId, database, schema),
+    [],
+  );
+
+  const fetchEditorSchemas = useCallback(
+    async (connectionId: number, database?: string) => {
+      try {
+        return await api.metadata.listSchemas(connectionId, database);
+      } catch {
+        return [];
+      }
+    },
     [],
   );
 
@@ -84,7 +95,8 @@ export function useQueryEditor({
       Promise.allSettled([
         fetchEditorDatabases(connectionId, initialDatabase),
         fetchEditorSchemaOverview(connectionId, initialDatabase),
-      ]).then(([availableDatabasesResult, schemaOverviewResult]) => {
+        fetchEditorSchemas(connectionId, initialDatabase),
+      ]).then(([availableDatabasesResult, schemaOverviewResult, schemasResult]) => {
         if (availableDatabasesResult.status === "rejected") {
           console.error(
             "Failed to load editor databases:",
@@ -109,6 +121,10 @@ export function useQueryEditor({
           schemaOverviewResult.status === "fulfilled"
             ? schemaOverviewResult.value
             : undefined;
+        const availableSchemas =
+          schemasResult.status === "fulfilled" ? schemasResult.value : [];
+        const currentSchema =
+          availableSchemas.length > 0 ? availableSchemas[0] : undefined;
 
         setTabs((prev) =>
           prev.map((t) =>
@@ -122,6 +138,8 @@ export function useQueryEditor({
                   }),
                   availableDatabases,
                   schemaOverview,
+                  availableSchemas,
+                  currentSchema,
                 }
               : t,
           ),
@@ -353,21 +371,30 @@ export function useQueryEditor({
                 activeQueryId: undefined,
                 schemaOverview: undefined,
                 crossDbSchemaCache: undefined,
+                availableSchemas: undefined,
+                currentSchema: undefined,
               }
             : item,
         ),
       );
 
       try {
-        const schemaOverview = await fetchEditorSchemaOverview(
-          tab.connectionId,
-          database,
-        );
+        const schemas = await fetchEditorSchemas(tab.connectionId, database);
         if (schemaOverviewRequestKeysRef.current.get(tabId) !== requestKey)
           return;
+        const currentSchema = schemas.length > 0 ? schemas[0] : undefined;
+
+        const schemaOverview = currentSchema
+          ? await fetchEditorSchemaOverview(tab.connectionId, database, currentSchema)
+          : await fetchEditorSchemaOverview(tab.connectionId, database);
+        if (schemaOverviewRequestKeysRef.current.get(tabId) !== requestKey)
+          return;
+
         setTabs((prev) =>
           prev.map((item) =>
-            item.id === tabId ? { ...item, schemaOverview } : item,
+            item.id === tabId
+              ? { ...item, schemaOverview, availableSchemas: schemas, currentSchema }
+              : item,
           ),
         );
       } catch (e) {
@@ -380,7 +407,7 @@ export function useQueryEditor({
         });
       }
     },
-    [fetchEditorSchemaOverview, t, tabs, setTabs],
+    [fetchEditorSchemaOverview, fetchEditorSchemas, t, tabs, setTabs],
   );
 
   const handleCrossDbSchemaLoad = useCallback(
@@ -411,6 +438,35 @@ export function useQueryEditor({
           `Failed to load schema overview for cross-DB "${dbName}":`,
           errorMessage(e),
         );
+      }
+    },
+    [fetchEditorSchemaOverview, setTabs, tabs],
+  );
+
+  const handleEditorSchemaChange = useCallback(
+    async (tabId: string, schema: string) => {
+      const tab = tabs.find((item) => item.id === tabId);
+      if (!tab || tab.type !== "editor" || !tab.connectionId) return;
+
+      setTabs((prev) =>
+        prev.map((item) =>
+          item.id === tabId ? { ...item, currentSchema: schema } : item,
+        ),
+      );
+
+      try {
+        const schemaOverview = await fetchEditorSchemaOverview(
+          tab.connectionId,
+          tab.database,
+          schema,
+        );
+        setTabs((prev) =>
+          prev.map((item) =>
+            item.id === tabId ? { ...item, schemaOverview } : item,
+          ),
+        );
+      } catch (e) {
+        console.error("Failed to load schema overview for schema:", schema, errorMessage(e));
       }
     },
     [fetchEditorSchemaOverview, setTabs, tabs],
@@ -466,6 +522,7 @@ export function useQueryEditor({
     handleSqlChange,
     handleExecuteQuery,
     handleEditorDatabaseChange,
+    handleEditorSchemaChange,
     handleCrossDbSchemaLoad,
     saveEditorTab,
   };

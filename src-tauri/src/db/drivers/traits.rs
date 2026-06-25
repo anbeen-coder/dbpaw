@@ -31,6 +31,9 @@ pub trait DatabaseDriver: Send + Sync {
 
     async fn test_connection(&self) -> DriverResult<()>;
     async fn list_databases(&self) -> DriverResult<Vec<String>>;
+    async fn list_schemas(&self) -> DriverResult<Vec<String>> {
+        Ok(vec![])
+    }
     async fn list_tables(&self, schema: Option<String>) -> DriverResult<Vec<TableInfo>>;
     async fn list_routines(&self, schema: Option<String>) -> DriverResult<Vec<RoutineInfo>> {
         let _ = schema;

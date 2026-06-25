@@ -17,6 +17,7 @@ type MetadataCommand = Extract<keyof CommandMap,
   | "list_tables_by_conn"
   | "list_databases"
   | "list_databases_by_id"
+  | "list_schemas"
   | "get_schema_overview"
   | "get_schema_foreign_keys"
   | "list_events"
@@ -542,6 +543,9 @@ export function handleMetadata<T extends MetadataCommand>(
     case COMMANDS.LIST_DATABASES_BY_ID: {
       const a = args as CommandArgs<"list_databases_by_id">;
       return mockListDatabasesById(a.id) as Promise<CommandReturn<T>>;
+    }
+    case COMMANDS.LIST_SCHEMAS: {
+      return Promise.resolve(["public", "auth", "analytics"] as CommandReturn<T>);
     }
     case COMMANDS.GET_SCHEMA_OVERVIEW: {
       const a = args as CommandArgs<"get_schema_overview">;

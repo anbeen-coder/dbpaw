@@ -29,6 +29,8 @@ export interface EditorTabItem {
   savedQueryId?: number;
   savedQueryDescription?: string;
   availableDatabases?: string[];
+  availableSchemas?: string[];
+  currentSchema?: string;
 }
 
 export interface TableTabItem {

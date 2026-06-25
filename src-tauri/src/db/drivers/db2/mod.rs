@@ -58,6 +58,10 @@ impl DatabaseDriver for Db2Driver {
         self.metadata.list_databases().await
     }
 
+    async fn list_schemas(&self) -> DriverResult<Vec<String>> {
+        self.list_databases().await
+    }
+
     async fn list_tables(&self, schema: Option<String>) -> DriverResult<Vec<TableInfo>> {
         self.metadata.list_tables(schema).await
     }

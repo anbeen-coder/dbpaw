@@ -337,9 +337,22 @@ mod tests {
     }
 }
 
+#[tauri::command]
+pub async fn list_schemas(
+    state: State<'_, AppState>,
+    id: i64,
+    database: Option<String>,
+) -> Result<Vec<String>, AppError> {
+    super::execute_with_retry_from_app_state(&state, id, database, |driver| async move {
+        driver.list_schemas().await
+    })
+    .await
+}
+
 #[macro_export]
 macro_rules! metadata_commands {
     () => {
+        $crate::commands::metadata::list_schemas,
         $crate::commands::metadata::list_tables,
         $crate::commands::metadata::list_routines,
         $crate::commands::metadata::list_events,

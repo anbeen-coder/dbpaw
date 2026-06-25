@@ -38,6 +38,10 @@ interface SqlToolbarProps {
   savedQueryId?: number;
   schemaOverview?: SchemaOverview;
   onDatabaseChange?: (database: string) => void;
+  availableSchemas?: string[];
+  currentSchema?: string;
+  onSchemaChange?: (schema: string) => void;
+  canSwitchSchema: boolean;
   isExecuting?: boolean;
   isFormatting: boolean;
   onExecute: () => void;
@@ -63,6 +67,10 @@ export function SqlToolbar({
   savedQueryId,
   schemaOverview,
   onDatabaseChange,
+  availableSchemas,
+  currentSchema,
+  onSchemaChange,
+  canSwitchSchema,
   isExecuting,
   isFormatting,
   onExecute,
@@ -103,6 +111,26 @@ export function SqlToolbar({
                   ))}
                 </SelectContent>
               </Select>
+              {canSwitchSchema && (
+                <Select value={currentSchema} onValueChange={onSchemaChange}>
+                  <SelectTrigger
+                    size="sm"
+                    className="h-8 min-w-[140px] bg-muted/50 text-xs"
+                    aria-label={t("sqlEditor.schema.ariaLabel")}
+                  >
+                    <SelectValue
+                      placeholder={t("sqlEditor.schema.placeholder")}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSchemas?.map((schema) => (
+                      <SelectItem key={schema} value={schema}>
+                        {schema}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {savedQueryId && (
                 <span className="text-[10px] opacity-50">
                   #{savedQueryId}

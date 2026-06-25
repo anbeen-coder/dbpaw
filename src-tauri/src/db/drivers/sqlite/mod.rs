@@ -50,6 +50,10 @@ impl DatabaseDriver for SqliteDriver {
         self.metadata.list_databases().await
     }
 
+    async fn list_schemas(&self) -> DriverResult<Vec<String>> {
+        Ok(vec!["main".to_string()])
+    }
+
     async fn list_tables(&self, schema: Option<String>) -> DriverResult<Vec<TableInfo>> {
         self.metadata.list_tables(schema).await
     }

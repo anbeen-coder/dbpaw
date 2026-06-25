@@ -243,6 +243,19 @@ impl PostgresMetadata {
         Ok(rows.into_iter().map(|r| r.0).collect())
     }
 
+    pub async fn list_schemas(&self) -> Result<Vec<String>, AppError> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT nspname FROM pg_namespace \
+             WHERE nspname NOT LIKE 'pg_%' \
+               AND nspname != 'information_schema' \
+             ORDER BY nspname",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| query_error(e.to_string()))?;
+        Ok(rows.into_iter().map(|r| r.0).collect())
+    }
+
     pub async fn list_tables(&self, schema: Option<String>) -> Result<Vec<TableInfo>, AppError> {
         let rows = if let Some(schema) = schema {
             sqlx::query(

@@ -50,6 +50,10 @@ impl DatabaseDriver for MssqlDriver {
         self.list_databases_impl().await
     }
 
+    async fn list_schemas(&self) -> DriverResult<Vec<String>> {
+        self.list_schemas_impl().await
+    }
+
     async fn list_tables(&self, schema: Option<String>) -> DriverResult<Vec<TableInfo>> {
         self.list_tables_impl(schema).await
     }

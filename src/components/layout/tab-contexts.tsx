@@ -36,6 +36,7 @@ interface EditorActions {
     database: string,
   ) => Promise<void>;
   handleCrossDbSchemaLoad: (tabId: string, dbName: string) => Promise<void>;
+  handleEditorSchemaChange: (tabId: string, schema: string) => Promise<void>;
   setQueriesLastUpdated: (timestamp: number) => void;
   setTabs: React.Dispatch<React.SetStateAction<TabItem[]>>;
   isDefaultQueryTitle: (title?: string) => boolean;
@@ -171,6 +172,7 @@ export function TabActionsProvider({
           handleSqlChange: p.handleSqlChange,
           handleEditorDatabaseChange: p.handleEditorDatabaseChange,
           handleCrossDbSchemaLoad: p.handleCrossDbSchemaLoad,
+          handleEditorSchemaChange: p.handleEditorSchemaChange,
           setQueriesLastUpdated: p.setQueriesLastUpdated,
           setTabs: p.setTabs,
           isDefaultQueryTitle: p.isDefaultQueryTitle,

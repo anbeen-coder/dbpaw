@@ -187,6 +187,7 @@ pub fn run() {
             commands::connection::test_connection_ephemeral,
             commands::connection::list_databases,
             commands::connection::list_databases_by_id,
+            commands::metadata::list_schemas,
             commands::connection::create_database_by_id,
             commands::connection::get_mysql_charsets_by_id,
             commands::connection::get_mysql_collations_by_id,

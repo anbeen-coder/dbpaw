@@ -3,6 +3,10 @@ export const sqlEditor = {
     ariaLabel: "切换数据库",
     placeholder: "选择数据库",
   },
+  schema: {
+    ariaLabel: "切换 Schema",
+    placeholder: "选择 Schema",
+  },
   result: {
     failed: "结果：执行失败。",
     success: "结果：执行成功。",

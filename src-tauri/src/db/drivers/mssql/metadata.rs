@@ -442,6 +442,17 @@ impl MssqlDriver {
             .collect())
     }
 
+    pub(crate) async fn list_schemas_impl(&self) -> DriverResult<Vec<String>> {
+        let rows = self
+            .fetch_rows("SELECT name FROM sys.schemas ORDER BY name")
+            .await?;
+        Ok(rows
+            .iter()
+            .map(|row| Self::parse_string(row, 0))
+            .filter(|s| !s.is_empty())
+            .collect())
+    }
+
     pub(crate) async fn list_tables_impl(
         &self,
         schema: Option<String>,

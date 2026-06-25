@@ -113,6 +113,7 @@ export interface TabContentRendererProps {
     database: string,
   ) => Promise<void>;
   handleCrossDbSchemaLoad: (tabId: string, dbName: string) => Promise<void>;
+  handleEditorSchemaChange: (tabId: string, schema: string) => Promise<void>;
   handlePageChange: (tabId: string, page: number) => Promise<void>;
   handlePageSizeChange: (tabId: string, pageSize: number) => Promise<void>;
   handleSortChange: (
@@ -168,6 +169,7 @@ function EditorTab({ tab }: { tab: EditorTabItem }) {
     handleSqlChange,
     handleEditorDatabaseChange,
     handleCrossDbSchemaLoad,
+    handleEditorSchemaChange,
     setQueriesLastUpdated,
     setTabs,
     isDefaultQueryTitle,
@@ -193,6 +195,11 @@ function EditorTab({ tab }: { tab: EditorTabItem }) {
         onChange={(sql) => handleSqlChange(tab.id, sql)}
         onDatabaseChange={(database) =>
           void handleEditorDatabaseChange(tab.id, database)
+        }
+        availableSchemas={tab.availableSchemas}
+        currentSchema={tab.currentSchema}
+        onSchemaChange={(schema) =>
+          void handleEditorSchemaChange(tab.id, schema)
         }
         connectionId={tab.connectionId}
         driver={tab.driver}

@@ -59,6 +59,8 @@ export const metadataApi = {
       invoke(COMMANDS.LIST_DATABASES, { form }),
     listDatabasesById: (id: number) =>
       invoke(COMMANDS.LIST_DATABASES_BY_ID, { id }),
+    listSchemas: (id: number, database?: string) =>
+      invoke(COMMANDS.LIST_SCHEMAS, { id, database }),
     getSchemaOverview: (id: number, database?: string, schema?: string) =>
       invoke(COMMANDS.GET_SCHEMA_OVERVIEW, { id, database, schema }),
     getSchemaForeignKeys: (id: number, database?: string, schema?: string) =>

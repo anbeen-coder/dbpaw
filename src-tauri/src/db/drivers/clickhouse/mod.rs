@@ -57,6 +57,10 @@ impl DatabaseDriver for ClickHouseDriver {
         Ok(out)
     }
 
+    async fn list_schemas(&self) -> DriverResult<Vec<String>> {
+        self.list_databases().await
+    }
+
     async fn list_tables(&self, schema: Option<String>) -> DriverResult<Vec<TableInfo>> {
         let target_schema = schema
             .filter(|s| !s.trim().is_empty())

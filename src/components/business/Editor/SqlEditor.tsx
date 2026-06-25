@@ -33,6 +33,9 @@ interface SqlEditorProps {
   value?: string;
   onChange?: (value: string) => void;
   onDatabaseChange?: (database: string) => void;
+  availableSchemas?: string[];
+  currentSchema?: string;
+  onSchemaChange?: (schema: string) => void;
   connectionId?: number;
   driver?: string;
   schemaOverview?: SchemaOverview;
@@ -54,6 +57,9 @@ export function SqlEditor({
   value,
   onChange,
   onDatabaseChange,
+  availableSchemas,
+  currentSchema,
+  onSchemaChange,
   connectionId,
   driver,
   schemaOverview,
@@ -100,6 +106,12 @@ export function SqlEditor({
     !!availableDatabases &&
     availableDatabases.length > 1;
 
+  const canSwitchSchema =
+    !!currentSchema &&
+    !!onSchemaChange &&
+    !!availableSchemas &&
+    availableSchemas.length > 1;
+
   const handleFormatClick = async () => {
     const formatted = await api.handleFormat();
     if (formatted !== undefined) {
@@ -116,6 +128,10 @@ export function SqlEditor({
         savedQueryId={savedQueryId}
         schemaOverview={schemaOverview}
         onDatabaseChange={onDatabaseChange}
+        availableSchemas={availableSchemas}
+        currentSchema={currentSchema}
+        onSchemaChange={onSchemaChange}
+        canSwitchSchema={canSwitchSchema}
         isExecuting={isExecuting}
         isFormatting={api.isFormatting}
         onExecute={actions.handleExecute}

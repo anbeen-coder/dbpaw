@@ -55,6 +55,10 @@ impl DatabaseDriver for PostgresDriver {
         self.metadata.list_databases().await
     }
 
+    async fn list_schemas(&self) -> DriverResult<Vec<String>> {
+        self.metadata.list_schemas().await
+    }
+
     async fn list_tables(&self, schema: Option<String>) -> DriverResult<Vec<TableInfo>> {
         self.metadata.list_tables(schema).await
     }

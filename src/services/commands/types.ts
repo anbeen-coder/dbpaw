@@ -234,6 +234,10 @@ export interface CommandMap {
     args: { id: number };
     return: string[];
   };
+  list_schemas: {
+    args: { id: number; database?: string };
+    return: string[];
+  };
   get_schema_overview: {
     args: { id: number; database?: string; schema?: string };
     return: SchemaOverview;

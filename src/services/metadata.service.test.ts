@@ -113,6 +113,16 @@ describe("Metadata模块", () => {
     expect(result.length).toBeGreaterThan(0);
   });
 
+  test("list_schemas - 列出schemas", async () => {
+    const result = await invokeMock<string[]>(
+      "list_schemas",
+      { id: 1, database: "testdb" }
+    );
+    expect(result).toBeDefined();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBeGreaterThan(0);
+  });
+
   test("get_schema_overview - 获取schema概览", async () => {
     const result = await invokeMock<any>(
       "get_schema_overview",

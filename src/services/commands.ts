@@ -34,6 +34,7 @@ export const COMMANDS = {
   LIST_TABLES_BY_CONN: "list_tables_by_conn",
   LIST_DATABASES: "list_databases",
   LIST_DATABASES_BY_ID: "list_databases_by_id",
+  LIST_SCHEMAS: "list_schemas",
   GET_SCHEMA_OVERVIEW: "get_schema_overview",
   GET_SCHEMA_FOREIGN_KEYS: "get_schema_foreign_keys",
   LIST_EVENTS: "list_events",

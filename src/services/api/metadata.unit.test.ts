@@ -142,6 +142,27 @@ describe("metadataApi.metadata.listDatabasesById", () => {
   });
 });
 
+describe("metadataApi.metadata.listSchemas", () => {
+  test("invokes list_schemas with id and database", async () => {
+    mockReturn = ["public", "auth", "analytics"];
+
+    const result = await metadataApi.metadata.listSchemas(1, "testdb");
+
+    expect(capturedCmd).toBe("list_schemas");
+    expect(capturedArgs).toEqual({ id: 1, database: "testdb" });
+    expect(result).toEqual(["public", "auth", "analytics"]);
+  });
+
+  test("invokes list_schemas without database", async () => {
+    mockReturn = ["public"];
+
+    await metadataApi.metadata.listSchemas(5);
+
+    expect(capturedCmd).toBe("list_schemas");
+    expect(capturedArgs).toEqual({ id: 5, database: undefined });
+  });
+});
+
 describe("metadataApi.metadata.getSchemaOverview", () => {
   test("invokes get_schema_overview", async () => {
     mockReturn = { tables: [] };

@@ -475,6 +475,185 @@ test.describe("DataGrid", () => {
         "Save and discard should not emit runtime errors",
       );
     });
+
+    test("Tab key commits edit and moves right", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Double-click the username cell of the first row (col-index 1)
+      const usernameCell = page.locator(
+        '[data-row-index="0"][data-col-index="1"]',
+      );
+      await usernameCell.dblclick();
+
+      // Edit value and press Tab
+      const input = usernameCell.locator("input");
+      await input.clear();
+      await input.fill("tab_edited");
+      await input.press("Tab");
+
+      // Verify edit was committed
+      await expect(usernameCell).toContainText("tab_edited");
+      await expect(usernameCell).toHaveClass(/border-l-orange-400/);
+
+      // Verify email cell (col-index 2) is now selected
+      const emailCell = page.locator(
+        '[data-row-index="0"][data-col-index="2"]',
+      );
+      await expect(emailCell).toHaveClass(/ring-2/);
+
+      runtimeErrors.assertClean(
+        "Tab key commit should not emit runtime errors",
+      );
+    });
+
+    test("multi-cell edit shows all pending changes", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Edit first cell (username)
+      const usernameCell = page.locator(
+        '[data-row-index="0"][data-col-index="1"]',
+      );
+      await usernameCell.dblclick();
+      const usernameInput = usernameCell.locator("input");
+      await usernameInput.clear();
+      await usernameInput.fill("new_alice");
+      await usernameInput.press("Enter");
+
+      // Edit second cell (email)
+      const emailCell = page.locator(
+        '[data-row-index="0"][data-col-index="2"]',
+      );
+      await emailCell.dblclick();
+      const emailInput = emailCell.locator("input");
+      await emailInput.clear();
+      await emailInput.fill("new@example.com");
+      await emailInput.press("Enter");
+
+      // Verify both cells show modified indicator
+      await expect(usernameCell).toHaveClass(/border-l-orange-400/);
+      await expect(emailCell).toHaveClass(/border-l-orange-400/);
+
+      // Verify Save button is visible
+      await expect(page.getByLabel("Save")).toBeVisible();
+
+      runtimeErrors.assertClean(
+        "Multi-cell edit should not emit runtime errors",
+      );
+    });
+
+    test("draft row add, fill, and save", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Click Add row button
+      await page.getByLabel("Add row").click();
+
+      // Verify draft row appears with input fields (draft rows have data-draft-id)
+      const draftInput = page.locator('input[data-draft-col-index="0"]');
+      await expect(draftInput).toBeVisible();
+
+      // Fill id column (first input in draft row)
+      await draftInput.fill("999");
+
+      // Fill username column (second input)
+      const usernameInput = page.locator('input[data-draft-col-index="1"]');
+      await usernameInput.fill("draft_user");
+
+      // Verify Save button is visible
+      await expect(page.getByLabel("Save")).toBeVisible();
+
+      // Save the changes
+      await page.getByLabel("Save").click();
+
+      // Verify Save button disappears
+      await expect(page.getByLabel("Save")).toBeHidden();
+
+      runtimeErrors.assertClean(
+        "Draft row add and save should not emit runtime errors",
+      );
+    });
+
+    test("edit with WHERE filter applied", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Apply WHERE filter
+      const whereInput = page.locator('input[placeholder="WHERE ..."]');
+      await whereInput.fill("username = 'alice'");
+      await whereInput.press("Enter");
+
+      // Wait for filtered data
+      await expect(page.getByText("alice", { exact: true })).toBeVisible();
+
+      // Edit alice's email cell
+      const emailCell = page.locator(
+        '[data-row-index="0"][data-col-index="2"]',
+      );
+      await emailCell.dblclick();
+      const input = emailCell.locator("input");
+      await input.clear();
+      await input.fill("filtered_edit@example.com");
+      await input.press("Enter");
+
+      // Verify edit was applied
+      await expect(emailCell).toContainText("filtered_edit@example.com");
+      await expect(emailCell).toHaveClass(/border-l-orange-400/);
+
+      // Verify Save button appears
+      await expect(page.getByLabel("Save")).toBeVisible();
+
+      runtimeErrors.assertClean(
+        "Edit with filter should not emit runtime errors",
+      );
+    });
+
+    test("edit cell to NULL value", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Edit email cell to empty (NULL)
+      const emailCell = page.locator(
+        '[data-row-index="0"][data-col-index="2"]',
+      );
+      await emailCell.dblclick();
+      const input = emailCell.locator("input");
+      await input.clear();
+      await input.press("Enter");
+
+      // Verify cell shows NULL or empty
+      await expect(emailCell).toHaveClass(/border-l-orange-400/);
+
+      // Verify Save button appears
+      await expect(page.getByLabel("Save")).toBeVisible();
+
+      runtimeErrors.assertClean(
+        "NULL value edit should not emit runtime errors",
+      );
+    });
+
+    test("Ctrl+S triggers save when changes pending", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Edit a cell
+      const cell = page.locator(
+        '[data-row-index="0"][data-col-index="1"]',
+      );
+      await cell.dblclick();
+      const input = cell.locator("input");
+      await input.clear();
+      await input.fill("ctrl_s_test");
+      await input.press("Enter");
+
+      // Verify Save button is visible
+      await expect(page.getByLabel("Save")).toBeVisible();
+
+      // Press Ctrl+S to save
+      await page.keyboard.press("Control+s");
+
+      // Verify Save button disappears after save
+      await expect(page.getByLabel("Save")).toBeHidden();
+
+      runtimeErrors.assertClean(
+        "Ctrl+S save should not emit runtime errors",
+      );
+    });
   });
 
   test.describe("Export", () => {

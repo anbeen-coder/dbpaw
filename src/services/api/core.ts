@@ -1,5 +1,4 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { invokeMock } from "@/services/mocks";
 import {
   getImportDriverCapability,
   type ImportDriverCapability,
@@ -31,6 +30,7 @@ export async function invoke<T>(cmd: string, args?: any): Promise<T> {
     return tauriInvoke(cmd, args);
   }
   if (isMockModeEnabled()) {
+    const { invokeMock } = await import("@/services/mocks");
     return invokeMock(cmd, args) as Promise<T>;
   }
   console.warn(`[API] invoke ${cmd}`, args);

@@ -12,14 +12,11 @@ const isMockModeEnabled = () => {
   return import.meta.env.VITE_USE_MOCK === "true";
 };
 
-// Typed overload — constrains args and return to CommandMap
-export function invoke<T extends keyof CommandMap>(
-  cmd: T,
-  args: CommandArgs<T>,
-): Promise<CommandReturn<T>>;
-
-// Legacy overload — for commands not yet in CommandMap
-export function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
+// Single typed overload — args and return constrained by CommandMap
+export function invoke<C extends keyof CommandMap>(
+  cmd: C,
+  args: CommandArgs<C>,
+): Promise<CommandReturn<C>>;
 
 // Implementation (unchanged)
 export async function invoke<T>(cmd: string, args?: any): Promise<T> {

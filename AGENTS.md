@@ -44,6 +44,10 @@ it never happens again.
 - `src/services/api/core.ts` is the **only** file that calls `invoke()`. Never
   call `@tauri-apps/api/core` invoke directly from components or other services.
   Domain wrappers live in `src/services/api/{query,metadata,redis,...}.ts`.
+- `invoke()` in `src/services/api/core.ts` has a single typed overload
+  constrained by `CommandMap`. Never write `invoke<ReturnType>(...)` — the
+  return type is inferred from the command name. Explicit generics bypass
+  type checking by falling through to an unconstrained overload.
 - When a Tauri command's parameter types change, update **both**:
   - The Rust `#[tauri::command]` signature
   - The corresponding TypeScript wrapper in `src/services/api/`

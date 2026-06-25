@@ -1,5 +1,5 @@
 import { Store } from "@tauri-apps/plugin-store";
-import { isTauri } from "./api";
+import { isTauri } from "./platform";
 
 // Initialize the store lazily. "settings.json" will be created in the app's appData directory.
 // We use a singleton pattern to ensure we're always using the same store instance.

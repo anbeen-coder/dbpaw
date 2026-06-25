@@ -4,13 +4,10 @@ import {
   getImportDriverCapability,
   type ImportDriverCapability,
 } from "@/lib/driver-metadata";
+import { isTauri } from "../platform";
 
-export { getImportDriverCapability, type ImportDriverCapability };
+export { isTauri, getImportDriverCapability, type ImportDriverCapability };
 import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
-
-export const isTauri = () => {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-};
 
 const isMockModeEnabled = () => {
   return import.meta.env.VITE_USE_MOCK === "true";
@@ -37,12 +34,4 @@ export async function invoke<T>(cmd: string, args?: any): Promise<T> {
   throw new Error(
     "Tauri API not available. Please run 'bun tauri dev' or enable Mock mode with 'VITE_USE_MOCK=true'.",
   );
-};
-
-export const normalizeImportDriver = (driver: string): string => {
-  const normalized = (driver || "").trim().toLowerCase();
-  if (normalized === "postgresql" || normalized === "pgsql") {
-    return "postgres";
-  }
-  return normalized;
 };

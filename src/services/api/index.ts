@@ -1,6 +1,7 @@
 export * from "../types";
 
-export { isTauri, normalizeImportDriver, getImportDriverCapability } from "./core";
+export { isTauri, normalizeImportDriver } from "../platform";
+export { getImportDriverCapability } from "./core";
 
 import { queryApi } from "./query";
 import { metadataApi } from "./metadata";

@@ -1,9 +1,11 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { invokeMock } from "@/services/mocks";
 import {
-  DRIVER_REGISTRY,
+  getImportDriverCapability,
   type ImportDriverCapability,
-} from "@/lib/driver-registry";
+} from "@/lib/driver-metadata";
+
+export { getImportDriverCapability, type ImportDriverCapability };
 import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
 
 export const isTauri = () => {
@@ -43,12 +45,4 @@ export const normalizeImportDriver = (driver: string): string => {
     return "postgres";
   }
   return normalized;
-};
-
-export const getImportDriverCapability = (
-  driver: string,
-): ImportDriverCapability => {
-  const normalized = normalizeImportDriver(driver);
-  const config = DRIVER_REGISTRY.find((d) => d.id === normalized);
-  return config?.importCapability ?? "unsupported";
 };

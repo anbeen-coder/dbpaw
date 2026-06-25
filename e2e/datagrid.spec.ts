@@ -334,6 +334,149 @@ test.describe("DataGrid", () => {
     });
   });
 
+  test.describe("Cell Editing", () => {
+    test("double-click cell to enter edit mode", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Double-click the username cell of the first row (alice)
+      const cell = page.locator(
+        '[data-row-index="0"][data-col-index="1"]',
+      );
+      await cell.dblclick();
+
+      // Verify input appears with current value
+      const input = cell.locator("input");
+      await expect(input).toBeVisible();
+      await expect(input).toHaveValue("alice");
+
+      runtimeErrors.assertClean(
+        "Double-click edit should not emit runtime errors",
+      );
+    });
+
+    test("commit edit with Enter", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Double-click the username cell of the first row
+      const cell = page.locator(
+        '[data-row-index="0"][data-col-index="1"]',
+      );
+      await cell.dblclick();
+
+      // Clear and type new value, then press Enter
+      const input = cell.locator("input");
+      await input.clear();
+      await input.fill("edited_name");
+      await input.press("Enter");
+
+      // Verify cell shows new value
+      await expect(cell).toContainText("edited_name");
+
+      // Verify modified indicator (orange left border)
+      await expect(cell).toHaveClass(/border-l-orange-400/);
+
+      // Verify Save button appears
+      await expect(page.getByLabel("Save")).toBeVisible();
+
+      runtimeErrors.assertClean(
+        "Commit edit with Enter should not emit runtime errors",
+      );
+    });
+
+    test("cancel edit with Escape", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Double-click the username cell of the first row
+      const cell = page.locator(
+        '[data-row-index="0"][data-col-index="1"]',
+      );
+      await cell.dblclick();
+
+      // Type something and press Escape
+      const input = cell.locator("input");
+      await input.clear();
+      await input.fill("should_not_persist");
+      await input.press("Escape");
+
+      // Verify original value is preserved
+      await expect(cell).toContainText("alice");
+
+      // Verify Save button is not visible
+      await expect(page.getByLabel("Save")).toBeHidden();
+
+      runtimeErrors.assertClean(
+        "Cancel edit with Escape should not emit runtime errors",
+      );
+    });
+
+    test("commit edit on blur (click away)", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Double-click the username cell of the first row
+      const firstCell = page.locator(
+        '[data-row-index="0"][data-col-index="1"]',
+      );
+      await firstCell.dblclick();
+
+      // Type new value
+      const input = firstCell.locator("input");
+      await input.clear();
+      await input.fill("blurred");
+
+      // Click another cell to blur
+      const secondCell = page.locator(
+        '[data-row-index="1"][data-col-index="1"]',
+      );
+      await secondCell.click();
+
+      // Verify first cell shows edited value
+      await expect(firstCell).toContainText("blurred");
+
+      runtimeErrors.assertClean(
+        "Commit edit on blur should not emit runtime errors",
+      );
+    });
+
+    test("save and discard changes", async ({ page }) => {
+      const runtimeErrors = collectRuntimeErrors(page);
+
+      // Edit a cell
+      const cell = page.locator(
+        '[data-row-index="0"][data-col-index="1"]',
+      );
+      await cell.dblclick();
+      const input = cell.locator("input");
+      await input.clear();
+      await input.fill("saved_value");
+      await input.press("Enter");
+
+      // Save the change
+      await expect(page.getByLabel("Save")).toBeVisible();
+      await page.getByLabel("Save").click();
+
+      // Verify Save button disappears after save
+      await expect(page.getByLabel("Save")).toBeHidden();
+
+      // Edit again to test discard
+      await cell.dblclick();
+      const input2 = cell.locator("input");
+      await input2.clear();
+      await input2.fill("will_be_discarded");
+      await input2.press("Enter");
+
+      // Discard the change
+      await expect(page.getByLabel("Discard")).toBeVisible();
+      await page.getByLabel("Discard").click();
+
+      // Verify original value is restored
+      await expect(cell).toContainText("alice");
+
+      runtimeErrors.assertClean(
+        "Save and discard should not emit runtime errors",
+      );
+    });
+  });
+
   test.describe("Export", () => {
     test("open export menu", async ({ page }) => {
       const runtimeErrors = collectRuntimeErrors(page);

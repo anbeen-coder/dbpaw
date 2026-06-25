@@ -3,14 +3,7 @@ import { COMMANDS } from "@/services/commands";
 import type {
   ConnectionForm,
   CreateDatabasePayload,
-  ExportResult,
   ExportScope,
-  ImportResult,
-  ImportSqlResult,
-  SavedConnection,
-  SavedQuery,
-  SqliteConnectionIssue,
-  TestConnectionResult,
   TransferFormat,
 } from "../types";
 
@@ -32,7 +25,7 @@ export const connectionsApi = {
       limit?: number;
       filePath?: string;
       chunkSize?: number;
-    }) => invoke<ExportResult>(COMMANDS.EXPORT_TABLE_DATA, params),
+    }) => invoke(COMMANDS.EXPORT_TABLE_DATA, params),
     exportDatabase: (params: {
       id: number;
       database: string;
@@ -40,7 +33,7 @@ export const connectionsApi = {
       format: "sql_dml" | "sql_ddl" | "sql_full";
       filePath?: string;
       chunkSize?: number;
-    }) => invoke<ExportResult>(COMMANDS.EXPORT_DATABASE_SQL, params),
+    }) => invoke(COMMANDS.EXPORT_DATABASE_SQL, params),
     exportQueryResult: (params: {
       id: number;
       database?: string;
@@ -48,43 +41,43 @@ export const connectionsApi = {
       driver: string;
       format: TransferFormat;
       filePath?: string;
-    }) => invoke<ExportResult>(COMMANDS.EXPORT_QUERY_RESULT, params),
+    }) => invoke(COMMANDS.EXPORT_QUERY_RESULT, params),
     importSqlFile: (params: {
       id: number;
       database?: string;
       filePath: string;
       driver: string;
-    }) => invoke<ImportSqlResult>(COMMANDS.IMPORT_SQL_FILE, params),
+    }) => invoke(COMMANDS.IMPORT_SQL_FILE, params),
   },
   connections: {
-    list: () => invoke<SavedConnection[]>(COMMANDS.GET_CONNECTIONS),
+    list: () => invoke(COMMANDS.GET_CONNECTIONS, {}),
     create: (form: ConnectionForm) =>
-      invoke<SavedConnection>(COMMANDS.CREATE_CONNECTION, { form }),
+      invoke(COMMANDS.CREATE_CONNECTION, { form }),
     update: (id: number, form: ConnectionForm) =>
-      invoke<SavedConnection>(COMMANDS.UPDATE_CONNECTION, { id, form }),
-    delete: (id: number) => invoke<void>(COMMANDS.DELETE_CONNECTION, { id }),
+      invoke(COMMANDS.UPDATE_CONNECTION, { id, form }),
+    delete: (id: number) => invoke(COMMANDS.DELETE_CONNECTION, { id }),
     createDatabase: (id: number, payload: CreateDatabasePayload) =>
-      invoke<void>(COMMANDS.CREATE_DATABASE_BY_ID, { id, payload }),
+      invoke(COMMANDS.CREATE_DATABASE_BY_ID, { id, payload }),
     getMysqlCharsets: (id: number) =>
-      invoke<string[]>(COMMANDS.GET_MYSQL_CHARSETS_BY_ID, { id }),
+      invoke(COMMANDS.GET_MYSQL_CHARSETS_BY_ID, { id }),
     getMysqlCollations: (id: number, charset?: string) =>
-      invoke<string[]>(COMMANDS.GET_MYSQL_COLLATIONS_BY_ID, { id, charset }),
+      invoke(COMMANDS.GET_MYSQL_COLLATIONS_BY_ID, { id, charset }),
     testEphemeral: (form: ConnectionForm) =>
-      invoke<TestConnectionResult>(COMMANDS.TEST_CONNECTION_EPHEMERAL, { form }),
+      invoke(COMMANDS.TEST_CONNECTION_EPHEMERAL, { form }),
     listSqliteIssues: () =>
-      invoke<SqliteConnectionIssue[]>(COMMANDS.LIST_SQLITE_ISSUES),
+      invoke(COMMANDS.LIST_SQLITE_ISSUES, {}),
     importFromFile: (filePath: string) =>
-      invoke<ImportResult>(COMMANDS.IMPORT_CONNECTIONS, { filePath }),
+      invoke(COMMANDS.IMPORT_CONNECTIONS, { filePath }),
   },
   queries: {
-    list: () => invoke<SavedQuery[]>(COMMANDS.GET_SAVED_QUERIES),
+    list: () => invoke(COMMANDS.GET_SAVED_QUERIES, {}),
     create: (data: {
       name: string;
       query: string;
       description?: string;
       connectionId?: number;
       database?: string;
-    }) => invoke<SavedQuery>(COMMANDS.SAVE_QUERY, data),
+    }) => invoke(COMMANDS.SAVE_QUERY, data),
     update: (
       id: number,
       data: {
@@ -94,7 +87,7 @@ export const connectionsApi = {
         connectionId?: number;
         database?: string;
       },
-    ) => invoke<SavedQuery>(COMMANDS.UPDATE_SAVED_QUERY, { id, ...data }),
-    delete: (id: number) => invoke<void>(COMMANDS.DELETE_SAVED_QUERY, { id }),
+    ) => invoke(COMMANDS.UPDATE_SAVED_QUERY, { id, ...data }),
+    delete: (id: number) => invoke(COMMANDS.DELETE_SAVED_QUERY, { id }),
   },
 };

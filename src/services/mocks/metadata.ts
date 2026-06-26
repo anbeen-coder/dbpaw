@@ -474,6 +474,23 @@ export async function mockListDatabasesById(_id: number): Promise<string[]> {
   return mockDatabases;
 }
 
+const mockSchemasByDatabase: Record<string, string[]> = {
+  postgres: ["public", "information_schema"],
+  testdb: ["public", "auth", "analytics"],
+  myapp_dev: ["public", "app", "app_logs"],
+};
+
+export async function mockListSchemas(
+  _id: number,
+  database?: string,
+): Promise<string[]> {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  if (database && mockSchemasByDatabase[database]) {
+    return mockSchemasByDatabase[database];
+  }
+  return ["public", "auth", "analytics"];
+}
+
 export async function mockGetSchemaOverview(
   _id: number,
   _database?: string,
@@ -545,7 +562,8 @@ export function handleMetadata<T extends MetadataCommand>(
       return mockListDatabasesById(a.id) as Promise<CommandReturn<T>>;
     }
     case COMMANDS.LIST_SCHEMAS: {
-      return Promise.resolve(["public", "auth", "analytics"] as CommandReturn<T>);
+      const a = args as CommandArgs<"list_schemas">;
+      return mockListSchemas(a.id, a.database) as Promise<CommandReturn<T>>;
     }
     case COMMANDS.GET_SCHEMA_OVERVIEW: {
       const a = args as CommandArgs<"get_schema_overview">;

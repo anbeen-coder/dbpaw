@@ -52,7 +52,7 @@ export {
   mockGetTableDDL, mockListEvents, mockListSequences, mockListTypes,
   mockListSynonyms, mockListPackages, mockListRoutines, mockGetRoutineDDL,
   mockGetTableMetadata, mockGetSchemaForeignKeys, mockListTablesByConn,
-  mockListDatabases, mockListDatabasesById, mockGetSchemaOverview,
+  mockListDatabases, mockListDatabasesById, mockListSchemas, mockGetSchemaOverview,
 } from "./metadata";
 export {
   mockQueryResult, mockMultipleResultSets, mockComplexTypeData, mockArrayTypeData,

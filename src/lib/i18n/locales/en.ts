@@ -797,6 +797,10 @@ export const en = {
       ariaLabel: "Switch database",
       placeholder: "Select database",
     },
+    schema: {
+      ariaLabel: "Switch schema",
+      placeholder: "Select schema",
+    },
     result: {
       failed: "Result: Execution failed.",
       success: "Result: Execution successful.",

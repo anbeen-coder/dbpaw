@@ -113,6 +113,30 @@ impl Db2Metadata {
         .map_err(|e| AppError::internal(format!("DB2 blocking task failed: {e}")))?
     }
 
+    pub async fn list_schemas(&self) -> DriverResult<Vec<String>> {
+        self.run_blocking(|conn| {
+            let cursor = conn
+                .execute(
+                    "SELECT SCHEMANAME FROM SYSCAT.SCHEMATA \
+                     WHERE SCHEMANAME NOT LIKE 'SYS%' \
+                     ORDER BY SCHEMANAME",
+                    (),
+                )
+                .map_err(|e| AppError::query_failed(e.to_string()))?;
+            let mut result = Vec::new();
+            if let Some(c) = cursor {
+                let (_, rows) = collect_cursor_data(c)?;
+                for row in &rows {
+                    if let Some(val) = row.as_str() {
+                        result.push(val.to_string());
+                    }
+                }
+            }
+            Ok(result)
+        })
+        .await
+    }
+
     pub async fn list_databases(&self) -> DriverResult<Vec<String>> {
         self.run_blocking(|conn| {
             let cursor = conn

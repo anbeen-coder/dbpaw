@@ -322,3 +322,110 @@ test("SQL logs copy SQL button", async ({ page, context }) => {
 
   runtimeErrors.assertClean("SQL logs copy SQL button");
 });
+
+test("SQL editor: schema selector appears with available schemas", async ({
+  page,
+}) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
+
+  await openNewQueryTab(page);
+
+  // Wait for async data to load (databases + schemas load in same Promise.allSettled)
+  // The database selector appears first — use it as a signal that data has loaded
+  const dbSelector = page.getByRole("combobox", { name: "Switch database" });
+  await expect(dbSelector).toBeVisible({ timeout: 10_000 });
+
+  // Mock returns ["public", "auth", "analytics"] for list_schemas (>1), so schema dropdown should appear
+  const schemaSelector = page.getByRole("combobox", { name: "Switch schema" });
+  await expect(schemaSelector).toBeVisible();
+
+  runtimeErrors.assertClean("Schema selector visible");
+});
+
+test("SQL editor: schema selector shows all available schemas", async ({
+  page,
+}) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
+
+  await openNewQueryTab(page);
+
+  // Wait for data to load
+  const dbSelector = page.getByRole("combobox", { name: "Switch database" });
+  await expect(dbSelector).toBeVisible({ timeout: 10_000 });
+
+  // Open the schema dropdown
+  const schemaSelector = page.getByRole("combobox", { name: "Switch schema" });
+  await expect(schemaSelector).toBeVisible();
+  await schemaSelector.click();
+
+  // Verify all mock schemas are listed
+  const popover = page.locator("[data-radix-popper-content-wrapper]");
+  await expect(popover.getByRole("option", { name: "public" })).toBeVisible();
+  await expect(popover.getByRole("option", { name: "auth" })).toBeVisible();
+  await expect(
+    popover.getByRole("option", { name: "analytics" }),
+  ).toBeVisible();
+
+  // Close dropdown
+  await page.keyboard.press("Escape");
+  runtimeErrors.assertClean("Schema dropdown lists all schemas");
+});
+
+test("SQL editor: switching schema updates selection", async ({ page }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
+
+  await openNewQueryTab(page);
+
+  // Wait for data to load
+  const dbSelector = page.getByRole("combobox", { name: "Switch database" });
+  await expect(dbSelector).toBeVisible({ timeout: 10_000 });
+
+  // Open the schema dropdown and select a different schema
+  const schemaSelector = page.getByRole("combobox", { name: "Switch schema" });
+  await expect(schemaSelector).toBeVisible();
+  await schemaSelector.click();
+
+  const popover = page.locator("[data-radix-popper-content-wrapper]");
+  await popover.getByRole("option", { name: "analytics" }).click();
+
+  // Verify the selection changed
+  await expect(schemaSelector).toHaveText("analytics");
+  runtimeErrors.assertClean("Schema switched to analytics");
+});
+
+test("SQL editor: database selector and schema selector coexist", async ({
+  page,
+}) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Connections" }),
+  ).toBeVisible();
+
+  await openNewQueryTab(page);
+
+  // Wait for data to load — both selectors appear after same Promise.allSettled
+  const dbSelector = page.getByRole("combobox", { name: "Switch database" });
+  await expect(dbSelector).toBeVisible({ timeout: 10_000 });
+
+  const schemaSelector = page.getByRole("combobox", { name: "Switch schema" });
+  await expect(schemaSelector).toBeVisible();
+
+  runtimeErrors.assertClean("Database and schema selectors coexist");
+});

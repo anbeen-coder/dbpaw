@@ -133,10 +133,10 @@ async fn test_oracle_integration_flow() {
 
     // get_table_data
     let result = driver
-        .get_table_data(schema.clone(), table.clone(), 1, 10, None, None, None, None)
+        .get_table_data(schema.clone(), table.clone(), 1, 10, None, None, None, None, true)
         .await
         .expect("get_table_data should succeed");
-    assert_eq!(result.total, 1, "total should be 1");
+    assert_eq!(result.total, Some(1), "total should be 1");
     assert_eq!(result.data.len(), 1, "data should have 1 row");
     let row = result.data.first().unwrap();
     assert!(
@@ -225,14 +225,14 @@ async fn test_oracle_integration_pagination() {
     }
 
     let page1 = driver
-        .get_table_data(schema.clone(), table.clone(), 1, 3, None, None, None, None)
+        .get_table_data(schema.clone(), table.clone(), 1, 3, None, None, None, None, true)
         .await
         .expect("page 1 should succeed");
-    assert_eq!(page1.total, 5);
+    assert_eq!(page1.total, Some(5));
     assert_eq!(page1.data.len(), 3);
 
     let page2 = driver
-        .get_table_data(schema.clone(), table.clone(), 2, 3, None, None, None, None)
+        .get_table_data(schema.clone(), table.clone(), 2, 3, None, None, None, None, true)
         .await
         .expect("page 2 should succeed");
     assert_eq!(page2.data.len(), 2);

@@ -1,14 +1,14 @@
 #[path = "common/postgres_context.rs"]
 mod postgres_context;
 
-use dbpaw_lib::ai::types::AiChatRequest;
 use dbpaw_lib::commands::connection::{self, CreateDatabasePayload};
 use dbpaw_lib::commands::metadata;
-use dbpaw_lib::commands::{ai, query, storage, transfer};
+use dbpaw_lib::commands::{query, storage, transfer};
 use dbpaw_lib::db::drivers::postgres::PostgresDriver;
 use dbpaw_lib::db::drivers::DatabaseDriver;
 use dbpaw_lib::db::local::LocalDb;
 use dbpaw_lib::models::{AiProviderForm, ConnectionForm};
+use dbpaw_lib::services;
 use dbpaw_lib::state::AppState;
 use postgres_context::{shared_postgres_form, unique_name, wait_until_ready};
 use std::fs;
@@ -217,8 +217,9 @@ async fn test_postgres_command_create_database_by_id_invalid_name_returns_valida
     };
     let result = connection::create_database_by_id_direct(&state, conn_id, payload).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(err.contains("[ERR-3001]"));
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("[ERR-3001]"), "unexpected error: {}", err_msg);
 
     let _ = connection::delete_connection_direct(&state, conn_id).await;
 }
@@ -250,8 +251,9 @@ async fn test_postgres_command_list_databases_by_id_invalid_id_returns_error() {
     let state = init_state_with_local_db().await;
     let result = connection::list_databases_by_id_direct(&state, -999_999).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 }
 
 #[tokio::test]
@@ -346,8 +348,9 @@ async fn test_postgres_command_get_table_structure_missing_table_returns_error()
 
     let result = metadata::get_table_structure_direct(&state, conn_id, schema, missing_table).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 
     let _ = connection::delete_connection_direct(&state, conn_id).await;
 }
@@ -529,8 +532,9 @@ async fn test_postgres_command_execute_query_by_id_invalid_sql_returns_error() {
     )
     .await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 
     let _ = connection::delete_connection_direct(&state, conn_id).await;
 }
@@ -861,9 +865,9 @@ EXECUTE FUNCTION "{schema}"."{func_name}"();
 async fn test_postgres_command_ai_minimal_provider_conversation_and_chat_flow() {
     let state = init_state_with_local_db().await;
 
-    let start_without_provider = ai::ai_chat_start_direct(
+    let start_without_provider = services::ai_chat_start_direct(
         &state,
-        AiChatRequest {
+        dbpaw_lib::ai::types::AiChatRequest {
             request_id: unique_name("ai_start_no_provider"),
             provider_id: None,
             conversation_id: None,
@@ -879,7 +883,7 @@ async fn test_postgres_command_ai_minimal_provider_conversation_and_chat_flow() 
     .await;
     assert!(start_without_provider.is_err());
 
-    let created_provider = ai::ai_create_provider_direct(
+    let created_provider = services::ai_create_provider_direct(
         &state,
         AiProviderForm {
             name: unique_name("ai_provider"),
@@ -894,12 +898,12 @@ async fn test_postgres_command_ai_minimal_provider_conversation_and_chat_flow() 
     )
     .await
     .expect("ai_create_provider should succeed");
-    let providers = ai::ai_list_providers_direct(&state)
+    let providers = services::ai_list_providers_direct(&state)
         .await
         .expect("ai_list_providers should succeed");
     assert!(providers.iter().any(|p| p.id == created_provider.id));
 
-    let updated_provider = ai::ai_update_provider_direct(
+    let updated_provider = services::ai_update_provider_direct(
         &state,
         created_provider.id,
         AiProviderForm {
@@ -917,16 +921,16 @@ async fn test_postgres_command_ai_minimal_provider_conversation_and_chat_flow() 
     .expect("ai_update_provider should succeed");
     assert_eq!(updated_provider.id, created_provider.id);
 
-    ai::ai_set_default_provider_direct(&state, created_provider.id)
+    services::ai_set_default_provider_direct(&state, created_provider.id)
         .await
         .expect("ai_set_default_provider should succeed");
-    ai::ai_clear_provider_api_key_direct(&state, "openai".to_string())
+    services::ai_clear_provider_api_key_direct(&state, "openai".to_string())
         .await
         .expect("ai_clear_provider_api_key should succeed");
 
-    let continue_without_conversation = ai::ai_chat_continue_direct(
+    let continue_without_conversation = services::ai_chat_continue_direct(
         &state,
-        AiChatRequest {
+        dbpaw_lib::ai::types::AiChatRequest {
             request_id: unique_name("ai_continue_no_conv"),
             provider_id: Some(created_provider.id),
             conversation_id: None,
@@ -952,23 +956,23 @@ async fn test_postgres_command_ai_minimal_provider_conversation_and_chat_flow() 
         )
         .await
         .expect("create ai conversation in local db should succeed");
-    let conversations = ai::ai_list_conversations_direct(&state, None, None)
+    let conversations = services::ai_list_conversations_direct(&state, None, None)
         .await
         .expect("ai_list_conversations should succeed");
     assert!(conversations.iter().any(|c| c.id == conv.id));
-    let detail = ai::ai_get_conversation_direct(&state, conv.id)
+    let detail = services::ai_get_conversation_direct(&state, conv.id)
         .await
         .expect("ai_get_conversation should succeed");
     assert_eq!(detail.conversation.id, conv.id);
-    ai::ai_delete_conversation_direct(&state, conv.id)
+    services::ai_delete_conversation_direct(&state, conv.id)
         .await
         .expect("ai_delete_conversation should succeed");
-    let conversations_after = ai::ai_list_conversations_direct(&state, None, None)
+    let conversations_after = services::ai_list_conversations_direct(&state, None, None)
         .await
         .expect("ai_list_conversations after delete should succeed");
     assert!(!conversations_after.iter().any(|c| c.id == conv.id));
 
-    ai::ai_delete_provider_direct(&state, created_provider.id)
+    services::ai_delete_provider_direct(&state, created_provider.id)
         .await
         .expect("ai_delete_provider should succeed");
 }

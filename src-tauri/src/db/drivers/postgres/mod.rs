@@ -142,6 +142,27 @@ impl DatabaseDriver for PostgresDriver {
     async fn get_schema_overview(&self, schema: Option<String>) -> DriverResult<SchemaOverview> {
         self.metadata.get_schema_overview(schema).await
     }
+
+    async fn list_routines(&self, schema: Option<String>) -> DriverResult<Vec<RoutineInfo>> {
+        RoutineDriver::list_routines(self, schema).await
+    }
+
+    async fn get_routine_ddl(
+        &self,
+        schema: String,
+        name: String,
+        routine_type: String,
+    ) -> DriverResult<String> {
+        RoutineDriver::get_routine_ddl(self, schema, name, routine_type).await
+    }
+
+    async fn list_sequences(&self, schema: Option<String>) -> DriverResult<Vec<SequenceInfo>> {
+        SequenceDriver::list_sequences(self, schema).await
+    }
+
+    async fn list_types(&self, schema: Option<String>) -> DriverResult<Vec<TypeInfo>> {
+        TypeDriver::list_types(self, schema).await
+    }
 }
 
 #[async_trait]

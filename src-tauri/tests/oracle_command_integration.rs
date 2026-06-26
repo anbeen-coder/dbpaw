@@ -111,7 +111,8 @@ async fn test_oracle_command_test_connection_invalid_password_returns_error() {
     let result = connection::test_connection_ephemeral(form).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(!err.trim().is_empty());
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 }
 
 #[tokio::test]
@@ -217,7 +218,8 @@ async fn test_oracle_command_execute_invalid_sql_returns_error() {
             .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(!err.trim().is_empty());
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 }
 
 #[tokio::test]
@@ -311,14 +313,14 @@ async fn test_oracle_command_get_table_data_pagination_works() {
     }
     driver.close().await;
 
-    let page1 = query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 1, 2)
+    let page1 = query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 1, 2, Some(true))
         .await
         .expect("page 1 should succeed");
-    let page2 = query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 2, 2)
+    let page2 = query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 2, 2, Some(true))
         .await
         .expect("page 2 should succeed");
 
-    assert_eq!(page1.total, 3);
+    assert_eq!(page1.total, Some(3));
     assert_eq!(page1.limit, 2);
     assert_eq!(page1.data.len(), 2);
     assert_eq!(page2.data.len(), 1);
@@ -430,10 +432,11 @@ async fn test_oracle_command_get_table_data_invalid_pagination_returns_error() {
     prepare_test_table(&schema, &table, &form).await;
 
     let result =
-        query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 0, 10).await;
+        query::get_table_data_by_conn(form.clone(), schema.clone(), table.clone(), 0, 10, Some(true)).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("[ERR-3001]"));
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("[ERR-3001]"), "unexpected error: {}", err_msg);
 
     cleanup_table(&schema, &table, &form).await;
 }

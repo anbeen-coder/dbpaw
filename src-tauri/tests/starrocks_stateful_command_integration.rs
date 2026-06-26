@@ -27,7 +27,7 @@ async fn wait_until_starrocks_ready(form: &ConnectionForm) {
         match connection::test_connection_ephemeral(form.clone()).await {
             Ok(_) => return,
             Err(err) => {
-                last_error = err;
+                last_error = err.to_string();
                 sleep(Duration::from_secs(1)).await;
             }
         }
@@ -226,8 +226,9 @@ async fn test_starrocks_command_create_database_by_id_invalid_name_returns_valid
     };
     let result = connection::create_database_by_id_direct(&state, conn_id, payload).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(err.contains("[ERR-3001]"));
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("[ERR-3001]"), "unexpected error: {}", err_msg);
 
     let _ = connection::delete_connection_direct(&state, conn_id).await;
 }
@@ -257,8 +258,9 @@ async fn test_starrocks_command_list_databases_by_id_invalid_id_returns_error() 
     let state = init_state_with_local_db().await;
     let result = connection::list_databases_by_id_direct(&state, -999_999).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 }
 
 #[tokio::test]
@@ -367,8 +369,9 @@ async fn test_starrocks_command_get_table_structure_missing_table_returns_error(
     let result =
         metadata::get_table_structure_direct(&state, conn_id, db_name.clone(), missing_table).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 
     let _ = driver
         .execute_query(format!("DROP DATABASE IF EXISTS `{}`", db_name))
@@ -540,8 +543,9 @@ async fn test_starrocks_command_execute_query_by_id_invalid_sql_returns_error() 
     )
     .await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 
     let _ = driver
         .execute_query(format!("DROP DATABASE IF EXISTS `{}`", db_name))

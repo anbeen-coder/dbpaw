@@ -98,10 +98,11 @@ async fn test_doris_integration_flow() {
             None,
             None,
             None,
+            true,
         )
         .await
         .expect("get_table_data failed");
-    assert_eq!(table_data.total, 1);
+    assert_eq!(table_data.total, Some(1));
     assert_eq!(table_data.data.len(), 1);
 
     let _ = driver
@@ -205,10 +206,11 @@ async fn test_doris_metadata_and_type_mapping_flow() {
             None,
             None,
             None,
+            true,
         )
         .await
         .expect("get_table_data failed");
-    assert_eq!(table_data.total, 1);
+    assert_eq!(table_data.total, Some(1));
     assert_eq!(table_data.data.len(), 1);
 
     let _ = driver
@@ -310,10 +312,11 @@ async fn test_doris_get_table_data_supports_pagination_sort_filter() {
             Some("desc".to_string()),
             None,
             None,
+            true,
         )
         .await
         .expect("get_table_data for page1 failed");
-    assert_eq!(page1.total, 4);
+    assert_eq!(page1.total, Some(4));
     assert_eq!(page1.data.len(), 2);
     assert_eq!(
         page1.data[0]["name"],
@@ -330,10 +333,11 @@ async fn test_doris_get_table_data_supports_pagination_sort_filter() {
             None,
             Some("score >= 20".to_string()),
             None,
+            true,
         )
         .await
         .expect("get_table_data with filter failed");
-    assert_eq!(filtered.total, 3);
+    assert_eq!(filtered.total, Some(3));
 
     let _ = driver
         .execute_query(format!("DROP DATABASE IF EXISTS `{}`", db_name))

@@ -264,8 +264,9 @@ async fn test_mssql_command_create_database_by_id_invalid_name_returns_validatio
     };
     let result = connection::create_database_by_id_direct(&ctx.state, ctx.conn_id, payload).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(err.contains("[ERR-3001]"));
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("[ERR-3001]"), "unexpected error: {}", err_msg);
 
     delete_stateful_connection(&ctx.state, ctx.conn_id).await;
 }
@@ -291,8 +292,9 @@ async fn test_mssql_command_list_databases_by_id_invalid_id_returns_error() {
     let state = init_state_with_local_db().await;
     let result = connection::list_databases_by_id_direct(&state, -999_999).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 }
 
 #[tokio::test]
@@ -367,8 +369,9 @@ async fn test_mssql_command_get_table_structure_missing_table_returns_error() {
     )
     .await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 
     delete_stateful_connection(&ctx.state, ctx.conn_id).await;
 }
@@ -486,8 +489,9 @@ async fn test_mssql_command_execute_query_by_id_invalid_sql_returns_error() {
     )
     .await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
-    assert!(!err.trim().is_empty());
+    let err = result.err().unwrap();
+    let err_msg = err.to_string();
+    assert!(!err_msg.trim().is_empty(), "unexpected error: {}", err_msg);
 
     delete_stateful_connection(&ctx.state, ctx.conn_id).await;
 }

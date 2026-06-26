@@ -180,10 +180,11 @@ async fn test_mssql_get_table_data_supports_pagination_sort_filter_and_order_by(
             Some("desc".to_string()),
             None,
             None,
+            true,
         )
         .await
         .expect("get_table_data page1 failed");
-    assert_eq!(page1.total, 4);
+    assert_eq!(page1.total, Some(4));
     assert_eq!(page1.data.len(), 2);
     assert_eq!(
         page1.data[0]["name"],
@@ -205,10 +206,11 @@ async fn test_mssql_get_table_data_supports_pagination_sort_filter_and_order_by(
             None,
             Some("score >= 20".to_string()),
             None,
+            true,
         )
         .await
         .expect("get_table_data with filter failed");
-    assert_eq!(filtered.total, 3);
+    assert_eq!(filtered.total, Some(3));
 
     let ordered = driver
         .get_table_data(
@@ -220,10 +222,11 @@ async fn test_mssql_get_table_data_supports_pagination_sort_filter_and_order_by(
             Some("asc".to_string()),
             None,
             Some("name DESC".to_string()),
+            true,
         )
         .await
         .expect("get_table_data with order_by failed");
-    assert_eq!(ordered.total, 4);
+    assert_eq!(ordered.total, Some(4));
     assert_eq!(ordered.data.len(), 1);
     assert_eq!(
         ordered.data[0]["name"],
@@ -268,6 +271,7 @@ async fn test_mssql_get_table_data_rejects_invalid_sort_column() {
             Some("desc".to_string()),
             None,
             None,
+            true,
         )
         .await;
     let err = result.expect_err("invalid sort column should return error");
@@ -640,10 +644,11 @@ async fn test_mssql_boolean_and_json_type_mapping_regression() {
             None,
             None,
             None,
+            true,
         )
         .await
         .expect("get_table_data for bool/json probe failed");
-    assert_eq!(table_data.total, 1);
+    assert_eq!(table_data.total, Some(1));
     let grid_row = table_data.data.first().expect("table row should exist");
     let grid_flag = grid_row
         .get("flag")

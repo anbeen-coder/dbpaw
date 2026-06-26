@@ -301,6 +301,7 @@ async fn test_cassandra_get_table_data() {
             Some("desc".to_string()),
             None,
             None,
+            true,
         )
         .await
         .expect("get_table_data failed");

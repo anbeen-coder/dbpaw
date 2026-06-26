@@ -2,7 +2,7 @@
 mod mysql_context;
 
 use dbpaw_lib::db::drivers::mysql::MysqlDriver;
-use dbpaw_lib::db::drivers::DatabaseDriver;
+use dbpaw_lib::db::drivers::{DatabaseDriver, RoutineDriver};
 
 #[tokio::test]
 #[ignore]
@@ -965,8 +965,7 @@ async fn test_mysql_list_routines_and_get_routine_ddl() {
         .expect("create function failed");
 
     // list_routines with explicit schema
-    let routines = driver
-        .list_routines(Some(database.clone()))
+    let routines = RoutineDriver::list_routines(&driver, Some(database.clone()))
         .await
         .expect("list_routines failed");
     assert!(
@@ -985,8 +984,7 @@ async fn test_mysql_list_routines_and_get_routine_ddl() {
     );
 
     // list_routines with None (should fallback to current database)
-    let routines_default = driver
-        .list_routines(None)
+    let routines_default = RoutineDriver::list_routines(&driver, None)
         .await
         .expect("list_routines(None) failed");
     assert!(
@@ -995,14 +993,14 @@ async fn test_mysql_list_routines_and_get_routine_ddl() {
     );
 
     // get_routine_ddl for procedure
-    let proc_ddl = driver
-        .get_routine_ddl(
-            database.clone(),
-            "sp_dbpaw_test".to_string(),
-            "procedure".to_string(),
-        )
-        .await
-        .expect("get_routine_ddl for procedure failed");
+    let proc_ddl = RoutineDriver::get_routine_ddl(
+        &driver,
+        database.clone(),
+        "sp_dbpaw_test".to_string(),
+        "procedure".to_string(),
+    )
+    .await
+    .expect("get_routine_ddl for procedure failed");
     assert!(
         proc_ddl.to_uppercase().contains("CREATE"),
         "Procedure DDL should contain CREATE, got: {}",
@@ -1015,14 +1013,14 @@ async fn test_mysql_list_routines_and_get_routine_ddl() {
     );
 
     // get_routine_ddl for function
-    let func_ddl = driver
-        .get_routine_ddl(
-            database.clone(),
-            "fn_dbpaw_test".to_string(),
-            "function".to_string(),
-        )
-        .await
-        .expect("get_routine_ddl for function failed");
+    let func_ddl = RoutineDriver::get_routine_ddl(
+        &driver,
+        database.clone(),
+        "fn_dbpaw_test".to_string(),
+        "function".to_string(),
+    )
+    .await
+    .expect("get_routine_ddl for function failed");
     assert!(
         func_ddl.to_uppercase().contains("CREATE"),
         "Function DDL should contain CREATE, got: {}",
@@ -1035,26 +1033,26 @@ async fn test_mysql_list_routines_and_get_routine_ddl() {
     );
 
     // get_routine_ddl with invalid type should error
-    let bad_type = driver
-        .get_routine_ddl(
-            database.clone(),
-            "sp_dbpaw_test".to_string(),
-            "invalid_type".to_string(),
-        )
-        .await;
+    let bad_type = RoutineDriver::get_routine_ddl(
+        &driver,
+        database.clone(),
+        "sp_dbpaw_test".to_string(),
+        "invalid_type".to_string(),
+    )
+    .await;
     assert!(
         bad_type.is_err(),
         "get_routine_ddl with invalid type should fail"
     );
 
     // get_routine_ddl for non-existent routine should error
-    let missing = driver
-        .get_routine_ddl(
-            database.clone(),
-            "nonexistent_routine".to_string(),
-            "procedure".to_string(),
-        )
-        .await;
+    let missing = RoutineDriver::get_routine_ddl(
+        &driver,
+        database.clone(),
+        "nonexistent_routine".to_string(),
+        "procedure".to_string(),
+    )
+    .await;
     assert!(
         missing.is_err(),
         "get_routine_ddl for non-existent routine should fail"

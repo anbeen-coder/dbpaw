@@ -30,7 +30,7 @@ describe("systemApi.system.listFonts", () => {
     const result = await systemApi.system.listFonts();
 
     expect(capturedCmd).toBe("list_system_fonts");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
     expect(result).toEqual(["Arial", "Helvetica", "Times New Roman"]);
   });
 });
@@ -42,7 +42,7 @@ describe("systemApi.mcp.status", () => {
     const result = await systemApi.mcp.status();
 
     expect(capturedCmd).toBe("mcp_status");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
     expect(result.running).toBe(true);
   });
 });
@@ -66,7 +66,7 @@ describe("systemApi.mcp.stop", () => {
     await systemApi.mcp.stop();
 
     expect(capturedCmd).toBe("mcp_stop");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
   });
 });
 
@@ -77,7 +77,7 @@ describe("systemApi.mcp.getTools", () => {
     const result = await systemApi.mcp.getTools();
 
     expect(capturedCmd).toBe("mcp_get_tools");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
     expect(result).toHaveLength(1);
   });
 });
@@ -89,7 +89,7 @@ describe("systemApi.mcp.detectClients", () => {
     const result = await systemApi.mcp.detectClients();
 
     expect(capturedCmd).toBe("mcp_detect_clients");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
     expect(result).toHaveLength(1);
   });
 });

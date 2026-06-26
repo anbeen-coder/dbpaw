@@ -30,7 +30,7 @@ describe("aiApi.ai.providers.list", () => {
     const result = await aiApi.ai.providers.list();
 
     expect(capturedCmd).toBe("ai_list_providers");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
     expect(result).toHaveLength(1);
   });
 });

@@ -149,7 +149,7 @@ describe("connectionsApi.connections.list", () => {
     const result = await connectionsApi.connections.list();
 
     expect(capturedCmd).toBe("get_connections");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
     expect(result).toHaveLength(1);
   });
 });
@@ -251,7 +251,7 @@ describe("connectionsApi.connections.listSqliteIssues", () => {
     await connectionsApi.connections.listSqliteIssues();
 
     expect(capturedCmd).toBe("list_sqlite_issues");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
   });
 });
 
@@ -275,7 +275,7 @@ describe("connectionsApi.queries.list", () => {
     const result = await connectionsApi.queries.list();
 
     expect(capturedCmd).toBe("get_saved_queries");
-    expect(capturedArgs).toBeUndefined();
+    expect(capturedArgs).toEqual({});
     expect(result).toHaveLength(1);
   });
 });

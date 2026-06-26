@@ -59,7 +59,7 @@ cleanup_it_containers() {
   ids="$(docker ps -aq --filter "name=${it_container_prefix}" || true)"
   if [[ -n "${ids}" ]]; then
     echo "[cleanup] removing leftover integration containers: ${it_container_prefix}*"
-    docker rm -f ${ids} >/dev/null 2>&1 || true
+    docker rm -fv ${ids} >/dev/null 2>&1 || true
   fi
 }
 
@@ -91,7 +91,7 @@ run_db2() {
   local password="testpass"
   local dbname="testdb"
 
-  docker rm -f "$container" 2>/dev/null || true
+  docker rm -fv "$container" 2>/dev/null || true
   docker run -d --name "$container" \
     -e LICENSE=accept \
     -e DB2INST1_PASSWORD="$password" \
@@ -108,7 +108,7 @@ run_db2() {
   export DB2_PASSWORD="$password"
   run_integration_test "db2_integration"
 
-  docker rm -f "$container" 2>/dev/null || true
+  docker rm -fv "$container" 2>/dev/null || true
 }
 
 case "${it_db}" in

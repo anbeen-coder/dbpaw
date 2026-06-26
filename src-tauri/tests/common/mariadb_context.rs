@@ -79,7 +79,7 @@ pub async fn wait_until_ready(form: &ConnectionForm) {
         match connection::test_connection_ephemeral(form.clone()).await {
             Ok(_) => return,
             Err(err) => {
-                last_error = err;
+                last_error = err.to_string();
                 sleep(Duration::from_secs(1)).await;
             }
         }

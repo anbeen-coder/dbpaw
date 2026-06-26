@@ -4,11 +4,12 @@ mod mariadb_context;
 use dbpaw_lib::ai::types::AiChatRequest;
 use dbpaw_lib::commands::connection::{self, CreateDatabasePayload};
 use dbpaw_lib::commands::metadata;
-use dbpaw_lib::commands::{ai, query, storage, transfer};
+use dbpaw_lib::commands::{query, storage, transfer};
 use dbpaw_lib::db::drivers::mysql::MysqlDriver;
 use dbpaw_lib::db::drivers::DatabaseDriver;
 use dbpaw_lib::db::local::LocalDb;
 use dbpaw_lib::models::{AiProviderForm, ConnectionForm};
+use dbpaw_lib::services;
 use dbpaw_lib::state::AppState;
 use std::fs;
 use std::sync::Arc;
@@ -212,7 +213,7 @@ async fn test_mariadb_command_create_database_by_id_invalid_name_returns_validat
     };
     let result = connection::create_database_by_id_direct(&state, conn_id, payload).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
+    let err = result.err().unwrap().to_string();
     assert!(err.contains("[ERR-3001]"));
 
     let _ = connection::delete_connection_direct(&state, conn_id).await;
@@ -245,7 +246,7 @@ async fn test_mariadb_command_list_databases_by_id_invalid_id_returns_error() {
     let state = init_state_with_local_db().await;
     let result = connection::list_databases_by_id_direct(&state, -999_999).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
+    let err = result.err().unwrap().to_string();
     assert!(!err.trim().is_empty());
 }
 
@@ -330,7 +331,7 @@ async fn test_mariadb_command_get_table_structure_missing_table_returns_error() 
 
     let result = metadata::get_table_structure_direct(&state, conn_id, schema, missing_table).await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
+    let err = result.err().unwrap().to_string();
     assert!(!err.trim().is_empty());
 
     let _ = connection::delete_connection_direct(&state, conn_id).await;
@@ -481,7 +482,7 @@ async fn test_mariadb_command_execute_query_by_id_invalid_sql_returns_error() {
     )
     .await;
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
+    let err = result.err().unwrap().to_string();
     assert!(!err.trim().is_empty());
 
     let _ = connection::delete_connection_direct(&state, conn_id).await;
@@ -815,7 +816,7 @@ DELIMITER ;
 async fn test_mariadb_command_ai_minimal_provider_conversation_and_chat_flow() {
     let state = init_state_with_local_db().await;
 
-    let start_without_provider = ai::ai_chat_start_direct(
+    let start_without_provider = services::ai_chat_start_direct(
         &state,
         AiChatRequest {
             request_id: unique_name("ai_start_no_provider"),
@@ -833,7 +834,7 @@ async fn test_mariadb_command_ai_minimal_provider_conversation_and_chat_flow() {
     .await;
     assert!(start_without_provider.is_err());
 
-    let created_provider = ai::ai_create_provider_direct(
+    let created_provider = services::ai_create_provider_direct(
         &state,
         AiProviderForm {
             name: unique_name("ai_provider"),
@@ -848,12 +849,12 @@ async fn test_mariadb_command_ai_minimal_provider_conversation_and_chat_flow() {
     )
     .await
     .expect("ai_create_provider should succeed");
-    let providers = ai::ai_list_providers_direct(&state)
+    let providers = services::ai_list_providers_direct(&state)
         .await
         .expect("ai_list_providers should succeed");
     assert!(providers.iter().any(|p| p.id == created_provider.id));
 
-    let updated_provider = ai::ai_update_provider_direct(
+    let updated_provider = services::ai_update_provider_direct(
         &state,
         created_provider.id,
         AiProviderForm {
@@ -871,14 +872,14 @@ async fn test_mariadb_command_ai_minimal_provider_conversation_and_chat_flow() {
     .expect("ai_update_provider should succeed");
     assert_eq!(updated_provider.id, created_provider.id);
 
-    ai::ai_set_default_provider_direct(&state, created_provider.id)
+    services::ai_set_default_provider_direct(&state, created_provider.id)
         .await
         .expect("ai_set_default_provider should succeed");
-    ai::ai_clear_provider_api_key_direct(&state, "openai".to_string())
+    services::ai_clear_provider_api_key_direct(&state, "openai".to_string())
         .await
         .expect("ai_clear_provider_api_key should succeed");
 
-    let continue_without_conversation = ai::ai_chat_continue_direct(
+    let continue_without_conversation = services::ai_chat_continue_direct(
         &state,
         AiChatRequest {
             request_id: unique_name("ai_continue_no_conv"),
@@ -906,23 +907,23 @@ async fn test_mariadb_command_ai_minimal_provider_conversation_and_chat_flow() {
         )
         .await
         .expect("create ai conversation in local db should succeed");
-    let conversations = ai::ai_list_conversations_direct(&state, None, None)
+    let conversations = services::ai_list_conversations_direct(&state, None, None)
         .await
         .expect("ai_list_conversations should succeed");
     assert!(conversations.iter().any(|c| c.id == conv.id));
-    let detail = ai::ai_get_conversation_direct(&state, conv.id)
+    let detail = services::ai_get_conversation_direct(&state, conv.id)
         .await
         .expect("ai_get_conversation should succeed");
     assert_eq!(detail.conversation.id, conv.id);
-    ai::ai_delete_conversation_direct(&state, conv.id)
+    services::ai_delete_conversation_direct(&state, conv.id)
         .await
         .expect("ai_delete_conversation should succeed");
-    let conversations_after = ai::ai_list_conversations_direct(&state, None, None)
+    let conversations_after = services::ai_list_conversations_direct(&state, None, None)
         .await
         .expect("ai_list_conversations after delete should succeed");
     assert!(!conversations_after.iter().any(|c| c.id == conv.id));
 
-    ai::ai_delete_provider_direct(&state, created_provider.id)
+    services::ai_delete_provider_direct(&state, created_provider.id)
         .await
         .expect("ai_delete_provider should succeed");
 }
@@ -970,7 +971,7 @@ async fn test_mariadb_command_get_charsets_by_id_invalid_connection_returns_erro
     let state = init_state_with_local_db().await;
     let result = connection::get_mysql_charsets_by_id_direct(&state, -999_999).await;
     assert!(result.is_err());
-    assert!(!result.err().unwrap_or_default().trim().is_empty());
+    assert!(!result.err().unwrap().to_string().trim().is_empty());
 }
 
 #[tokio::test]
@@ -1054,7 +1055,7 @@ async fn test_mariadb_command_get_collations_by_id_with_invalid_charset_returns_
     .await;
 
     assert!(result.is_err());
-    let err = result.err().unwrap_or_default();
+    let err = result.err().unwrap().to_string();
     assert!(
         err.contains("[ERR-3001]"),
         "expected VALIDATION_ERROR, got: {}",

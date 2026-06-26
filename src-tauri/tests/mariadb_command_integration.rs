@@ -4,6 +4,7 @@ mod mariadb_context;
 use dbpaw_lib::commands::{connection, metadata, query};
 use dbpaw_lib::db::drivers::mysql::MysqlDriver;
 use dbpaw_lib::db::drivers::DatabaseDriver;
+use dbpaw_lib::error::AppError;
 use dbpaw_lib::models::ConnectionForm;
 
 use mariadb_context::{shared_mariadb_form, unique_name, wait_until_ready};
@@ -48,7 +49,7 @@ async fn cleanup_table(form: &ConnectionForm, table: &str) {
 async fn execute_by_conn_sql(
     form: ConnectionForm,
     sql: String,
-) -> Result<dbpaw_lib::models::QueryResult, String> {
+) -> Result<dbpaw_lib::models::QueryResult, AppError> {
     query::execute_by_conn_direct(form, sql).await
 }
 
@@ -77,7 +78,7 @@ async fn test_mariadb_command_test_connection_invalid_password_returns_error() {
     let result = connection::test_connection_ephemeral(form).await;
 
     assert!(result.is_err());
-    let error = result.err().unwrap_or_default();
+    let error = result.err().unwrap().to_string();
     assert!(!error.trim().is_empty());
 }
 
@@ -108,7 +109,7 @@ async fn test_mariadb_command_list_tables_by_conn_invalid_credentials_returns_er
     let result = metadata::list_tables_by_conn(form).await;
 
     assert!(result.is_err());
-    let error = result.err().unwrap_or_default();
+    let error = result.err().unwrap().to_string();
     assert!(!error.trim().is_empty());
 }
 
@@ -142,7 +143,7 @@ async fn test_mariadb_command_list_databases_invalid_credentials_returns_error()
     let result = connection::list_databases(form).await;
 
     assert!(result.is_err());
-    let error = result.err().unwrap_or_default();
+    let error = result.err().unwrap().to_string();
     assert!(!error.trim().is_empty());
 }
 
@@ -181,7 +182,7 @@ async fn test_mariadb_command_execute_by_conn_invalid_sql_returns_error() {
     .await;
 
     assert!(result.is_err());
-    let error = result.err().unwrap_or_default();
+    let error = result.err().unwrap().to_string();
     assert!(!error.trim().is_empty());
 }
 
@@ -253,14 +254,14 @@ async fn test_mariadb_command_get_table_data_by_conn_pagination_works() {
         .expect("insert rows should succeed");
     driver.close().await;
 
-    let page1 = query::get_table_data_by_conn(form.clone(), database.clone(), table.clone(), 1, 2)
+    let page1 = query::get_table_data_by_conn(form.clone(), database.clone(), table.clone(), 1, 2, Some(true))
         .await
         .expect("page 1 should succeed");
-    let page2 = query::get_table_data_by_conn(form.clone(), database, table.clone(), 2, 2)
+    let page2 = query::get_table_data_by_conn(form.clone(), database, table.clone(), 2, 2, Some(true))
         .await
         .expect("page 2 should succeed");
 
-    assert_eq!(page1.total, 3);
+    assert_eq!(page1.total, Some(3));
     assert_eq!(page1.limit, 2);
     assert_eq!(page1.page, 1);
     assert_eq!(page1.data.len(), 2);
@@ -282,9 +283,9 @@ async fn test_mariadb_command_get_table_data_by_conn_invalid_pagination_returns_
     let table = unique_name("dbpaw_cmd_invalid_page");
     prepare_query_test_table(&form, &table).await;
 
-    let result = query::get_table_data_by_conn(form.clone(), database, table.clone(), 0, 10).await;
+    let result = query::get_table_data_by_conn(form.clone(), database, table.clone(), 0, 10, Some(true)).await;
     assert!(result.is_err());
-    let error = result.err().unwrap_or_default();
+    let error = result.err().unwrap().to_string();
     assert!(error.contains("[ERR-3001]"));
 
     cleanup_table(&form, &table).await;

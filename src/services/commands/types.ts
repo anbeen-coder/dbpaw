@@ -922,7 +922,7 @@ export interface CommandMap {
     return: void;
   };
   ai_clear_provider_api_key: {
-    args: { provider_type: string };
+    args: { providerType: string };
     return: void;
   };
   ai_chat_start: {

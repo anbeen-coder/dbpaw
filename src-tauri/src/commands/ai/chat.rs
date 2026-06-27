@@ -42,8 +42,11 @@ async fn run_chat(
     let provider_record = if let Some(provider_id) = request.provider_id {
         match db.get_ai_provider_by_id(provider_id).await {
             Ok(provider) => provider,
-            Err(_e) => {
-                let msg = AppError::not_found("Selected AI provider does not exist");
+            Err(e) => {
+                tracing::error!(provider_id, error = %e, "Failed to find AI provider by id");
+                let msg = AppError::not_found(format!(
+                    "Selected AI provider does not exist (id={provider_id})"
+                ));
                 emit_ai_error(
                     &app,
                     request.request_id,
@@ -56,7 +59,8 @@ async fn run_chat(
     } else {
         match db.get_default_ai_provider().await {
             Ok(provider) => provider,
-            Err(_e) => {
+            Err(e) => {
+                tracing::error!(error = %e, "No default AI provider available");
                 let msg = AppError::validation(
                     "No enabled AI provider is configured. Please enable one in AI Provider settings.",
                 );

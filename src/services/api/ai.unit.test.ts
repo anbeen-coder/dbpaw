@@ -88,7 +88,7 @@ describe("aiApi.ai.providers.clearApiKey", () => {
     await aiApi.ai.providers.clearApiKey("openai");
 
     expect(capturedCmd).toBe("ai_clear_provider_api_key");
-    expect(capturedArgs).toEqual({ provider_type: "openai" });
+    expect(capturedArgs).toEqual({ providerType: "openai" });
   });
 });
 

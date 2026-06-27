@@ -18,7 +18,7 @@ export const aiApi = {
         invoke(COMMANDS.AI_SET_DEFAULT_PROVIDER, { id }),
       clearApiKey: (providerType: string) =>
         invoke(COMMANDS.AI_CLEAR_PROVIDER_API_KEY, {
-          provider_type: providerType,
+          providerType,
         }),
     },
     chat: {

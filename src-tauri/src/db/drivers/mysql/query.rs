@@ -155,6 +155,23 @@ fn decimal_to_json_number_or_string(value: Decimal) -> serde_json::Value {
         .unwrap_or_else(|| serde_json::Value::String(normalized))
 }
 
+fn is_mysql_booleanish_column(row: &sqlx::mysql::MySqlRow, column_name: &str) -> bool {
+    use sqlx::Column;
+    row.columns()
+        .iter()
+        .find(|c| c.name() == column_name)
+        .map(|c| {
+            let type_name = c.type_info().name().to_ascii_uppercase();
+            // TINYINT is the only integer type that should decode as bool.
+            // sqlx's bool::compatible() wrongly accepts INT/LONG/etc too,
+            // so we guard here to avoid INT values like 1 becoming Bool(true).
+            // TINYINT(1) maps to "BOOLEAN", other TINYINT widths to "TINYINT" or
+            // "TINYINT UNSIGNED".
+            type_name.starts_with("TINYINT") || type_name == "BOOLEAN"
+        })
+        .unwrap_or(false)
+}
+
 fn decode_mysql_cell_to_json(
     row: &sqlx::mysql::MySqlRow,
     column_name: &str,
@@ -163,10 +180,12 @@ fn decode_mysql_cell_to_json(
     if let Ok(v) = row.try_get::<Option<sqlx::types::Json<serde_json::Value>>, _>(column_name) {
         return v.map(|json| json.0).unwrap_or(serde_json::Value::Null);
     }
-    if let Ok(v) = row.try_get::<Option<bool>, _>(column_name) {
-        return v
-            .map(serde_json::Value::Bool)
-            .unwrap_or(serde_json::Value::Null);
+    if is_mysql_booleanish_column(row, column_name) {
+        if let Ok(v) = row.try_get::<Option<bool>, _>(column_name) {
+            return v
+                .map(serde_json::Value::Bool)
+                .unwrap_or(serde_json::Value::Null);
+        }
     }
     if let Ok(v) = row.try_get::<Option<i64>, _>(column_name) {
         return match v {

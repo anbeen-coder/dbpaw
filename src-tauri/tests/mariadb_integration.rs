@@ -513,3 +513,90 @@ async fn test_mariadb_boolean_and_json_type_mapping_regression() {
         .await;
     driver.close().await;
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_mariadb_direct_json_field_values_do_not_break_query_results() {
+    let form = shared_mariadb_form();
+    let database = form
+        .database
+        .clone()
+        .expect("MARIADB_DB or container default database should be present");
+    let driver: MysqlDriver =
+        mariadb_context::connect_with_retry(|| MysqlDriver::connect(&form)).await;
+
+    let table_name = "dbpaw_mariadb_json_field_probe";
+    let qualified = format!("`{}`.`{}`", database, table_name);
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+    driver
+        .execute_query(format!(
+            "CREATE TABLE {} (id INT PRIMARY KEY, config JSON)",
+            qualified
+        ))
+        .await
+        .expect("create JSON field probe table failed");
+
+    let fixtures = [
+        r#"{"channel":[{"id":45,"weight":100}],"limter":0}"#,
+        r#"{"channel":[{"id":4,"weight":100}],"limter":0}"#,
+        r#"{"channel":[{"id":4,"weight":100}],"limter":4}"#,
+        r#"{"channel":[{"id":1,"weight":100}],"limter":0}"#,
+        r#"{"limter":0,"channel":[{"id":42,"weight":100}]}"#,
+    ];
+    for (idx, config) in fixtures.iter().enumerate() {
+        driver
+            .execute_query(format!(
+                "INSERT INTO {} (id, config) VALUES ({}, '{}')",
+                qualified,
+                idx + 1,
+                config.replace('\'', "''")
+            ))
+            .await
+            .expect("insert JSON fixture row failed");
+    }
+
+    let query_result = driver
+        .execute_query(format!("SELECT id, config FROM {} ORDER BY id", qualified))
+        .await
+        .expect("direct SELECT of MariaDB JSON field should succeed");
+    assert_eq!(query_result.row_count, fixtures.len() as i64);
+    let query_config = query_result.data[0]
+        .get("config")
+        .expect("config should exist in query result");
+    assert!(
+        query_config.to_string().contains("channel"),
+        "config should preserve JSON content: {:?}",
+        query_config
+    );
+
+    let table_data = driver
+        .get_table_data(
+            database.clone(),
+            table_name.to_string(),
+            1,
+            10,
+            None,
+            None,
+            None,
+            None,
+            true,
+        )
+        .await
+        .expect("table data for MariaDB JSON field should succeed");
+    assert_eq!(table_data.total, Some(fixtures.len() as i64));
+    let grid_config = table_data.data[0]
+        .get("config")
+        .expect("config should exist in table_data result");
+    assert!(
+        grid_config.to_string().contains("channel"),
+        "table_data should preserve JSON content: {:?}",
+        grid_config
+    );
+
+    let _ = driver
+        .execute_query(format!("DROP TABLE IF EXISTS {}", qualified))
+        .await;
+    driver.close().await;
+}

@@ -310,6 +310,10 @@ fn is_missing_mysql_json_object_function(err: &str) -> bool {
         && (lower.contains("json_object") || lower.contains("json object"))
 }
 
+fn should_use_mysql_json_projection(driver_name: &str) -> bool {
+    !driver_name.eq_ignore_ascii_case("mariadb")
+}
+
 fn is_json_projectable_statement(sql: &str) -> bool {
     matches!(
         super::super::first_sql_keyword(sql).as_deref(),
@@ -478,6 +482,13 @@ impl MysqlQuery {
                 .filter(|col| is_high_precision_mysql_query_type(&col.r#type))
                 .map(|col| col.name.clone())
                 .collect();
+            if !should_use_mysql_json_projection(&self.driver_name) {
+                let data = self
+                    .fetch_rows_as_json_without_projection(sql, &[], &high_precision_cols)
+                    .await?;
+                let row_count = data.len() as i64;
+                return Ok((columns, data, row_count));
+            }
             let query_columns: Vec<(String, String)> = columns
                 .iter()
                 .map(|col| (col.name.clone(), col.r#type.clone()))
@@ -734,6 +745,12 @@ mod tests {
         assert!(is_high_precision_mysql_data_type("numeric"));
         assert!(!is_high_precision_mysql_data_type("int"));
         assert!(!is_high_precision_mysql_data_type("varchar"));
+    }
+
+    #[test]
+    fn test_mariadb_skips_mysql_json_projection() {
+        assert!(!should_use_mysql_json_projection("mariadb"));
+        assert!(should_use_mysql_json_projection("mysql"));
     }
 
     #[test]

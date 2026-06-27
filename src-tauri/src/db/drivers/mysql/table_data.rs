@@ -95,6 +95,17 @@ fn mysql_qualified_table(schema: &str, table: &str) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mariadb_skips_mysql_json_projection() {
+        assert!(!should_use_mysql_json_projection("mariadb"));
+        assert!(should_use_mysql_json_projection("mysql"));
+    }
+}
+
 fn is_high_precision_mysql_data_type(data_type: &str) -> bool {
     matches!(
         data_type.trim().to_ascii_lowercase().as_str(),
@@ -170,6 +181,10 @@ fn is_missing_mysql_json_object_function(err: &str) -> bool {
         || lower.contains("does not exist")
         || lower.contains("unknown function"))
         && (lower.contains("json_object") || lower.contains("json object"))
+}
+
+fn should_use_mysql_json_projection(driver_name: &str) -> bool {
+    !driver_name.eq_ignore_ascii_case("mariadb")
 }
 
 fn is_high_precision_mysql_column(
@@ -559,7 +574,9 @@ impl MysqlTableData {
             .map(|(name, _)| name.clone())
             .collect();
         let json_expr = build_mysql_json_object_expr(&table_columns, Some("__dbpaw_row"));
-        let data = if self.is_compatibility_mode() {
+        let data = if self.is_compatibility_mode()
+            || !should_use_mysql_json_projection(&self.driver_name)
+        {
             let query = format!(
                 "SELECT * FROM {}{}{} LIMIT {} OFFSET {}",
                 qualified, where_clause, order_clause, limit, offset

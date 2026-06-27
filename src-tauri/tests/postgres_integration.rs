@@ -2,7 +2,7 @@
 mod postgres_context;
 
 use dbpaw_lib::db::drivers::postgres::PostgresDriver;
-use dbpaw_lib::db::drivers::DatabaseDriver;
+use dbpaw_lib::db::drivers::{DatabaseDriver, RoutineDriver};
 
 use postgres_context::shared_postgres_form;
 
@@ -1187,8 +1187,7 @@ async fn test_postgres_routines() {
         .await
         .expect("create procedure failed");
 
-    let routines = driver
-        .list_routines(Some("public".to_string()))
+    let routines = RoutineDriver::list_routines(&driver, Some("public".to_string()))
         .await
         .expect("list_routines failed");
     assert!(
@@ -1204,8 +1203,8 @@ async fn test_postgres_routines() {
         "list_routines should include created procedure"
     );
 
-    let function_ddl = driver
-        .get_routine_ddl(
+    let function_ddl = RoutineDriver::get_routine_ddl(
+            &driver,
             "public".to_string(),
             function_name.to_string(),
             "function".to_string(),
@@ -1218,8 +1217,8 @@ async fn test_postgres_routines() {
         function_ddl
     );
 
-    let procedure_ddl = driver
-        .get_routine_ddl(
+    let procedure_ddl = RoutineDriver::get_routine_ddl(
+            &driver,
             "public".to_string(),
             procedure_name.to_string(),
             "procedure".to_string(),

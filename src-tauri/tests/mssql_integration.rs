@@ -2,7 +2,7 @@
 mod mssql_context;
 
 use dbpaw_lib::db::drivers::mssql::MssqlDriver;
-use dbpaw_lib::db::drivers::DatabaseDriver;
+use dbpaw_lib::db::drivers::{DatabaseDriver, RoutineDriver};
 
 use mssql_context::{connect_with_retry, shared_mssql_form};
 
@@ -387,8 +387,7 @@ async fn test_mssql_routines_can_be_listed_and_ddl_loaded() {
         .await
         .expect("create function failed");
 
-    let routines = driver
-        .list_routines(Some("dbo".to_string()))
+    let routines = RoutineDriver::list_routines(&driver, Some("dbo".to_string()))
         .await
         .expect("list_routines failed");
     assert!(
@@ -404,8 +403,8 @@ async fn test_mssql_routines_can_be_listed_and_ddl_loaded() {
         "list_routines should include created function"
     );
 
-    let procedure_ddl = driver
-        .get_routine_ddl(
+    let procedure_ddl = RoutineDriver::get_routine_ddl(
+            &driver,
             "dbo".to_string(),
             procedure_name.to_string(),
             "procedure".to_string(),
@@ -419,8 +418,8 @@ async fn test_mssql_routines_can_be_listed_and_ddl_loaded() {
         "procedure ddl should contain CREATE PROCEDURE"
     );
 
-    let function_ddl = driver
-        .get_routine_ddl(
+    let function_ddl = RoutineDriver::get_routine_ddl(
+            &driver,
             "dbo".to_string(),
             function_name.to_string(),
             "function".to_string(),

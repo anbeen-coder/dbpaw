@@ -22,6 +22,9 @@ import { SaveErrorBanner } from "./tableView/SaveErrorBanner";
 import { TableStatusBar } from "./tableView/TableStatusBar";
 import type { TableContext, TableRow } from "./tableView/types";
 
+const EMPTY_ROWS: TableRow[] = [];
+const EMPTY_COLUMNS: string[] = [];
+
 interface TableViewProps {
   data?: TableRow[];
   columns?: string[];
@@ -73,8 +76,8 @@ interface TableViewProps {
 }
 
 export function TableView({
-  data = [],
-  columns = [],
+  data = EMPTY_ROWS,
+  columns = EMPTY_COLUMNS,
   hideHeader = false,
   total = 0,
   page = 1,

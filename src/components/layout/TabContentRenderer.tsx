@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { TabsContent } from "@/components/ui/tabs";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TableView } from "@/components/business/DataGrid/TableView";
@@ -245,6 +245,22 @@ function TableTab({ tab }: { tab: TableTabItem }) {
     showRowNumbers,
     showZebraStripes,
   } = useTableActions();
+
+  const tableContext = useMemo(
+    () =>
+      tab.connectionId && tab.database && tab.tableName && tab.driver
+        ? {
+            connectionId: tab.connectionId,
+            database: tab.database,
+            schema: resolveTableScope(tab.driver, tab.database, tab.schema)
+              .schema,
+            table: tab.tableName,
+            driver: tab.driver,
+          }
+        : undefined,
+    [tab.connectionId, tab.database, tab.schema, tab.tableName, tab.driver],
+  );
+
   return (
     <TableView
       isLoading={tab.isLoading}
@@ -275,18 +291,7 @@ function TableTab({ tab }: { tab: TableTabItem }) {
         handleTableRefresh(tab.id, { includeTotal })
       }
       onCreateQuery={handleCreateQuery}
-      tableContext={
-        tab.connectionId && tab.database && tab.tableName && tab.driver
-          ? {
-              connectionId: tab.connectionId,
-              database: tab.database,
-              schema: resolveTableScope(tab.driver, tab.database, tab.schema)
-                .schema,
-              table: tab.tableName,
-              driver: tab.driver,
-            }
-          : undefined
-      }
+      tableContext={tableContext}
       showColumnComments={showColumnComments}
       showRowNumbers={showRowNumbers}
       showZebraStripes={showZebraStripes}

@@ -182,7 +182,7 @@ export function useCellEditing({
     setDeleteDialogOpen(false);
     setIsDeleting(false);
     setSaveError(null);
-  }, [data, currentData, clearSelection]);
+  }, [data.length, currentData.length, clearSelection]);
 
   const isClickHouseDriver = tableContext?.driver === "clickhouse";
   const hasPrimaryKeys = primaryKeys.length > 0;

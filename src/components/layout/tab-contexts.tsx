@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TabItem } from "@/types/tab";
 import type { TabContentRendererProps } from "./TabContentRenderer";
 
@@ -162,49 +162,85 @@ export function TabActionsProvider({
   children,
   ...p
 }: TabActionsProviderProps) {
+  const tabActions = useMemo(
+    () => ({ handleCloseTab: p.handleCloseTab, setTabs: p.setTabs }),
+    [p.handleCloseTab, p.setTabs],
+  );
+
+  const editorActions = useMemo(
+    () => ({
+      handleExecuteQuery: p.handleExecuteQuery,
+      handleSqlChange: p.handleSqlChange,
+      handleEditorDatabaseChange: p.handleEditorDatabaseChange,
+      handleCrossDbSchemaLoad: p.handleCrossDbSchemaLoad,
+      handleEditorSchemaChange: p.handleEditorSchemaChange,
+      setQueriesLastUpdated: p.setQueriesLastUpdated,
+      setTabs: p.setTabs,
+      isDefaultQueryTitle: p.isDefaultQueryTitle,
+    }),
+    [
+      p.handleExecuteQuery,
+      p.handleSqlChange,
+      p.handleEditorDatabaseChange,
+      p.handleCrossDbSchemaLoad,
+      p.handleEditorSchemaChange,
+      p.setQueriesLastUpdated,
+      p.setTabs,
+      p.isDefaultQueryTitle,
+    ],
+  );
+
+  const tableActions = useMemo(
+    () => ({
+      handlePageChange: p.handlePageChange,
+      handlePageSizeChange: p.handlePageSizeChange,
+      handleSortChange: p.handleSortChange,
+      handleFilterChange: p.handleFilterChange,
+      handleTableRefresh: p.handleTableRefresh,
+      handleOpenTableDDL: p.handleOpenTableDDL,
+      handleOpenERDiagram: p.handleOpenERDiagram,
+      handleCreateQuery: p.handleCreateQuery,
+      showColumnComments: p.showColumnComments,
+      showRowNumbers: p.showRowNumbers,
+      showZebraStripes: p.showZebraStripes,
+    }),
+    [
+      p.handlePageChange,
+      p.handlePageSizeChange,
+      p.handleSortChange,
+      p.handleFilterChange,
+      p.handleTableRefresh,
+      p.handleOpenTableDDL,
+      p.handleOpenERDiagram,
+      p.handleCreateQuery,
+      p.showColumnComments,
+      p.showRowNumbers,
+      p.showZebraStripes,
+    ],
+  );
+
+  const redisActions = useMemo(
+    () => ({
+      handleOpenRedisConsole: p.handleOpenRedisConsole,
+      notifyRedisRefresh: p.notifyRedisRefresh,
+    }),
+    [p.handleOpenRedisConsole, p.notifyRedisRefresh],
+  );
+
+  const schemaActions = useMemo(
+    () => ({
+      handleCreateTableSuccess: p.handleCreateTableSuccess,
+      handleAlterTableSuccess: p.handleAlterTableSuccess,
+    }),
+    [p.handleCreateTableSuccess, p.handleAlterTableSuccess],
+  );
+
   return (
-    <TabActionsContext.Provider
-      value={{ handleCloseTab: p.handleCloseTab, setTabs: p.setTabs }}
-    >
-      <EditorActionsContext.Provider
-        value={{
-          handleExecuteQuery: p.handleExecuteQuery,
-          handleSqlChange: p.handleSqlChange,
-          handleEditorDatabaseChange: p.handleEditorDatabaseChange,
-          handleCrossDbSchemaLoad: p.handleCrossDbSchemaLoad,
-          handleEditorSchemaChange: p.handleEditorSchemaChange,
-          setQueriesLastUpdated: p.setQueriesLastUpdated,
-          setTabs: p.setTabs,
-          isDefaultQueryTitle: p.isDefaultQueryTitle,
-        }}
-      >
-        <TableActionsContext.Provider
-          value={{
-            handlePageChange: p.handlePageChange,
-            handlePageSizeChange: p.handlePageSizeChange,
-            handleSortChange: p.handleSortChange,
-            handleFilterChange: p.handleFilterChange,
-            handleTableRefresh: p.handleTableRefresh,
-            handleOpenTableDDL: p.handleOpenTableDDL,
-            handleOpenERDiagram: p.handleOpenERDiagram,
-            handleCreateQuery: p.handleCreateQuery,
-            showColumnComments: p.showColumnComments,
-            showRowNumbers: p.showRowNumbers,
-            showZebraStripes: p.showZebraStripes,
-          }}
-        >
-          <RedisActionsContext.Provider
-            value={{
-              handleOpenRedisConsole: p.handleOpenRedisConsole,
-              notifyRedisRefresh: p.notifyRedisRefresh,
-            }}
-          >
-            <SchemaActionsContext.Provider
-              value={{
-                handleCreateTableSuccess: p.handleCreateTableSuccess,
-                handleAlterTableSuccess: p.handleAlterTableSuccess,
-              }}
-            >
+    <TabActionsContext.Provider value={tabActions}>
+      <EditorActionsContext.Provider value={editorActions}>
+        <TableActionsContext.Provider value={tableActions}>
+          <RedisActionsContext.Provider value={redisActions}>
+            <SchemaActionsContext.Provider value={schemaActions}>
               {children}
             </SchemaActionsContext.Provider>
           </RedisActionsContext.Provider>

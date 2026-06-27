@@ -23,6 +23,8 @@ export function useTableData({
   pageSize,
   onPageChange,
 }: UseTableDataParams) {
+  const hasOnPageChange = !!onPageChange;
+
   const sortedData = useMemo(() => {
     if (isControlledSort || !activeSortColumn || !activeSortDirection) {
       return data;
@@ -32,10 +34,10 @@ export function useTableData({
 
   const currentData = useMemo(
     () =>
-      onPageChange
+      hasOnPageChange
         ? sortedData
         : sortedData.slice((page - 1) * pageSize, page * pageSize),
-    [onPageChange, page, pageSize, sortedData],
+    [hasOnPageChange, page, pageSize, sortedData],
   );
 
   const hasKnownTotal = typeof total === "number";

@@ -162,8 +162,8 @@ async fn test_sqlite_command_create_database_by_id_returns_unsupported() {
     let err = result.err().unwrap();
     let err_msg = err.to_string();
     assert!(
-        err_msg.contains("[UNSUPPORTED]"),
-        "expected [UNSUPPORTED] error, got: {}",
+        err_msg.contains("[ERR-5001]"),
+        "expected [ERR-5001] error, got: {}",
         err_msg
     );
 

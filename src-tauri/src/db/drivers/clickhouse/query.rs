@@ -1,5 +1,8 @@
-use crate::models::{QueryColumn, QueryResult};
+use super::super::DriverResult;
 use super::helpers::trim_trailing_semicolon;
+use super::ClickHouseDriver;
+use crate::error::AppError;
+use crate::models::{QueryColumn, QueryResult, SingleResultSet};
 use serde_json::Value;
 
 pub fn has_format_clause(sql: &str) -> bool {
@@ -204,6 +207,167 @@ pub fn raw_text_to_query_result(body: String, time_taken_ms: i64) -> QueryResult
     }
 }
 
+impl ClickHouseDriver {
+    pub async fn execute_query(&self, sql: String) -> DriverResult<QueryResult> {
+        self.execute_query_inner(sql, None).await
+    }
+
+    pub async fn execute_query_with_id(
+        &self,
+        sql: String,
+        query_id: Option<&str>,
+    ) -> DriverResult<QueryResult> {
+        self.execute_query_inner(sql, query_id).await
+    }
+
+    async fn execute_query_inner(
+        &self,
+        sql: String,
+        query_id: Option<&str>,
+    ) -> DriverResult<QueryResult> {
+        let start = std::time::Instant::now();
+        let statements = super::super::split_sql_statements(&sql);
+
+        if statements.is_empty() {
+            return Err(AppError::query_failed("Empty SQL statement"));
+        }
+
+        if statements.len() == 1 {
+            let stmt = statements.into_iter().next().unwrap();
+            let result = self.execute_single_statement(&stmt, query_id).await?;
+            let duration = start.elapsed();
+            return Ok(QueryResult {
+                data: result.data,
+                row_count: result.row_count,
+                columns: result.columns,
+                time_taken_ms: duration.as_millis() as i64,
+                success: true,
+                error: None,
+                result_sets: None,
+            });
+        }
+
+        let mut result_sets = Vec::new();
+        let mut last_error: Option<String> = None;
+
+        for (idx, statement) in statements.iter().enumerate() {
+            match self.execute_single_statement(statement, query_id).await {
+                Ok(result) => {
+                    result_sets.push(SingleResultSet {
+                        data: result.data,
+                        row_count: result.row_count,
+                        columns: result.columns,
+                        index: idx as u32,
+                        statement: statement.clone(),
+                    });
+                }
+                Err(e) => {
+                    last_error = Some(e.to_string());
+                    break;
+                }
+            }
+        }
+
+        let duration = start.elapsed();
+
+        if let Some(err) = last_error {
+            return Ok(QueryResult {
+                data: vec![],
+                row_count: 0,
+                columns: vec![],
+                time_taken_ms: duration.as_millis() as i64,
+                success: false,
+                error: Some(err),
+                result_sets: Some(result_sets),
+            });
+        }
+
+        Ok(QueryResult {
+            data: vec![],
+            row_count: 0,
+            columns: vec![],
+            time_taken_ms: duration.as_millis() as i64,
+            success: true,
+            error: None,
+            result_sets: Some(result_sets),
+        })
+    }
+
+    async fn execute_single_statement(
+        &self,
+        sql: &str,
+        query_id: Option<&str>,
+    ) -> DriverResult<QueryResult> {
+        let trimmed = sql.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::query_failed("Empty SQL statement"));
+        }
+
+        if has_format_clause(trimmed) {
+            if is_json_format(trimmed) {
+                let resp = self.execute_json(trimmed, query_id).await?;
+                return Ok(json_response_to_query_result(resp));
+            }
+            let raw = self.execute_raw(trimmed, query_id).await?;
+            let mut result = raw_text_to_query_result(raw.body, 0);
+            apply_affected_row_count(&mut result, raw.summary.as_ref(), trimmed);
+            return Ok(result);
+        }
+
+        if is_select_like_query(trimmed) {
+            let with_format = ensure_json_format(trimmed);
+            let resp = self.execute_json(&with_format, query_id).await?;
+            return Ok(json_response_to_query_result(resp));
+        }
+
+        let raw = self.execute_raw(trimmed, query_id).await?;
+        let mut result = raw_text_to_query_result(raw.body, 0);
+        apply_affected_row_count(&mut result, raw.summary.as_ref(), trimmed);
+        Ok(result)
+    }
+}
+
+fn apply_affected_row_count(
+    result: &mut QueryResult,
+    summary: Option<&super::connection::ClickHouseSummary>,
+    sql: &str,
+) {
+    if let Some(written) = summary.and_then(|s| s.written_rows) {
+        result.row_count = written;
+    } else if let Some(inferred) = infer_insert_values_row_count(sql) {
+        result.row_count = inferred;
+    }
+}
+
+fn is_select_like_query(sql: &str) -> bool {
+    match super::super::first_sql_keyword(sql).as_deref() {
+        Some("SELECT") | Some("SHOW") | Some("DESCRIBE") | Some("DESC") | Some("EXPLAIN")
+        | Some("WITH") => true,
+        _ => false,
+    }
+}
+
+fn json_response_to_query_result(resp: super::connection::ClickHouseJsonResponse) -> QueryResult {
+    let columns: Vec<QueryColumn> = resp
+        .meta
+        .iter()
+        .map(|m| QueryColumn {
+            name: m.name.clone(),
+            r#type: m.type_name.clone(),
+        })
+        .collect();
+    let row_count = resp.data.len() as i64;
+    QueryResult {
+        data: resp.data,
+        row_count,
+        columns,
+        time_taken_ms: 0,
+        success: true,
+        error: None,
+        result_sets: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +424,35 @@ mod tests {
         assert_eq!(result.data[0]["raw_line"], Value::String("a".to_string()));
         assert_eq!(result.data[1]["line_no"], Value::from(2));
         assert_eq!(result.data[1]["raw_line"], Value::String("b".to_string()));
+    }
+
+    #[test]
+    fn apply_affected_row_count_prefers_summary_written_rows() {
+        let mut result = raw_text_to_query_result(String::new(), 0);
+        let summary = super::super::connection::ClickHouseSummary {
+            written_rows: Some(3),
+            ..Default::default()
+        };
+
+        apply_affected_row_count(
+            &mut result,
+            Some(&summary),
+            "INSERT INTO events VALUES (1), (2)",
+        );
+
+        assert_eq!(result.row_count, 3);
+    }
+
+    #[test]
+    fn apply_affected_row_count_falls_back_to_insert_values_count() {
+        let mut result = raw_text_to_query_result(String::new(), 0);
+
+        apply_affected_row_count(
+            &mut result,
+            None,
+            "INSERT INTO events VALUES (1, 'alpha'), (2, 'beta')",
+        );
+
+        assert_eq!(result.row_count, 2);
     }
 }

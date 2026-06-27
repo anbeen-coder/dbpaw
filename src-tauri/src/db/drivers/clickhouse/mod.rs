@@ -282,7 +282,7 @@ impl DatabaseDriver for ClickHouseDriver {
     }
 
     async fn execute_query(&self, sql: String) -> DriverResult<QueryResult> {
-        self.execute_query_with_id(sql, None).await
+        ClickHouseDriver::execute_query(self, sql).await
     }
 
     async fn execute_query_with_id(
@@ -290,7 +290,7 @@ impl DatabaseDriver for ClickHouseDriver {
         sql: String,
         query_id: Option<&str>,
     ) -> DriverResult<QueryResult> {
-        self.execute_query_with_id(sql, query_id).await
+        ClickHouseDriver::execute_query_with_id(self, sql, query_id).await
     }
 
     async fn get_schema_overview(&self, schema: Option<String>) -> DriverResult<SchemaOverview> {

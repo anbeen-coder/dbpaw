@@ -73,12 +73,17 @@ export function useConnectionRevealSync(options: {
   const tableNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const handledRevealRequestIdRef = useRef<number | null>(null);
   const handledRedisRefreshIdRef = useRef<number | null>(null);
+  const fetchAndSetTablesRef = useRef(fetchAndSetTables);
+  const loadRedisKeysPageRef = useRef(loadRedisKeysPage);
   const [selectedTableNode, setSelectedTableNode] =
     useState<SelectedTableNode | null>(null);
   const [autoScrollRequest, setAutoScrollRequest] = useState<{
     key: string;
     id: number;
   } | null>(null);
+
+  fetchAndSetTablesRef.current = fetchAndSetTables;
+  loadRedisKeysPageRef.current = loadRedisKeysPage;
 
   useEffect(() => {
     connectionsRef.current.forEach((conn) => {
@@ -87,10 +92,10 @@ export function useConnectionRevealSync(options: {
         const dbKey = `${conn.id}-${db.name}`;
         if (!expandedDatabasesRef.current.has(dbKey) || db.tables.length === 0)
           return;
-        void loadRedisKeysPage(conn.id, db.name, "0", false);
+        void loadRedisKeysPageRef.current(conn.id, db.name, "0", false);
       });
     });
-  }, [searchTerm, loadRedisKeysPage, connectionsRef, expandedDatabasesRef]);
+  }, [searchTerm, connectionsRef, expandedDatabasesRef]);
 
   useEffect(() => {
     if (!activeTableTarget) {
@@ -106,11 +111,13 @@ export function useConnectionRevealSync(options: {
     let cancelled = false;
 
     setExpandedConnections((prev) => {
+      if (prev.has(connectionId)) return prev;
       const next = new Set(prev);
       next.add(connectionId);
       return next;
     });
     setExpandedDatabases((prev) => {
+      if (prev.has(dbKey)) return prev;
       const next = new Set(prev);
       next.add(dbKey);
       return next;
@@ -135,7 +142,10 @@ export function useConnectionRevealSync(options: {
         ? targetDatabase.schemas.flatMap((schema) => schema.tables)
         : targetDatabase.tables;
       if (!hasLoadedTables) {
-        availableTables = await fetchAndSetTables(connectionId, databaseName);
+        availableTables = await fetchAndSetTablesRef.current(
+          connectionId,
+          databaseName,
+        );
       }
       if (cancelled) return;
       const resolvedSchema =
@@ -144,8 +154,10 @@ export function useConnectionRevealSync(options: {
         "";
       if (supportsSchemaNode && resolvedSchema) {
         setExpandedSchemas((prev) => {
+          const schemaKey = getSchemaNodeKey(dbKey, resolvedSchema);
+          if (prev.has(schemaKey)) return prev;
           const next = new Set(prev);
-          next.add(getSchemaNodeKey(dbKey, resolvedSchema));
+          next.add(schemaKey);
           return next;
         });
       }
@@ -168,7 +180,13 @@ export function useConnectionRevealSync(options: {
     return () => {
       cancelled = true;
     };
-  }, [activeTableTarget, connections, fetchAndSetTables, setExpandedConnections, setExpandedDatabases, setExpandedSchemas]);
+  }, [
+    activeTableTarget,
+    connections,
+    setExpandedConnections,
+    setExpandedDatabases,
+    setExpandedSchemas,
+  ]);
 
   useEffect(() => {
     if (!sidebarRevealRequest || !activeTableTarget || !selectedTableNode)
@@ -208,13 +226,13 @@ export function useConnectionRevealSync(options: {
     handledRedisRefreshIdRef.current = redisRefreshRequest.id;
     const dbKey = `${String(redisRefreshRequest.connectionId)}-${redisRefreshRequest.database}`;
     if (!expandedDatabasesRef.current.has(dbKey)) return;
-    void loadRedisKeysPage(
+    void loadRedisKeysPageRef.current(
       String(redisRefreshRequest.connectionId),
       redisRefreshRequest.database,
       "0",
       false,
     );
-  }, [redisRefreshRequest, loadRedisKeysPage, expandedDatabasesRef]);
+  }, [redisRefreshRequest, expandedDatabasesRef]);
 
   useEffect(() => {
     if (!autoScrollRequest) return;

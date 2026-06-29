@@ -70,6 +70,11 @@ it never happens again.
   (`aria-label`, and usually matching `title`) from i18n text. Without this,
   Playwright flow tests have to click by position and can miss the exact
   "button exists but crashes when clicked" regression they are meant to catch.
+- Effects that set React state must not depend on unstable callback identities
+  unless the callback is deliberately memoized. For "read latest callback but
+  do not re-run" cases, store the callback in a ref. When updating `Set`/`Map`
+  state inside effects, return the previous object if the key/value is already
+  present so a no-op does not trigger a render loop.
 
 ## Database Drivers
 

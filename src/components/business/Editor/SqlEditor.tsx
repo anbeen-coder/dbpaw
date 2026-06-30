@@ -14,6 +14,10 @@ import { useSqlEditorActions } from "./hooks/useSqlEditorActions";
 import { useSqlResults } from "./hooks/useSqlResults";
 import { SqlToolbar } from "./SqlToolbar";
 import { SqlResultsPanel } from "./SqlResultsPanel";
+import {
+  isRegisteredDriver,
+  supportsSchemaBrowsing,
+} from "@/lib/driver-registry";
 
 interface SqlEditorProps {
   queryResults?: {
@@ -106,7 +110,11 @@ export function SqlEditor({
     !!availableDatabases &&
     availableDatabases.length > 1;
 
+  const canBrowseSchemas =
+    isRegisteredDriver(driver) && supportsSchemaBrowsing(driver);
+
   const canSwitchSchema =
+    canBrowseSchemas &&
     !!currentSchema &&
     !!onSchemaChange &&
     !!availableSchemas &&

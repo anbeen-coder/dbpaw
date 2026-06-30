@@ -2,7 +2,11 @@ import { useCallback, useRef } from "react";
 import { api, SavedQuery, SchemaOverview } from "@/services/api";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/errors";
-import { isKeyValueDriver, isRegisteredDriver } from "@/lib/driver-registry";
+import {
+  isKeyValueDriver,
+  isRegisteredDriver,
+  supportsSchemaBrowsing,
+} from "@/lib/driver-registry";
 import { applyQueryCompletionToTab } from "@/lib/queryExecutionState";
 import {
   normalizeDatabaseOptions,
@@ -72,6 +76,8 @@ export function useQueryEditor({
       const fallbackDatabaseLabel = t("app.tab.defaultDatabase");
       const initialDatabase = normalizedDatabaseName || undefined;
       const titleDatabase = normalizedDatabaseName || fallbackDatabaseLabel;
+      const canBrowseSchemas =
+        isRegisteredDriver(driver) && supportsSchemaBrowsing(driver);
       const newTabId = `query-${connectionId}-${titleDatabase}-${Date.now()}`;
       const newTab: EditorTabItem = {
         id: newTabId,
@@ -95,7 +101,9 @@ export function useQueryEditor({
       Promise.allSettled([
         fetchEditorDatabases(connectionId, initialDatabase),
         fetchEditorSchemaOverview(connectionId, initialDatabase),
-        fetchEditorSchemas(connectionId, initialDatabase),
+        canBrowseSchemas
+          ? fetchEditorSchemas(connectionId, initialDatabase)
+          : Promise.resolve([]),
       ]).then(([availableDatabasesResult, schemaOverviewResult, schemasResult]) => {
         if (availableDatabasesResult.status === "rejected") {
           console.error(
@@ -146,7 +154,14 @@ export function useQueryEditor({
         );
       });
     },
-    [fetchEditorDatabases, fetchEditorSchemaOverview, setActiveTab, setTabs, t],
+    [
+      fetchEditorDatabases,
+      fetchEditorSchemaOverview,
+      fetchEditorSchemas,
+      setActiveTab,
+      setTabs,
+      t,
+    ],
   );
 
   const handleOpenSavedQuery = useCallback(
@@ -379,14 +394,19 @@ export function useQueryEditor({
       );
 
       try {
-        const schemas = await fetchEditorSchemas(tab.connectionId, database);
+        const canBrowseSchemas =
+          isRegisteredDriver(tab.driver) && supportsSchemaBrowsing(tab.driver);
+        const schemas = canBrowseSchemas
+          ? await fetchEditorSchemas(tab.connectionId, database)
+          : [];
         if (schemaOverviewRequestKeysRef.current.get(tabId) !== requestKey)
           return;
         const currentSchema = schemas.length > 0 ? schemas[0] : undefined;
 
-        const schemaOverview = currentSchema
-          ? await fetchEditorSchemaOverview(tab.connectionId, database, currentSchema)
-          : await fetchEditorSchemaOverview(tab.connectionId, database);
+        const schemaOverview =
+          canBrowseSchemas && currentSchema
+            ? await fetchEditorSchemaOverview(tab.connectionId, database, currentSchema)
+            : await fetchEditorSchemaOverview(tab.connectionId, database);
         if (schemaOverviewRequestKeysRef.current.get(tabId) !== requestKey)
           return;
 

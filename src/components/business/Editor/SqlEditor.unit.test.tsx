@@ -325,6 +325,44 @@ describe("SqlEditor", () => {
     expect(container.textContent).toContain("db2");
   });
 
+  test("schema selector is hidden for database-scoped drivers", () => {
+    const { container } = render(
+      <SqlEditor
+        value=""
+        driver="mysql"
+        databaseName="db1"
+        availableDatabases={["db1", "db2"]}
+        onDatabaseChange={() => {}}
+        currentSchema="public"
+        availableSchemas={["public", "auth"]}
+        onSchemaChange={() => {}}
+      />,
+    );
+
+    expect(container.textContent).toContain("db1");
+    expect(container.textContent).toContain("db2");
+    expect(container.textContent).not.toContain("public");
+    expect(container.textContent).not.toContain("auth");
+  });
+
+  test("schema selector renders for schema-browsing drivers", () => {
+    const { container } = render(
+      <SqlEditor
+        value=""
+        driver="postgres"
+        databaseName="db1"
+        availableDatabases={["db1", "db2"]}
+        onDatabaseChange={() => {}}
+        currentSchema="public"
+        availableSchemas={["public", "auth"]}
+        onSchemaChange={() => {}}
+      />,
+    );
+
+    expect(container.textContent).toContain("public");
+    expect(container.textContent).toContain("auth");
+  });
+
   test("onChange debounces before calling parent", async () => {
     const calls: string[] = [];
     const { container } = render(

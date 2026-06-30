@@ -179,7 +179,13 @@ export function useConnectionForm(params: {
       }
       setIsTesting(true);
       setTestMsg(null);
-      const res = await api.connections.testEphemeral(normalizedForm);
+      const res =
+        dialogMode === "edit" && editingConnectionId
+          ? await api.connections.testSavedEdit(
+              Number(editingConnectionId),
+              normalizedForm,
+            )
+          : await api.connections.testEphemeral(normalizedForm);
       setTestMsg({
         ok: res.success,
         text: res.message,

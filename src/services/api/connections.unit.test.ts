@@ -244,6 +244,18 @@ describe("connectionsApi.connections.testEphemeral", () => {
   });
 });
 
+describe("connectionsApi.connections.testSavedEdit", () => {
+  test("invokes test_connection_saved_edit", async () => {
+    const form = { driver: "postgres", password: "" };
+    mockReturn = { success: true };
+
+    await connectionsApi.connections.testSavedEdit(7, form as any);
+
+    expect(capturedCmd).toBe("test_connection_saved_edit");
+    expect(capturedArgs).toEqual({ id: 7, form });
+  });
+});
+
 describe("connectionsApi.connections.listSqliteIssues", () => {
   test("invokes list_sqlite_issues", async () => {
     mockReturn = [];

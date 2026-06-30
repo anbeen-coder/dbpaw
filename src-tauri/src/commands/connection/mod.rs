@@ -1,9 +1,9 @@
-mod create_database;
 mod connection_crud;
+mod create_database;
 mod import;
 
-pub use create_database::*;
 pub use connection_crud::*;
+pub use create_database::*;
 pub use import::*;
 
 #[macro_export]
@@ -15,6 +15,7 @@ macro_rules! connection_commands {
         $crate::commands::connection::delete_connection,
         $crate::commands::connection::import_connections,
         $crate::commands::connection::test_connection_ephemeral,
+        $crate::commands::connection::test_connection_saved_edit,
         $crate::commands::connection::list_databases,
         $crate::commands::connection::list_databases_by_id,
         $crate::commands::connection::create_database_by_id,

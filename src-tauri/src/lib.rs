@@ -185,6 +185,7 @@ pub fn run() {
             commands::connection::delete_connection,
             commands::connection::import_connections,
             commands::connection::test_connection_ephemeral,
+            commands::connection::test_connection_saved_edit,
             commands::connection::list_databases,
             commands::connection::list_databases_by_id,
             commands::metadata::list_schemas,

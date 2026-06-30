@@ -15,6 +15,7 @@ export const COMMANDS = {
   GET_MYSQL_CHARSETS_BY_ID: "get_mysql_charsets_by_id",
   GET_MYSQL_COLLATIONS_BY_ID: "get_mysql_collations_by_id",
   TEST_CONNECTION_EPHEMERAL: "test_connection_ephemeral",
+  TEST_CONNECTION_SAVED_EDIT: "test_connection_saved_edit",
   LIST_SQLITE_ISSUES: "list_sqlite_issues",
   IMPORT_CONNECTIONS: "import_connections",
 

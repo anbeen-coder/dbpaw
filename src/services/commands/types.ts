@@ -151,6 +151,10 @@ export interface CommandMap {
     args: { form: ConnectionForm };
     return: TestConnectionResult;
   };
+  test_connection_saved_edit: {
+    args: { id: number; form: ConnectionForm };
+    return: TestConnectionResult;
+  };
   list_sqlite_issues: {
     args: Record<string, never>;
     return: SqliteConnectionIssue[];

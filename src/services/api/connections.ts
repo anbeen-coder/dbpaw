@@ -64,6 +64,8 @@ export const connectionsApi = {
       invoke(COMMANDS.GET_MYSQL_COLLATIONS_BY_ID, { id, charset }),
     testEphemeral: (form: ConnectionForm) =>
       invoke(COMMANDS.TEST_CONNECTION_EPHEMERAL, { form }),
+    testSavedEdit: (id: number, form: ConnectionForm) =>
+      invoke(COMMANDS.TEST_CONNECTION_SAVED_EDIT, { id, form }),
     listSqliteIssues: () =>
       invoke(COMMANDS.LIST_SQLITE_ISSUES, {}),
     importFromFile: (filePath: string) =>

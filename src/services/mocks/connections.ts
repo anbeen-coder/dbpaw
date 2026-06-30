@@ -11,6 +11,7 @@ type ConnectionCommand = Extract<keyof CommandMap,
   | "get_mysql_charsets_by_id"
   | "get_mysql_collations_by_id"
   | "test_connection_ephemeral"
+  | "test_connection_saved_edit"
   | "list_sqlite_issues"
   | "import_connections"
 >;
@@ -312,6 +313,39 @@ export async function mockTestConnectionEphemeral(
   };
 }
 
+export async function mockTestConnectionSavedEdit(
+  id: number,
+  form: ConnectionForm,
+): Promise<TestConnectionResult> {
+  const existing = mockConnections.find((connection) => connection.id === id);
+  if (!existing) {
+    throw new Error(`Connection with id ${id} not found`);
+  }
+  return mockTestConnectionEphemeral({
+    ...form,
+    password:
+      form.password !== undefined && form.password !== ""
+        ? form.password
+        : existing.password,
+    sshPassword:
+      form.sshPassword !== undefined && form.sshPassword !== ""
+        ? form.sshPassword
+        : existing.sshPassword,
+    sentinelPassword:
+      form.sentinelPassword !== undefined && form.sentinelPassword !== ""
+        ? form.sentinelPassword
+        : existing.sentinelPassword,
+    apiKeySecret:
+      form.apiKeySecret !== undefined && form.apiKeySecret !== ""
+        ? form.apiKeySecret
+        : existing.apiKeySecret,
+    apiKeyEncoded:
+      form.apiKeyEncoded !== undefined && form.apiKeyEncoded !== ""
+        ? form.apiKeyEncoded
+        : existing.apiKeyEncoded,
+  });
+}
+
 export function handleConnections<T extends ConnectionCommand>(
   cmd: T,
   args: CommandArgs<T>
@@ -344,6 +378,11 @@ export function handleConnections<T extends ConnectionCommand>(
       ) as Promise<CommandReturn<T>>;
     case COMMANDS.TEST_CONNECTION_EPHEMERAL:
       return mockTestConnectionEphemeral((args as CommandArgs<"test_connection_ephemeral">).form) as Promise<CommandReturn<T>>;
+    case COMMANDS.TEST_CONNECTION_SAVED_EDIT:
+      return mockTestConnectionSavedEdit(
+        (args as CommandArgs<"test_connection_saved_edit">).id,
+        (args as CommandArgs<"test_connection_saved_edit">).form
+      ) as Promise<CommandReturn<T>>;
     case COMMANDS.LIST_SQLITE_ISSUES:
       return Promise.resolve([]) as Promise<CommandReturn<T>>;
     default:

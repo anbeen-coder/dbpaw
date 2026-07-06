@@ -4,6 +4,7 @@ import type {
   Connection,
   TableInfo,
   RoutineInfo,
+  SchemaInfo,
   DatasourceTreeAdapter,
 } from "../connection-list/types";
 import type {
@@ -16,6 +17,50 @@ import type {
 import { decodeCapabilities } from "@/lib/driver-capabilities";
 import { groupSqlObjectsBySchema } from "../connection-list/helpers";
 import { errorMessage } from "@/lib/errors";
+
+function splitRoutinesByType(routines: RoutineInfo[]) {
+  return {
+    procedures: routines
+      .filter((routine) => routine.type === "procedure")
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    functions: routines
+      .filter((routine) => routine.type === "function")
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+function mergeRoutinesIntoSchemas(
+  schemas: SchemaInfo[],
+  routines: RoutineInfo[],
+): SchemaInfo[] {
+  const routinesBySchema = routines.reduce<Record<string, RoutineInfo[]>>(
+    (acc, routine) => {
+      const schemaName = (routine.schema || "").trim() || "dbo";
+      const current = acc[schemaName] || [];
+      current.push(routine);
+      acc[schemaName] = current;
+      return acc;
+    },
+    {},
+  );
+
+  const existingSchemaNames = new Set(schemas.map((schema) => schema.name));
+  const merged = schemas.map((schema) => ({
+    ...schema,
+    ...splitRoutinesByType(routinesBySchema[schema.name] || []),
+  }));
+
+  for (const [schemaName, schemaRoutines] of Object.entries(routinesBySchema)) {
+    if (existingSchemaNames.has(schemaName)) continue;
+    merged.push({
+      name: schemaName,
+      tables: [],
+      ...splitRoutinesByType(schemaRoutines),
+    });
+  }
+
+  return merged.sort((a, b) => a.name.localeCompare(b.name));
+}
 
 export function useTreeDataFetching(params: {
   connections: Connection[];
@@ -250,7 +295,16 @@ export function useTreeDataFetching(params: {
                   ? db.schemas.length > 0
                   : db.tables.length > 0)
               ) {
-                return db;
+                if (!supportsSchemaNode) {
+                  return {
+                    ...db,
+                    routines: nextRoutines,
+                  };
+                }
+                return {
+                  ...db,
+                  schemas: mergeRoutinesIntoSchemas(db.schemas, nextRoutines),
+                };
               }
               if (!supportsSchemaNode) {
                 return {

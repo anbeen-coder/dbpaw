@@ -12,6 +12,7 @@ export const sqlEditor = {
     success: "结果：执行成功。",
     rowsSuffix: "（{{count}} 行）",
     rowsSuffixPlural: "（{{count}} 行）",
+    closeAria: "关闭结果 {{number}}",
   },
   tooltip: {
     runSql: "执行 SQL（Cmd/Ctrl+Enter）",

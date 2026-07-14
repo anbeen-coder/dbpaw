@@ -1,6 +1,7 @@
 import { mock } from "bun:test";
 
-const mockT = (s: string) => s;
+const mockT = (s: string, options?: Record<string, unknown>) =>
+  options?.number === undefined ? s : `${s} ${options.number}`;
 
 mock.module("react-i18next", () => ({
   useTranslation: () => ({ t: mockT }),
@@ -87,11 +88,7 @@ mock.module("@/components/ui/select", () => ({
     value: string;
     onValueChange: (v: string) => void;
     children: any;
-  }) => (
-    <div data-select-value={value}>
-      {children}
-    </div>
-  ),
+  }) => <div data-select-value={value}>{children}</div>,
   SelectTrigger: ({ children }: any) => <div>{children}</div>,
   SelectContent: ({ children }: any) => <div>{children}</div>,
   SelectItem: ({ value, children }: any) => (
@@ -151,11 +148,17 @@ mock.module("@/services/api", () => ({
   api: {
     query: { cancel: mock(() => Promise.resolve(false)) },
     queries: {
-      create: mock(() => Promise.resolve({ id: 1, name: "Test", query: "SELECT 1" })),
-      update: mock(() => Promise.resolve({ id: 1, name: "Test", query: "SELECT 1" })),
+      create: mock(() =>
+        Promise.resolve({ id: 1, name: "Test", query: "SELECT 1" }),
+      ),
+      update: mock(() =>
+        Promise.resolve({ id: 1, name: "Test", query: "SELECT 1" }),
+      ),
     },
     transfer: {
-      exportQueryResult: mock(() => Promise.resolve({ rowCount: 10, filePath: "/tmp/out.csv" })),
+      exportQueryResult: mock(() =>
+        Promise.resolve({ rowCount: 10, filePath: "/tmp/out.csv" }),
+      ),
     },
   },
   isTauri: () => false,
@@ -168,6 +171,14 @@ mock.module("@/lib/errors", () => ({
 import { describe, test, expect, beforeEach } from "bun:test";
 import { render, fireEvent, act } from "@testing-library/react";
 import { SqlEditor } from "./SqlEditor";
+
+const makeResultSet = (index: number) => ({
+  data: [{ value: index + 1 }],
+  columns: ["value"],
+  rowCount: 1,
+  statement: `SELECT ${index + 1}`,
+  index,
+});
 
 describe("SqlEditor", () => {
   beforeEach(() => {
@@ -204,6 +215,86 @@ describe("SqlEditor", () => {
     );
 
     expect(container.textContent).toContain("1 rows, 1 cols");
+  });
+
+  test("result tabs can be closed with their close buttons", () => {
+    const { container } = render(
+      <SqlEditor
+        value="SELECT 1; SELECT 2"
+        queryResults={{
+          data: [{ value: 1 }],
+          columns: ["value"],
+          resultSets: [
+            { ...makeResultSet(0), data: [{ value: 1 }] },
+            { ...makeResultSet(1), data: [{ value: 2 }] },
+          ],
+        }}
+      />,
+    );
+
+    const closeButton = Array.from(
+      container.getElementsByTagName("button"),
+    ).find(
+      (button) =>
+        button.getAttribute("aria-label") === "sqlEditor.result.closeAria 1",
+    );
+    expect(closeButton).toBeTruthy();
+    fireEvent.click(closeButton!);
+
+    expect(container.textContent).not.toContain("Result 1 (1 rows)");
+    expect(container.textContent).toContain("Result 2 (1 rows)");
+    expect(container.textContent).toContain("1 rows, 1 cols");
+  });
+
+  test("middle mouse button closes a result tab", () => {
+    const { container } = render(
+      <SqlEditor
+        value="SELECT 1; SELECT 2"
+        queryResults={{
+          data: [{ value: 1 }],
+          columns: ["value"],
+          resultSets: [makeResultSet(0), makeResultSet(1)],
+        }}
+      />,
+    );
+
+    const firstResultButton = Array.from(
+      container.getElementsByTagName("button"),
+    ).find((button) => button.textContent === "Result 1 (1 rows)");
+    expect(firstResultButton).toBeTruthy();
+    fireEvent.mouseDown(firstResultButton!, { button: 1 });
+
+    expect(container.textContent).not.toContain("Result 1 (1 rows)");
+    expect(container.textContent).toContain("Result 2 (1 rows)");
+  });
+
+  test("closing all result tabs hides the results panel", () => {
+    const { container } = render(
+      <SqlEditor
+        value="SELECT 1; SELECT 2"
+        queryResults={{
+          data: [{ value: 1 }],
+          columns: ["value"],
+          resultSets: [makeResultSet(0), makeResultSet(1)],
+        }}
+      />,
+    );
+
+    const getCloseButton = (index: number) =>
+      Array.from(container.getElementsByTagName("button")).find(
+        (button) =>
+          button.getAttribute("aria-label") ===
+          `sqlEditor.result.closeAria ${index}`,
+      );
+    fireEvent.click(getCloseButton(1)!);
+    fireEvent.click(getCloseButton(2)!);
+
+    const hasResultsTable = Array.from(
+      container.getElementsByTagName("div"),
+    ).some(
+      (element) => element.getAttribute("data-testid") === "results-table",
+    );
+    expect(hasResultsTable).toBe(false);
   });
 
   test("error state renders for failed query", () => {
@@ -267,9 +358,7 @@ describe("SqlEditor", () => {
   });
 
   test("database label renders for single database", () => {
-    const { container } = render(
-      <SqlEditor value="" databaseName="mydb" />,
-    );
+    const { container } = render(<SqlEditor value="" databaseName="mydb" />);
 
     expect(container.textContent).toContain("mydb");
   });
@@ -283,9 +372,7 @@ describe("SqlEditor", () => {
   });
 
   test("clear button exists and is clickable", () => {
-    const { container } = render(
-      <SqlEditor value="SELECT 1" />,
-    );
+    const { container } = render(<SqlEditor value="SELECT 1" />);
 
     const buttons = Array.from(container.getElementsByTagName("button"));
     expect(buttons.length).toBeGreaterThanOrEqual(5);

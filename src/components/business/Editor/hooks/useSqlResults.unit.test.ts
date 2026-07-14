@@ -9,8 +9,22 @@ mock.module("react-i18next", () => ({
 }));
 
 import { describe, test, expect } from "bun:test";
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { useSqlResults } from "./useSqlResults";
+
+const makeResultSet = (index: number) => ({
+  data: [{ value: index + 1 }],
+  columns: ["value"],
+  rowCount: 1,
+  statement: `SELECT ${index + 1}`,
+  index,
+});
+
+const makeMultipleResults = () => ({
+  data: [{ value: 1 }],
+  columns: ["value"],
+  resultSets: [makeResultSet(0), makeResultSet(1), makeResultSet(2)],
+});
 
 describe("useSqlResults", () => {
   test("returns null resultStatus when no queryResults", () => {
@@ -61,5 +75,71 @@ describe("useSqlResults", () => {
   test("activeResultSetIndex defaults to 0", () => {
     const { result } = renderHook(() => useSqlResults({}));
     expect(result.current.activeResultSetIndex).toBe(0);
+  });
+
+  test("closing an inactive result keeps the active result", () => {
+    const queryResults = makeMultipleResults();
+    const { result } = renderHook(() => useSqlResults({ queryResults }));
+
+    act(() => result.current.setActiveResultSetIndex(1));
+    act(() => result.current.closeResultSet(0));
+
+    expect(result.current.activeResultSetIndex).toBe(1);
+    expect(
+      result.current.visibleResultSets.map((item) => item.originalIndex),
+    ).toEqual([1, 2]);
+  });
+
+  test("closing the active result selects the result on its right", () => {
+    const queryResults = makeMultipleResults();
+    const { result } = renderHook(() => useSqlResults({ queryResults }));
+
+    act(() => result.current.closeResultSet(0));
+
+    expect(result.current.activeResultSetIndex).toBe(1);
+    expect(result.current.displayData).toEqual([{ value: 2 }]);
+  });
+
+  test("closing the last active result selects the result on its left", () => {
+    const queryResults = makeMultipleResults();
+    const { result } = renderHook(() => useSqlResults({ queryResults }));
+
+    act(() => result.current.setActiveResultSetIndex(2));
+    act(() => result.current.closeResultSet(2));
+
+    expect(result.current.activeResultSetIndex).toBe(1);
+    expect(result.current.displayData).toEqual([{ value: 2 }]);
+  });
+
+  test("all results can be closed", () => {
+    const queryResults = makeMultipleResults();
+    const { result } = renderHook(() => useSqlResults({ queryResults }));
+
+    act(() => result.current.closeResultSet(0));
+    act(() => result.current.closeResultSet(1));
+    act(() => result.current.closeResultSet(2));
+
+    expect(result.current.visibleResultSets).toHaveLength(0);
+    expect(result.current.hasVisibleResults).toBe(false);
+  });
+
+  test("new query results restore all result tabs", () => {
+    const firstQueryResults = makeMultipleResults();
+    const secondQueryResults = makeMultipleResults();
+    const { result, rerender } = renderHook(
+      ({ queryResults }) => useSqlResults({ queryResults }),
+      { initialProps: { queryResults: firstQueryResults } },
+    );
+
+    act(() => result.current.closeResultSet(0));
+    act(() => result.current.closeResultSet(1));
+    act(() => result.current.closeResultSet(2));
+    expect(result.current.hasVisibleResults).toBe(false);
+
+    rerender({ queryResults: secondQueryResults });
+
+    expect(result.current.visibleResultSets).toHaveLength(3);
+    expect(result.current.activeResultSetIndex).toBe(0);
+    expect(result.current.hasVisibleResults).toBe(true);
   });
 });

@@ -154,7 +154,10 @@ export function SqlEditor({
 
       <div className="flex-1 overflow-hidden">
         <ResizablePanelGroup direction="vertical">
-          <ResizablePanel defaultSize={queryResults ? 50 : 100} minSize={30}>
+          <ResizablePanel
+            defaultSize={results.hasVisibleResults ? 50 : 100}
+            minSize={30}
+          >
             <div className="h-full flex flex-col text-base">
               <CodeMirror
                 value={form.code}
@@ -178,15 +181,17 @@ export function SqlEditor({
             </div>
           </ResizablePanel>
 
-          {queryResults && (
+          {queryResults && results.hasVisibleResults && (
             <>
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={50} minSize={20}>
                 <SqlResultsPanel
                   queryResults={queryResults}
                   hasMultipleResults={results.hasMultipleResults}
+                  visibleResultSets={results.visibleResultSets}
                   activeResultSetIndex={results.activeResultSetIndex}
                   onResultSetChange={results.setActiveResultSetIndex}
+                  onResultSetClose={results.closeResultSet}
                   displayData={results.displayData}
                   displayColumns={results.displayColumns}
                 />

@@ -1,7 +1,9 @@
-import { useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CheckCircle2, XCircle, type LucideIcon } from "lucide-react";
 import type { SingleResultState } from "@/lib/queryExecutionState";
+
+const EMPTY_RESULT_SETS: SingleResultState[] = [];
 
 export interface SqlResultsData {
   data: any[];
@@ -18,10 +20,27 @@ export interface SqlResultStatus {
   Icon: LucideIcon;
 }
 
+export interface VisibleResultSet {
+  originalIndex: number;
+  resultSet: SingleResultState;
+}
+
 export function useSqlResults(props: { queryResults?: SqlResultsData | null }) {
   const { queryResults } = props;
   const { t } = useTranslation();
-  const [activeResultSetIndex, setActiveResultSetIndex] = useState(0);
+  const [activeResultSetIndex, setActiveResultSetIndex] = useState(
+    queryResults?.activeResultSetIndex ?? 0,
+  );
+  const [closedResultSetIndexes, setClosedResultSetIndexes] = useState<
+    Set<number>
+  >(() => new Set());
+
+  useEffect(() => {
+    setClosedResultSetIndexes((previous) =>
+      previous.size === 0 ? previous : new Set(),
+    );
+    setActiveResultSetIndex(queryResults?.activeResultSetIndex ?? 0);
+  }, [queryResults]);
 
   const resultStatus = useMemo((): SqlResultStatus | null => {
     if (!queryResults) return null;
@@ -62,16 +81,55 @@ export function useSqlResults(props: { queryResults?: SqlResultsData | null }) {
     };
   }, [queryResults, t]);
 
-  const hasMultipleResults =
-    queryResults?.resultSets && queryResults.resultSets.length > 1;
+  const resultSets = queryResults?.resultSets ?? EMPTY_RESULT_SETS;
+  const hasMultipleResults = resultSets.length > 1;
+  const visibleResultSets = useMemo<VisibleResultSet[]>(
+    () =>
+      resultSets.flatMap((resultSet, originalIndex) =>
+        closedResultSetIndexes.has(originalIndex)
+          ? []
+          : [{ originalIndex, resultSet }],
+      ),
+    [closedResultSetIndexes, resultSets],
+  );
+
+  const effectiveActiveResultSetIndex = visibleResultSets.some(
+    ({ originalIndex }) => originalIndex === activeResultSetIndex,
+  )
+    ? activeResultSetIndex
+    : (visibleResultSets[0]?.originalIndex ?? 0);
+
+  const closeResultSet = useCallback(
+    (index: number) => {
+      const closingPosition = visibleResultSets.findIndex(
+        ({ originalIndex }) => originalIndex === index,
+      );
+      if (closingPosition === -1) return;
+
+      setClosedResultSetIndexes((previous) => {
+        if (previous.has(index)) return previous;
+        const next = new Set(previous);
+        next.add(index);
+        return next;
+      });
+
+      if (index === effectiveActiveResultSetIndex) {
+        const nextActive =
+          visibleResultSets[closingPosition + 1] ??
+          visibleResultSets[closingPosition - 1];
+        setActiveResultSetIndex(nextActive?.originalIndex ?? 0);
+      }
+    },
+    [effectiveActiveResultSetIndex, visibleResultSets],
+  );
 
   const currentResultSet = useMemo((): SingleResultState | null => {
     if (!queryResults) return null;
-    if (hasMultipleResults && queryResults.resultSets) {
-      return queryResults.resultSets[activeResultSetIndex] || null;
+    if (resultSets.length > 0) {
+      return resultSets[effectiveActiveResultSetIndex] || null;
     }
     return null;
-  }, [queryResults, hasMultipleResults, activeResultSetIndex]);
+  }, [effectiveActiveResultSetIndex, queryResults, resultSets]);
 
   const displayData = currentResultSet?.data ?? queryResults?.data ?? [];
   const displayColumns =
@@ -81,9 +139,14 @@ export function useSqlResults(props: { queryResults?: SqlResultsData | null }) {
     resultStatus,
     displayData,
     displayColumns,
-    hasMultipleResults: !!hasMultipleResults,
-    activeResultSetIndex,
+    hasMultipleResults,
+    hasVisibleResults:
+      !!queryResults &&
+      (resultSets.length === 0 || visibleResultSets.length > 0),
+    visibleResultSets,
+    activeResultSetIndex: effectiveActiveResultSetIndex,
     setActiveResultSetIndex,
+    closeResultSet,
     currentResultSet,
   };
 }

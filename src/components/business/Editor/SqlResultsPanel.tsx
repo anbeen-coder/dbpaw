@@ -1,17 +1,19 @@
 import { useTranslation } from "react-i18next";
+import { X } from "lucide-react";
 import { TableView } from "@/components/business/DataGrid/TableView";
-import type { SingleResultState } from "@/lib/queryExecutionState";
+import type { VisibleResultSet } from "./hooks/useSqlResults";
 
 interface SqlResultsPanelProps {
   queryResults: {
     data: any[];
     columns: string[];
     error?: string;
-    resultSets?: SingleResultState[];
   };
   hasMultipleResults: boolean;
+  visibleResultSets: VisibleResultSet[];
   activeResultSetIndex: number;
   onResultSetChange: (idx: number) => void;
+  onResultSetClose: (idx: number) => void;
   displayData: any[];
   displayColumns: string[];
 }
@@ -19,8 +21,10 @@ interface SqlResultsPanelProps {
 export function SqlResultsPanel({
   queryResults,
   hasMultipleResults,
+  visibleResultSets,
   activeResultSetIndex,
   onResultSetChange,
+  onResultSetClose,
   displayData,
   displayColumns,
 }: SqlResultsPanelProps) {
@@ -40,19 +44,46 @@ export function SqlResultsPanel({
   return (
     <div className="h-full flex flex-col">
       {hasMultipleResults && (
-        <div className="flex border-b bg-muted/30">
-          {queryResults.resultSets!.map((rs, idx) => (
-            <button
-              key={idx}
-              className={`px-3 py-1.5 text-sm ${
-                idx === activeResultSetIndex
+        <div className="flex min-w-0 overflow-x-auto border-b bg-muted/30">
+          {visibleResultSets.map(({ originalIndex, resultSet }) => (
+            <div
+              key={originalIndex}
+              className={`flex shrink-0 items-center text-sm ${
+                originalIndex === activeResultSetIndex
                   ? "border-b-2 border-primary bg-background"
                   : "text-muted-foreground hover:bg-muted/50"
               }`}
-              onClick={() => onResultSetChange(idx)}
+              onMouseDown={(event) => {
+                if (event.button === 1) {
+                  event.preventDefault();
+                  onResultSetClose(originalIndex);
+                }
+              }}
             >
-              Result {idx + 1} ({rs.rowCount} rows)
-            </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 pr-1"
+                onClick={() => onResultSetChange(originalIndex)}
+              >
+                Result {originalIndex + 1} ({resultSet.rowCount} rows)
+              </button>
+              <button
+                type="button"
+                className="mr-1 rounded-sm p-1 hover:bg-accent"
+                aria-label={t("sqlEditor.result.closeAria", {
+                  number: originalIndex + 1,
+                })}
+                title={t("sqlEditor.result.closeAria", {
+                  number: originalIndex + 1,
+                })}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onResultSetClose(originalIndex);
+                }}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
           ))}
         </div>
       )}

@@ -12,6 +12,7 @@ export const sqlEditor = {
     success: "Result: Execution successful.",
     rowsSuffix: " ({{count}} row)",
     rowsSuffixPlural: " ({{count}} rows)",
+    closeAria: "Close result {{number}}",
   },
   tooltip: {
     runSql: "Run SQL (Cmd/Ctrl+Enter)",

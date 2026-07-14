@@ -56,6 +56,10 @@ it never happens again.
   method to `api/`, always add a corresponding mock entry.
 - i18n locale files are TypeScript, not JSON. After adding a new locale file
   in `src/lib/i18n/locales/`, register it in `src/lib/i18n/index.ts`.
+- Until the i18n entry point composes the split domain locale modules, update
+  translation keys in both `locales/{en,zh}.ts` and the matching
+  `locales/{en,zh}/<domain>.ts` files. The app currently imports the monolithic
+  files, so changing only a split domain file has no runtime effect.
 - The keyboard-shortcut registry lives in `src/lib/shortcuts/defaults.ts`.
   The `ShortcutsProvider` in `src/contexts/ShortcutsContext.tsx` is the
   ONLY component allowed to call `getSetting`/`saveSetting` for the

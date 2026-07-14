@@ -96,6 +96,10 @@ it never happens again.
   (`split_sql_statements`, `first_sql_keyword`). `src-tauri/src/db/drivers/mod.rs`
   only re-exports splitter helpers as a compatibility layer. Do not reimplement
   SQL parsing in individual drivers.
+- `TableInfo.type` is a logical object category consumed by sidebar grouping,
+  not a database-specific storage engine. Drivers must return the categories
+  expected by the tree (`table`/`BASE TABLE` and the driver's view categories);
+  expose engine details through table metadata instead.
 
 ## Testing
 

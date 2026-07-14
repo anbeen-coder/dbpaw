@@ -1,8 +1,8 @@
 #[path = "common/clickhouse_context.rs"]
 mod clickhouse_context;
 
-use dbpaw_lib::db::drivers::clickhouse::ClickHouseDriver;
 use dbpaw_lib::db::drivers::DatabaseDriver;
+use dbpaw_lib::db::drivers::clickhouse::ClickHouseDriver;
 use testcontainers::clients::Cli;
 
 #[tokio::test]
@@ -80,15 +80,21 @@ async fn test_clickhouse_integration_flow() {
         .list_tables(Some(database.clone()))
         .await
         .expect("list_tables failed");
-    assert!(
-        tables.iter().any(|t| t.name == table_name),
-        "list_tables should include {}",
-        table_name
+    let table_info = tables
+        .iter()
+        .find(|t| t.name == table_name)
+        .unwrap_or_else(|| panic!("list_tables should include {}", table_name));
+    assert_eq!(
+        table_info.r#type, "table",
+        "regular ClickHouse engines should use the sidebar table category"
     );
-    assert!(
-        tables.iter().any(|t| t.name == view_name),
-        "list_tables should include {}",
-        view_name
+    let view_info = tables
+        .iter()
+        .find(|t| t.name == view_name)
+        .unwrap_or_else(|| panic!("list_tables should include {}", view_name));
+    assert_eq!(
+        view_info.r#type, "View",
+        "ClickHouse views should keep their sidebar view category"
     );
 
     let metadata = driver

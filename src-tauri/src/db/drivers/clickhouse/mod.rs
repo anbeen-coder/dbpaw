@@ -26,6 +26,14 @@ pub struct ClickHouseDriver {
     pub ssh_tunnel: Option<SshTunnel>,
 }
 
+fn table_type_from_engine(engine: Option<&str>) -> &'static str {
+    match engine.map(str::trim) {
+        Some(engine) if engine.eq_ignore_ascii_case("View") => "View",
+        Some(engine) if engine.eq_ignore_ascii_case("MaterializedView") => "MaterializedView",
+        _ => "table",
+    }
+}
+
 #[async_trait]
 impl DatabaseDriver for ClickHouseDriver {
     fn capabilities(&self) -> DriverCapabilities {
@@ -84,11 +92,8 @@ impl DatabaseDriver for ClickHouseDriver {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            let table_type = row
-                .get("engine")
-                .and_then(Value::as_str)
-                .unwrap_or("table")
-                .to_string();
+            let table_type =
+                table_type_from_engine(row.get("engine").and_then(Value::as_str)).to_string();
 
             if !table_name.is_empty() {
                 out.push(TableInfo {
@@ -351,5 +356,29 @@ impl DatabaseDriver for ClickHouseDriver {
         tables.sort_by(|a, b| a.schema.cmp(&b.schema).then(a.name.cmp(&b.name)));
 
         Ok(SchemaOverview { tables })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::table_type_from_engine;
+
+    #[test]
+    fn table_type_preserves_clickhouse_view_categories() {
+        assert_eq!(table_type_from_engine(Some("View")), "View");
+        assert_eq!(
+            table_type_from_engine(Some("MaterializedView")),
+            "MaterializedView"
+        );
+        assert_eq!(table_type_from_engine(Some(" view ")), "View");
+    }
+
+    #[test]
+    fn table_type_normalizes_regular_engines_to_table() {
+        assert_eq!(table_type_from_engine(Some("MergeTree")), "table");
+        assert_eq!(table_type_from_engine(Some("ReplacingMergeTree")), "table");
+        assert_eq!(table_type_from_engine(Some("Memory")), "table");
+        assert_eq!(table_type_from_engine(Some("")), "table");
+        assert_eq!(table_type_from_engine(None), "table");
     }
 }

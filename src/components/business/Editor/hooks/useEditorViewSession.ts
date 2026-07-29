@@ -61,8 +61,11 @@ export function useEditorViewSession(tabId: string) {
       restoringRef.current = true;
       if (session?.selection) {
         const docLength = view.state.doc.length;
-        const anchor = Math.min(session.selection.anchor, docLength);
-        const head = Math.min(session.selection.head, docLength);
+        const anchor = Math.max(
+          0,
+          Math.min(session.selection.anchor, docLength),
+        );
+        const head = Math.max(0, Math.min(session.selection.head, docLength));
         view.dispatch({
           selection: EditorSelection.single(anchor, head),
         });

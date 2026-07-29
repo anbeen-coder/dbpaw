@@ -79,6 +79,9 @@ it never happens again.
   do not re-run" cases, store the callback in a ref. When updating `Set`/`Map`
   state inside effects, return the previous object if the key/value is already
   present so a no-op does not trigger a render loop.
+- Persisted editor selections can outlive document edits. When restoring a
+  CodeMirror selection, clamp both endpoints to the full `[0, doc.length]`
+  range; limiting only the upper bound still allows invalid negative offsets.
 
 ## Database Drivers
 

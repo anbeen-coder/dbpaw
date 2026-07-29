@@ -2,6 +2,7 @@ import { mock } from "bun:test";
 
 const mockT = (s: string, opts?: Record<string, unknown>) => {
   if (opts?.count !== undefined) return `${s} ${opts.count}`;
+  if (opts?.completed !== undefined) return `${s} ${opts.completed}`;
   return s;
 };
 mock.module("react-i18next", () => ({
@@ -106,6 +107,51 @@ describe("useSqlResults", () => {
     );
   });
 
+  test("returns cancelled status and hides cancelled results", () => {
+    const { result } = renderHook(() =>
+      useSqlResults({
+        queryResults: resultState({
+          status: "cancelled",
+          data: [{ id: 1 }],
+          columns: ["id"],
+        }),
+      }),
+    );
+
+    expect(result.current.resultStatus?.text).toBe(
+      "sqlEditor.result.cancelled",
+    );
+    expect(result.current.resultStatus?.toneClass).toBe(
+      "text-muted-foreground",
+    );
+    expect(result.current.hasVisibleResults).toBe(false);
+  });
+
+  test("reports completed result sets for a partial error", () => {
+    const successful = makeResultSet(0);
+    const failed = {
+      ...makeResultSet(1),
+      error: {
+        code: 2401,
+        message: "second statement failed",
+        category: "query",
+      },
+    };
+    const { result } = renderHook(() =>
+      useSqlResults({
+        queryResults: resultState({
+          status: "partial_error",
+          resultSets: [successful, failed],
+        }),
+      }),
+    );
+
+    expect(result.current.resultStatus?.text).toBe(
+      "sqlEditor.result.partialError 1",
+    );
+    expect(result.current.resultStatus?.toneClass).toContain("amber");
+  });
+
   test("displayData uses queryResults.data for single result", () => {
     const data = [{ id: 1 }];
     const { result } = renderHook(() =>
@@ -175,6 +221,20 @@ describe("useSqlResults", () => {
 
     expect(result.current.visibleResultSets).toHaveLength(0);
     expect(result.current.hasVisibleResults).toBe(false);
+  });
+
+  test("ignores attempts to close an absent or already closed result", () => {
+    const queryResults = makeMultipleResults();
+    const { result } = renderHook(() => useSqlResults({ queryResults }));
+
+    act(() => result.current.closeResultSet(99));
+    expect(result.current.visibleResultSets).toHaveLength(3);
+
+    act(() => result.current.closeResultSet(1));
+    act(() => result.current.closeResultSet(1));
+    expect(
+      result.current.visibleResultSets.map((item) => item.originalIndex),
+    ).toEqual([0, 2]);
   });
 
   test("new query results restore all result tabs", () => {

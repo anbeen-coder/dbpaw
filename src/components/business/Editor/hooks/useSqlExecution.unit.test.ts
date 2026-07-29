@@ -2,6 +2,8 @@ import { mock } from "bun:test";
 
 const executeMock = mock();
 const cancelMock = mock();
+const toastInfoMock = mock();
+const toastErrorMock = mock();
 mock.module("@/services/api", () => ({
   api: {
     query: {
@@ -11,7 +13,7 @@ mock.module("@/services/api", () => ({
   },
 }));
 mock.module("sonner", () => ({
-  toast: { info: mock(), error: mock() },
+  toast: { info: toastInfoMock, error: toastErrorMock },
 }));
 
 import { beforeEach, describe, expect, test } from "bun:test";
@@ -52,8 +54,8 @@ function initialTabs(): TabItem[] {
   ];
 }
 
-function useHarness() {
-  const [tabs, setTabs] = useState<TabItem[]>(initialTabs);
+function useHarness(seedTabs: TabItem[] = initialTabs()) {
+  const [tabs, setTabs] = useState<TabItem[]>(seedTabs);
   const execution = useSqlExecution({
     tabs,
     setTabs,
@@ -75,6 +77,8 @@ function deferred<T>() {
 beforeEach(() => {
   executeMock.mockReset();
   cancelMock.mockReset();
+  toastInfoMock.mockReset();
+  toastErrorMock.mockReset();
 });
 
 describe("useSqlExecution", () => {
@@ -214,5 +218,89 @@ describe("useSqlExecution", () => {
       hint: "Check the selected columns",
       category: "query",
     });
+  });
+
+  test("rejects invalid tabs and tabs without a connection", async () => {
+    const noConnectionTabs = initialTabs();
+    const noConnectionTab = noConnectionTabs[0];
+    if (noConnectionTab.type !== "editor") {
+      throw new Error("expected editor tab");
+    }
+    noConnectionTab.connectionId = undefined;
+    const { result } = renderHook(() => useHarness(noConnectionTabs));
+
+    await act(async () => {
+      await result.current.execute("missing-tab", {
+        sql: "SELECT 1",
+        target: "document",
+      });
+      await result.current.execute("tab-1", {
+        sql: "SELECT 1",
+        target: "document",
+      });
+    });
+
+    expect(executeMock).not.toHaveBeenCalled();
+    expect(toastInfoMock).toHaveBeenCalledTimes(2);
+    expect(toastInfoMock).toHaveBeenNthCalledWith(
+      1,
+      "app.error.selectConnectionFirst",
+    );
+  });
+
+  test("ignores empty SQL without starting an execution", async () => {
+    const { result } = renderHook(() => useHarness());
+
+    await act(async () => {
+      await result.current.execute("tab-1", {
+        sql: " \n\t ",
+        target: "document",
+      });
+    });
+
+    expect(executeMock).not.toHaveBeenCalled();
+    expect(toastInfoMock).not.toHaveBeenCalled();
+    const tab = result.current.tabs[0];
+    if (tab.type !== "editor") throw new Error("expected editor tab");
+    expect(tab.activeExecution).toBeUndefined();
+  });
+
+  test("restores running state and reports cancellation API errors", async () => {
+    const pending = deferred<typeof response>();
+    executeMock.mockReturnValue(pending.promise);
+    cancelMock.mockRejectedValue({
+      code: 2501,
+      message: "cancel transport failed",
+      category: "network",
+    });
+    const { result } = renderHook(() => useHarness());
+
+    let executionPromise!: Promise<void>;
+    await act(async () => {
+      executionPromise = result.current.execute("tab-1", {
+        sql: "SELECT pg_sleep(10)",
+        target: "document",
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      expect(await result.current.cancel("tab-1")).toBe(false);
+    });
+
+    let tab = result.current.tabs[0];
+    if (tab.type !== "editor") throw new Error("expected editor tab");
+    expect(tab.activeExecution?.status).toBe("running");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "sqlEditor.result.cancelFailed",
+      { description: "cancel transport failed" },
+    );
+
+    await act(async () => {
+      pending.resolve(response);
+      await executionPromise;
+    });
+    tab = result.current.tabs[0];
+    if (tab.type !== "editor") throw new Error("expected editor tab");
+    expect(tab.queryResults?.status).toBe("success");
   });
 });

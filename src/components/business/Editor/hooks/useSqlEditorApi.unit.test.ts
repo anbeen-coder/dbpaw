@@ -6,12 +6,14 @@ const saveDialogMock = mock(() => Promise.resolve<string | null>(null));
 const exportMock = mock(() =>
   Promise.resolve({ rowCount: 10, filePath: "/tmp/test.csv" }),
 );
+const toastSuccessMock = mock();
+const toastErrorMock = mock();
 mock.module("react-i18next", () => ({
   useTranslation: () => ({ t: mockT }),
 }));
 
 mock.module("sonner", () => ({
-  toast: { success: mock(), error: mock() },
+  toast: { success: toastSuccessMock, error: toastErrorMock },
 }));
 
 mock.module("@/lib/errors", () => ({
@@ -48,6 +50,8 @@ beforeEach(() => {
     rowCount: 10,
     filePath: "/tmp/test.csv",
   });
+  toastSuccessMock.mockReset();
+  toastErrorMock.mockReset();
 });
 
 describe("useSqlEditorApi", () => {
@@ -123,4 +127,74 @@ describe("useSqlEditorApi", () => {
       filePath: "/tmp/result.csv",
     });
   });
+
+  test("cancelling the export save dialog does not call the export API", async () => {
+    tauriMode = true;
+    saveDialogMock.mockResolvedValue(null);
+    const { result } = renderHook(() => useSqlEditorApi({ code: "SELECT 1" }));
+
+    await act(async () => {
+      await result.current.handleExportResult(makeQueryResults(), "csv");
+    });
+
+    expect(exportMock).not.toHaveBeenCalled();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  test("reports save dialog failures without calling the export API", async () => {
+    tauriMode = true;
+    saveDialogMock.mockRejectedValue(new Error("dialog unavailable"));
+    const { result } = renderHook(() => useSqlEditorApi({ code: "SELECT 1" }));
+
+    await act(async () => {
+      await result.current.handleExportResult(makeQueryResults(), "json");
+    });
+
+    expect(exportMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "sqlEditor.export.openSaveDialogFailed",
+      { description: "Error: dialog unavailable" },
+    );
+  });
+
+  test("reports export API failures after a file is selected", async () => {
+    tauriMode = true;
+    saveDialogMock.mockResolvedValue("/tmp/result.sql");
+    exportMock.mockRejectedValue(new Error("disk full"));
+    const { result } = renderHook(() => useSqlEditorApi({ code: "SELECT 1" }));
+
+    await act(async () => {
+      await result.current.handleExportResult(makeQueryResults(), "sql");
+    });
+
+    expect(exportMock).toHaveBeenCalledTimes(1);
+    expect(toastErrorMock).toHaveBeenCalledWith("sqlEditor.export.failed", {
+      description: "Error: disk full",
+    });
+  });
 });
+
+function makeQueryResults() {
+  return {
+    snapshot: {
+      executionId: "q-1",
+      tabId: "tab-1",
+      target: "document" as const,
+      sql: "SELECT 1",
+      context: {
+        connectionId: 7,
+        database: "app",
+        driver: "postgres",
+        contextRevision: 0,
+      },
+      documentRevision: 0,
+      startedAt: 0,
+    },
+    status: "success" as const,
+    data: [],
+    columns: [],
+    rowCount: 0,
+    executionTimeMs: 1,
+  };
+}

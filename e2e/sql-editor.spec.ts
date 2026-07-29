@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { collectRuntimeErrors } from "./runtime-errors";
 
-async function openNewQueryTab(page: import("@playwright/test").Page) {
-  const connectionNode = page.getByText("PostgreSQL Dev").first();
+async function openNewQueryTab(
+  page: import("@playwright/test").Page,
+  connectionName = "PostgreSQL Dev",
+) {
+  const connectionNode = page.getByText(connectionName).first();
   await connectionNode.click({ button: "right" });
   const contextMenu = page.locator(".fixed.z-50");
   await contextMenu.getByRole("button", { name: "New Query" }).click();
@@ -31,18 +34,9 @@ test("SQL editor: toolbar buttons exist", async ({ page }) => {
   runtimeErrors.assertClean("New Query tab opened");
 
   // Verify all toolbar buttons are present
-  await expect(
-    page.getByRole("button", { name: /Run SQL/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Format SQL/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Cancel Query/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Save Query/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Run SQL/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Format SQL/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Save Query/ })).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Clear Editor/ }),
   ).toBeVisible();
@@ -62,12 +56,10 @@ test("SQL editor: execute query shows results", async ({ page }) => {
   runtimeErrors.assertClean("New Query tab opened");
 
   await typeInEditor(page, "SELECT * FROM users");
-  await page
-    .getByRole("button", { name: /Run SQL/ })
-    .click();
+  await page.getByRole("button", { name: /Run SQL/ }).click();
 
   // Wait for results to appear
-  await expect(page.getByText("Execution successful")).toBeVisible({
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible({
     timeout: 10_000,
   });
   runtimeErrors.assertClean("Execute query");
@@ -84,9 +76,7 @@ test("SQL editor: format SQL", async ({ page }) => {
   await openNewQueryTab(page);
   await typeInEditor(page, "select id,name from users where id=1");
 
-  await page
-    .getByRole("button", { name: /Format SQL/ })
-    .click();
+  await page.getByRole("button", { name: /Format SQL/ }).click();
 
   // Verify the editor content was reformatted (should contain newlines/indentation)
   const editorContent = page.locator(".cm-content").first();
@@ -96,7 +86,7 @@ test("SQL editor: format SQL", async ({ page }) => {
   runtimeErrors.assertClean("Format SQL");
 });
 
-test("SQL editor: cancel query", async ({ page }) => {
+test("SQL editor: cancel query lifecycle", async ({ page }) => {
   const runtimeErrors = collectRuntimeErrors(page);
 
   await page.goto("/");
@@ -104,16 +94,154 @@ test("SQL editor: cancel query", async ({ page }) => {
     page.getByRole("heading", { name: "Connections" }),
   ).toBeVisible();
 
-  await openNewQueryTab(page);
-  await typeInEditor(page, "SELECT 1");
-
-  await page
-    .getByRole("button", { name: /Cancel Query/ })
-    .click();
-
-  // Cancel is a no-op in mock mode, just verify no errors
-  await page.waitForTimeout(500);
+  await openNewQueryTab(page, "MySQL Dev");
+  await typeInEditor(page, "SELECT 1 /* dbpaw-test:delay=1500 */");
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  const cancelButton = page.getByRole("button", { name: /Cancel Query/ });
+  await expect(cancelButton).toBeVisible();
+  await cancelButton.click();
+  await expect(page.getByText(/Query cancelled/)).toBeVisible();
   runtimeErrors.assertClean("Cancel query");
+});
+
+test("SQL editor: execution provenance, default limit, and partial errors", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewQueryTab(page);
+  await typeInEditor(page, "SELECT * FROM users");
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(
+    page.getByText("Automatically limited to 1000 rows"),
+  ).toBeVisible();
+
+  await typeInEditor(page, " -- edited after execution");
+  await expect(
+    page.getByText("Result is from a previous editor revision"),
+  ).toBeVisible();
+
+  const editor = page.locator(".cm-content").first();
+  await editor.click();
+  await page.keyboard.press("Meta+a");
+  await page.keyboard.type("SELECT 1; SELECT 2 /* dbpaw-test:partial-error */");
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(page.getByText("Error", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Completed 1 statement/)).toBeVisible();
+});
+
+test("SQL editor: context selectors are disabled while running", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewQueryTab(page);
+  await typeInEditor(page, "SELECT 1 /* dbpaw-test:delay=800 */");
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(
+    page.getByRole("combobox", { name: "Switch database" }),
+  ).toBeDisabled();
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible();
+});
+
+test("SQL editor: tab switch restores viewport and focus", async ({ page }) => {
+  await page.goto("/");
+  await openNewQueryTab(page);
+  const sql = Array.from({ length: 80 }, (_, index) => `SELECT ${index};`).join(
+    "\n",
+  );
+  await typeInEditor(page, sql);
+  const firstScroller = page.locator(".cm-scroller").first();
+  await firstScroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await page.locator(".cm-content").first().click();
+  await page.keyboard.press("ControlOrMeta+End");
+  const savedScrollTop = await firstScroller.evaluate(
+    (element) => element.scrollTop,
+  );
+  expect(savedScrollTop).toBeGreaterThan(0);
+
+  await openNewQueryTab(page);
+  const queryTabs = page.getByRole("tab", { name: /Query \(testdb\)/ });
+  await expect(queryTabs).toHaveCount(2);
+  await queryTabs.nth(0).click();
+
+  await expect
+    .poll(() =>
+      page
+        .locator(".cm-scroller")
+        .first()
+        .evaluate((element) => element.scrollTop),
+    )
+    .toBeGreaterThan(0);
+  await expect(page.locator(".cm-content").first()).toBeFocused();
+});
+
+test("SQL editor: tab switch restores the editor/result split", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewQueryTab(page);
+  await typeInEditor(page, "SELECT * FROM users");
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible();
+
+  const editor = page.locator("[data-sql-editor-tab]").first();
+  const group = editor.locator('[data-slot="resizable-panel-group"]');
+  const editorPanel = group.locator('[data-slot="resizable-panel"]').first();
+  const handle = group.locator('[data-slot="resizable-handle"]');
+  const handleBox = await handle.boundingBox();
+  if (!handleBox) throw new Error("result split handle is not visible");
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2,
+    handleBox.y + handleBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y - 80, {
+    steps: 8,
+  });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const [panelBox, groupBox] = await Promise.all([
+        editorPanel.boundingBox(),
+        group.boundingBox(),
+      ]);
+      return panelBox && groupBox ? panelBox.height / groupBox.height : 0;
+    })
+    .toBeLessThan(0.45);
+  const beforeSwitch = await editorPanel.boundingBox();
+  const groupBeforeSwitch = await group.boundingBox();
+  if (!beforeSwitch || !groupBeforeSwitch) {
+    throw new Error("resizable panels are not measurable");
+  }
+  const expectedRatio = beforeSwitch.height / groupBeforeSwitch.height;
+
+  await openNewQueryTab(page);
+  const queryTabs = page.getByRole("tab", { name: /Query \(testdb\)/ });
+  await queryTabs.nth(0).click();
+
+  await expect
+    .poll(async () => {
+      const restoredEditor = page
+        .locator("[data-sql-editor-tab]")
+        .first()
+        .locator('[data-slot="resizable-panel"]')
+        .first();
+      const restoredGroup = page
+        .locator("[data-sql-editor-tab]")
+        .first()
+        .locator('[data-slot="resizable-panel-group"]');
+      const [panelBox, groupBox] = await Promise.all([
+        restoredEditor.boundingBox(),
+        restoredGroup.boundingBox(),
+      ]);
+      return panelBox && groupBox
+        ? Math.abs(panelBox.height / groupBox.height - expectedRatio)
+        : 1;
+    })
+    .toBeLessThan(0.03);
 });
 
 test("SQL editor: save query opens dialog", async ({ page }) => {
@@ -127,14 +255,10 @@ test("SQL editor: save query opens dialog", async ({ page }) => {
   await openNewQueryTab(page);
   await typeInEditor(page, "SELECT * FROM users");
 
-  await page
-    .getByRole("button", { name: /Save Query/ })
-    .click();
+  await page.getByRole("button", { name: /Save Query/ }).click();
 
   // Verify Save Query dialog opens
-  await expect(
-    page.getByRole("dialog", { name: "Save Query" }),
-  ).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Save Query" })).toBeVisible();
 
   // Fill in the query name
   await page.getByLabel("Query Name").fill("My Test Query");
@@ -143,9 +267,7 @@ test("SQL editor: save query opens dialog", async ({ page }) => {
   await page.getByRole("button", { name: "Save" }).click();
 
   // Dialog should close
-  await expect(
-    page.getByRole("dialog", { name: "Save Query" }),
-  ).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Save Query" })).toBeHidden();
   runtimeErrors.assertClean("Save query");
 });
 
@@ -197,15 +319,15 @@ test("SQL editor: export dropdown shows CSV/JSON/SQL options", async ({
   await typeInEditor(page, "SELECT * FROM users");
 
   // Execute query first to get results
-  await page
-    .getByRole("button", { name: /Run SQL/ })
-    .click();
-  await expect(page.getByText("Execution successful")).toBeVisible({
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible({
     timeout: 10_000,
   });
 
   // Export button should now be visible
-  const exportButton = page.getByRole("button", { name: "Export Result" });
+  const exportButton = page.getByRole("button", {
+    name: "Rerun and Export",
+  });
   await expect(exportButton).toBeVisible();
 
   // Click to open dropdown
@@ -233,12 +355,10 @@ test("SQL editor: execute invalid query shows error", async ({ page }) => {
   // Mock returns error for queries containing "invalid"
   await typeInEditor(page, "SELECT invalid query");
 
-  await page
-    .getByRole("button", { name: /Run SQL/ })
-    .click();
+  await page.getByRole("button", { name: /Run SQL/ }).click();
 
   // Wait for error result to appear (toolbar status text)
-  await expect(page.getByText("Result: Execution failed.")).toBeVisible({
+  await expect(page.getByText(/Execution failed/)).toBeVisible({
     timeout: 10_000,
   });
   // Skip assertClean — the mock throws intentionally, which triggers console.error in the API layer
@@ -257,7 +377,7 @@ test("SQL logs dropdown shows execution history", async ({ page }) => {
 
   // Execute query first
   await page.getByRole("button", { name: /Run SQL/ }).click();
-  await expect(page.getByText("Execution successful")).toBeVisible({
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible({
     timeout: 10_000,
   });
 
@@ -269,7 +389,9 @@ test("SQL logs dropdown shows execution history", async ({ page }) => {
 
   // Verify executed query appears in logs
   const logsPopover = page.locator("[data-radix-popper-content-wrapper]");
-  await expect(logsPopover.getByText("SELECT * FROM users").first()).toBeVisible();
+  await expect(
+    logsPopover.getByText("SELECT * FROM users").first(),
+  ).toBeVisible();
 
   runtimeErrors.assertClean("SQL logs dropdown shows execution history");
 });
@@ -307,7 +429,7 @@ test("SQL logs copy SQL button", async ({ page, context }) => {
 
   // Execute query
   await page.getByRole("button", { name: /Run SQL/ }).click();
-  await expect(page.getByText("Execution successful")).toBeVisible({
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible({
     timeout: 10_000,
   });
 
@@ -343,6 +465,10 @@ test("SQL editor: schema selector appears with available schemas", async ({
   // Mock returns ["public", "auth", "analytics"] for list_schemas (>1), so schema dropdown should appear
   const schemaSelector = page.getByRole("combobox", { name: "Switch schema" });
   await expect(schemaSelector).toBeVisible();
+  await expect(schemaSelector).toHaveAttribute(
+    "title",
+    /object completion only/,
+  );
 
   runtimeErrors.assertClean("Schema selector visible");
 });

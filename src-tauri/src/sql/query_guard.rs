@@ -1,5 +1,12 @@
 const DEFAULT_SELECT_LIMIT: i64 = 1000;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedQuery {
+    pub original_sql: String,
+    pub executed_sql: String,
+    pub default_limit: Option<i64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatementKind {
     Select,
@@ -528,21 +535,45 @@ fn has_top_level_clickhouse_format_clause(sql: &str) -> bool {
 }
 
 pub fn apply_default_limit(sql: &str, driver: Option<&str>) -> String {
+    prepare_query(sql, driver).executed_sql
+}
+
+pub fn prepare_query(sql: &str, driver: Option<&str>) -> PreparedQuery {
     let normalized = normalize_for_guard(sql);
     if normalized.is_empty() {
-        return sql.to_string();
+        return PreparedQuery {
+            original_sql: sql.to_string(),
+            executed_sql: sql.to_string(),
+            default_limit: None,
+        };
     }
     if !is_single_statement(normalized) {
-        return sql.to_string();
+        return PreparedQuery {
+            original_sql: sql.to_string(),
+            executed_sql: sql.to_string(),
+            default_limit: None,
+        };
     }
     if classify_statement(normalized) != StatementKind::Select {
-        return sql.to_string();
+        return PreparedQuery {
+            original_sql: sql.to_string(),
+            executed_sql: sql.to_string(),
+            default_limit: None,
+        };
     }
     if has_top_level_limit(normalized) {
-        return sql.to_string();
+        return PreparedQuery {
+            original_sql: sql.to_string(),
+            executed_sql: sql.to_string(),
+            default_limit: None,
+        };
     }
     if has_top_level_fetch_first_next_rows_only(normalized) {
-        return sql.to_string();
+        return PreparedQuery {
+            original_sql: sql.to_string(),
+            executed_sql: sql.to_string(),
+            default_limit: None,
+        };
     }
 
     if driver
@@ -550,20 +581,32 @@ pub fn apply_default_limit(sql: &str, driver: Option<&str>) -> String {
         .unwrap_or(false)
         && has_top_level_clickhouse_format_clause(normalized)
     {
-        return sql.to_string();
+        return PreparedQuery {
+            original_sql: sql.to_string(),
+            executed_sql: sql.to_string(),
+            default_limit: None,
+        };
     }
 
-    if driver
+    let executed_sql = if driver
         .map(|d| d.eq_ignore_ascii_case("mssql"))
         .unwrap_or(false)
     {
         if has_top_level_mssql_top(normalized) {
-            return sql.to_string();
+            sql.to_string()
+        } else {
+            append_mssql_fetch_1000(normalized)
         }
-        return append_mssql_fetch_1000(normalized);
-    }
+    } else {
+        append_limit_1000(normalized)
+    };
 
-    append_limit_1000(normalized)
+    let default_limit = (executed_sql != sql).then_some(DEFAULT_SELECT_LIMIT);
+    PreparedQuery {
+        original_sql: sql.to_string(),
+        executed_sql,
+        default_limit,
+    }
 }
 
 #[cfg(test)]
@@ -576,6 +619,18 @@ mod tests {
             apply_default_limit("SELECT * FROM t", None),
             "SELECT * FROM t LIMIT 1000"
         );
+    }
+
+    #[test]
+    fn prepared_query_reports_original_executed_and_default_limit() {
+        let prepared = prepare_query("SELECT * FROM t", None);
+        assert_eq!(prepared.original_sql, "SELECT * FROM t");
+        assert_eq!(prepared.executed_sql, "SELECT * FROM t LIMIT 1000");
+        assert_eq!(prepared.default_limit, Some(1000));
+
+        let unchanged = prepare_query("SELECT * FROM t LIMIT 5", None);
+        assert_eq!(unchanged.original_sql, unchanged.executed_sql);
+        assert_eq!(unchanged.default_limit, None);
     }
 
     #[test]

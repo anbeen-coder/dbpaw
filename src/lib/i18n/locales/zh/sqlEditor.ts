@@ -6,6 +6,8 @@ export const sqlEditor = {
   schema: {
     ariaLabel: "切换 Schema",
     placeholder: "选择 Schema",
+    completionOnly:
+      "Schema 选择仅影响对象补全，不会改变查询执行的 Search Path。",
   },
   result: {
     failed: "结果：执行失败。",
@@ -13,6 +15,20 @@ export const sqlEditor = {
     rowsSuffix: "（{{count}} 行）",
     rowsSuffixPlural: "（{{count}} 行）",
     closeAria: "关闭结果 {{number}}",
+    running: "查询执行中",
+    cancelling: "正在取消查询",
+    cancelled: "查询已取消 · {{time}} ms",
+    cancelUnavailable: "当前驱动不支持取消正在执行的查询。",
+    cancelFailed: "取消查询失败",
+    failedWithTime: "执行失败 · {{time}} ms",
+    partialError: "已完成 {{completed}} 条，随后失败 · {{time}} ms",
+    rowsReturned: "返回 {{count}} 行 · {{time}} ms",
+    rowsAffected: "影响 {{count}} 行 · {{time}} ms",
+    commandCompleted: "命令执行成功 · {{time}} ms",
+    defaultLimitApplied: "已自动限制 {{count}} 行",
+    previousExecution: "结果来自修改前的编辑器内容",
+    previousContext: "结果来自 {{database}} / {{schema}}",
+    errorTab: "错误",
   },
   tooltip: {
     runSql: "执行 SQL（Cmd/Ctrl+Enter）",
@@ -23,6 +39,7 @@ export const sqlEditor = {
   },
   export: {
     result: "导出结果",
+    rerunResult: "重新执行并导出",
     runWithSavedConnection: "请在已保存连接下执行查询后再导出。",
     desktopOnly: "导出对话框仅在 Tauri 桌面模式可用。",
     saveFileTitle: "保存导出文件",

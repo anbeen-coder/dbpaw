@@ -7,7 +7,8 @@ import {
 import { COMMANDS } from "../commands";
 import type { CommandMap, CommandArgs, CommandReturn } from "../commands";
 
-type MetadataCommand = Extract<keyof CommandMap,
+type MetadataCommand = Extract<
+  keyof CommandMap,
   | "list_tables"
   | "list_routines"
   | "get_table_structure"
@@ -29,13 +30,13 @@ type MetadataCommand = Extract<keyof CommandMap,
 >;
 
 const DriverCapabilities = {
-  ROUTINES:      0b0000_0001,
-  EVENTS:        0b0000_0010,
-  SEQUENCES:     0b0000_0100,
-  TYPES:         0b0000_1000,
-  SYNONYMS:      0b0001_0000,
-  PACKAGES:      0b0010_0000,
-  FOREIGN_KEYS:  0b0100_0000,
+  ROUTINES: 0b0000_0001,
+  EVENTS: 0b0000_0010,
+  SEQUENCES: 0b0000_0100,
+  TYPES: 0b0000_1000,
+  SYNONYMS: 0b0001_0000,
+  PACKAGES: 0b0010_0000,
+  FOREIGN_KEYS: 0b0100_0000,
   QUERY_WITH_ID: 0b1000_0000,
 } as const;
 
@@ -351,7 +352,18 @@ export async function mockListEvents(
   _id: number,
   _database?: string,
   _schema?: string,
-): Promise<{ schema: string; name: string; status: string; eventType: string; executeAt: string | null; intervalValue: string | null; lastExecuted: string | null; definition: string | null }[]> {
+): Promise<
+  {
+    schema: string;
+    name: string;
+    status: string;
+    eventType: string;
+    executeAt: string | null;
+    intervalValue: string | null;
+    lastExecuted: string | null;
+    definition: string | null;
+  }[]
+> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return [];
 }
@@ -360,7 +372,15 @@ export async function mockListSequences(
   _id: number,
   _database?: string,
   _schema?: string,
-): Promise<{ schema: string; name: string; dataType: string; startValue: string | null; increment: string | null }[]> {
+): Promise<
+  {
+    schema: string;
+    name: string;
+    dataType: string;
+    startValue: string | null;
+    increment: string | null;
+  }[]
+> {
   await new Promise((resolve) => setTimeout(resolve, 50));
   return [];
 }
@@ -502,52 +522,81 @@ export async function mockGetSchemaOverview(
 
 export function handleMetadata<T extends MetadataCommand>(
   cmd: T,
-  args: CommandArgs<T>
+  args: CommandArgs<T>,
 ): Promise<CommandReturn<T>> | null {
   switch (cmd) {
     case COMMANDS.LIST_TABLES: {
       const a = args as CommandArgs<"list_tables">;
-      return mockListTables(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockListTables(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.LIST_ROUTINES: {
       const a = args as CommandArgs<"list_routines">;
-      return mockListRoutines(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockListRoutines(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.LIST_EVENTS: {
       const a = args as CommandArgs<"list_events">;
-      return mockListEvents(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockListEvents(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.LIST_SEQUENCES: {
       const a = args as CommandArgs<"list_sequences">;
-      return mockListSequences(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockListSequences(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.LIST_TYPES: {
       const a = args as CommandArgs<"list_types">;
-      return mockListTypes(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockListTypes(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.LIST_SYNONYMS: {
       const a = args as CommandArgs<"list_synonyms">;
-      return mockListSynonyms(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockListSynonyms(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.LIST_PACKAGES: {
       const a = args as CommandArgs<"list_packages">;
-      return mockListPackages(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockListPackages(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.GET_TABLE_STRUCTURE: {
       const a = args as CommandArgs<"get_table_structure">;
-      return mockGetTableStructure(a.id, a.schema, a.table) as Promise<CommandReturn<T>>;
+      return mockGetTableStructure(a.id, a.schema, a.table) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.GET_TABLE_DDL: {
       const a = args as CommandArgs<"get_table_ddl">;
-      return mockGetTableDDL(a.id, a.database, a.schema, a.table) as Promise<CommandReturn<T>>;
+      return mockGetTableDDL(a.id, a.database, a.schema, a.table) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.GET_ROUTINE_DDL: {
       const a = args as CommandArgs<"get_routine_ddl">;
-      return mockGetRoutineDDL(a.id, a.database, a.schema, a.name, a.routineType) as Promise<CommandReturn<T>>;
+      return mockGetRoutineDDL(
+        a.id,
+        a.database,
+        a.schema,
+        a.name,
+        a.routineType,
+      ) as Promise<CommandReturn<T>>;
     }
     case COMMANDS.GET_TABLE_METADATA: {
       const a = args as CommandArgs<"get_table_metadata">;
-      return mockGetTableMetadata(a.id, a.database, a.schema, a.table) as Promise<CommandReturn<T>>;
+      return mockGetTableMetadata(
+        a.id,
+        a.database,
+        a.schema,
+        a.table,
+      ) as Promise<CommandReturn<T>>;
     }
     case COMMANDS.LIST_TABLES_BY_CONN: {
       const a = args as CommandArgs<"list_tables_by_conn">;
@@ -567,16 +616,25 @@ export function handleMetadata<T extends MetadataCommand>(
     }
     case COMMANDS.GET_SCHEMA_OVERVIEW: {
       const a = args as CommandArgs<"get_schema_overview">;
-      return mockGetSchemaOverview(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockGetSchemaOverview(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
     case COMMANDS.GET_SCHEMA_FOREIGN_KEYS: {
       const a = args as CommandArgs<"get_schema_foreign_keys">;
-      return mockGetSchemaForeignKeys(a.id, a.database, a.schema) as Promise<CommandReturn<T>>;
+      return mockGetSchemaForeignKeys(a.id, a.database, a.schema) as Promise<
+        CommandReturn<T>
+      >;
     }
-    case COMMANDS.GET_DRIVER_CAPABILITIES:
+    case COMMANDS.GET_DRIVER_CAPABILITIES: {
+      const a = args as CommandArgs<"get_driver_capabilities">;
       return Promise.resolve(
-        DriverCapabilities.ROUTINES | DriverCapabilities.EVENTS | DriverCapabilities.FOREIGN_KEYS
+        DriverCapabilities.ROUTINES |
+          DriverCapabilities.EVENTS |
+          DriverCapabilities.FOREIGN_KEYS |
+          (a.id === 7 ? DriverCapabilities.QUERY_WITH_ID : 0),
       ) as Promise<CommandReturn<T>>;
+    }
     default:
       return null;
   }

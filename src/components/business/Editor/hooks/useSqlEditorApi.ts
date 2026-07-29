@@ -10,6 +10,7 @@ import {
 } from "@/services/api";
 import type { SqlLanguage } from "sql-formatter";
 import { errorMessage } from "@/lib/errors";
+import type { QueryResultState } from "@/lib/queryExecutionState";
 
 export function useSqlEditorApi(props: {
   code: string;
@@ -89,8 +90,9 @@ export function useSqlEditorApi(props: {
   }, [initialName, initialDescription, executeSave, t]);
 
   const handleExportResult = useCallback(
-    async (format: TransferFormat) => {
-      if (!connectionId) {
+    async (queryResults: QueryResultState, format: TransferFormat) => {
+      const snapshot = queryResults.snapshot;
+      if (!snapshot.context.connectionId || !snapshot.context.driver) {
         toast.error(t("sqlEditor.export.runWithSavedConnection"));
         return;
       }
@@ -127,10 +129,10 @@ export function useSqlEditorApi(props: {
 
       try {
         const result = await api.transfer.exportQueryResult({
-          id: connectionId,
-          database: databaseName,
-          sql: code,
-          driver: driver || "postgres",
+          id: snapshot.context.connectionId,
+          database: snapshot.context.database,
+          sql: queryResults.execution?.executedSql ?? snapshot.sql,
+          driver: snapshot.context.driver,
           format,
           filePath,
         });
@@ -146,7 +148,7 @@ export function useSqlEditorApi(props: {
         });
       }
     },
-    [connectionId, databaseName, code, driver, t],
+    [t],
   );
 
   const handleFormat = useCallback(async (): Promise<string | undefined> => {
@@ -167,7 +169,8 @@ export function useSqlEditorApi(props: {
         clickhouse: "sql",
         mssql: "transactsql",
       };
-      const language: SqlLanguage = ((driver && dialectMap[driver]) || "sql") as SqlLanguage;
+      const language: SqlLanguage = ((driver && dialectMap[driver]) ||
+        "sql") as SqlLanguage;
       const formatted = format(code, {
         language,
         keywordCase: "upper",

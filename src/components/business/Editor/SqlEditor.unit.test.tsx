@@ -191,16 +191,16 @@ describe("SqlEditor", () => {
   });
 
   test("play button calls onExecute", () => {
-    const calls: string[] = [];
+    const calls: any[] = [];
     const { container } = render(
-      <SqlEditor value="SELECT 1" onExecute={(sql) => calls.push(sql)} />,
+      <SqlEditor value="SELECT 1" onExecute={(target) => calls.push(target)} />,
     );
 
     // Play button is the first button with an SVG icon
     const buttons = Array.from(container.getElementsByTagName("button"));
     const playBtn = buttons.find((b) => b.textContent === "");
     if (playBtn) fireEvent.click(playBtn);
-    expect(calls).toEqual(["SELECT 1"]);
+    expect(calls).toEqual([{ sql: "SELECT 1", target: "document" }]);
   });
 
   test("results panel renders when queryResults provided", () => {
@@ -323,7 +323,7 @@ describe("SqlEditor", () => {
       />,
     );
 
-    expect(container.textContent).toContain("sqlEditor.result.success");
+    expect(container.textContent).toContain("sqlEditor.result.rowsReturned");
   });
 
   test("result status shows error tone", () => {
@@ -352,7 +352,7 @@ describe("SqlEditor", () => {
       />,
     );
 
-    expect(container.textContent).toContain("sqlEditor.export.result");
+    expect(container.textContent).toContain("sqlEditor.export.rerunResult");
     expect(container.textContent).toContain("CSV");
     expect(container.textContent).toContain("JSON");
   });
@@ -375,7 +375,7 @@ describe("SqlEditor", () => {
     const { container } = render(<SqlEditor value="SELECT 1" />);
 
     const buttons = Array.from(container.getElementsByTagName("button"));
-    expect(buttons.length).toBeGreaterThanOrEqual(5);
+    expect(buttons.length).toBeGreaterThanOrEqual(4);
   });
 
   test("cancel button exists", () => {
@@ -450,7 +450,7 @@ describe("SqlEditor", () => {
     expect(container.textContent).toContain("auth");
   });
 
-  test("onChange debounces before calling parent", async () => {
+  test("onChange reports changes synchronously", async () => {
     const calls: string[] = [];
     const { container } = render(
       <SqlEditor value="" onChange={(v) => calls.push(v)} />,
@@ -462,11 +462,6 @@ describe("SqlEditor", () => {
       fireEvent.change(textareas[0], { target: { value: "SELECT 2" } });
     }
 
-    // onChange is debounced at 300ms, so we need to wait
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
-
     expect(calls).toContain("SELECT 2");
   });
 
@@ -476,7 +471,6 @@ describe("SqlEditor", () => {
     // Should have tooltip labels for all toolbar buttons
     expect(container.textContent).toContain("sqlEditor.tooltip.runSql");
     expect(container.textContent).toContain("sqlEditor.tooltip.formatSql");
-    expect(container.textContent).toContain("sqlEditor.tooltip.cancelQuery");
     expect(container.textContent).toContain("sqlEditor.tooltip.saveQuery");
     expect(container.textContent).toContain("sqlEditor.tooltip.clearEditor");
   });

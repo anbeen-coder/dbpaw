@@ -16,14 +16,11 @@ describe("useSqlEditorForm", () => {
     expect(result.current.code).toBe("SELECT 2");
   });
 
-  test("debounces onChange callback by 300ms", async () => {
+  test("reports controlled changes synchronously for execution provenance", () => {
     const onChange = mock(() => {});
     const { result } = renderHook(() => useSqlEditorForm({ onChange }));
 
     act(() => result.current.handleSqlChange("SELECT 1"));
-    expect(onChange).not.toHaveBeenCalled();
-
-    await new Promise((r) => setTimeout(r, 350));
     expect(onChange).toHaveBeenCalledWith("SELECT 1");
   });
 });

@@ -10,7 +10,7 @@ import {
 import { Tabs } from "@/components/ui/tabs";
 import type { RedisRefreshRequest } from "@/components/business/Sidebar/ConnectionList";
 import { Loader2 } from "lucide-react";
-import { isTauri } from "@/services/api";
+import { api, isTauri } from "@/services/api";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 
@@ -32,6 +32,7 @@ import { UnsavedChangesDialog } from "@/components/layout/UnsavedChangesDialog";
 import { WindowActions } from "@/components/layout/WindowActions";
 
 import type { TabItem } from "@/types/tab";
+import { useEditorSessionStore } from "@/contexts/EditorSessionContext";
 
 type ActiveTableTarget = {
   connectionId: number;
@@ -73,6 +74,7 @@ function isDefaultQueryTitle(title?: string) {
 
 export default function App() {
   const { t } = useTranslation();
+  const editorSessions = useEditorSessionStore();
 
   const [aiVisible, setAiVisible] = useState(false);
   const [sidebarRevealRequest, setSidebarRevealRequest] =
@@ -112,6 +114,7 @@ export default function App() {
     handleOpenSavedQuery,
     handleSqlChange,
     handleExecuteQuery,
+    handleCancelQuery,
     handleEditorDatabaseChange,
     handleEditorSchemaChange,
     handleCrossDbSchemaLoad,
@@ -204,9 +207,17 @@ export default function App() {
 
   const closeTabNow = useCallback(
     (tabId: string) => {
+      const closingTab = tabs.find((tab) => tab.id === tabId);
+      if (closingTab?.type === "editor" && closingTab.activeExecution) {
+        void api.query.cancel(
+          String(closingTab.activeExecution.snapshot.context.connectionId),
+          closingTab.activeExecution.snapshot.executionId,
+        );
+      }
       baseCloseTabNow(tabId, revealSidebarForTab);
+      requestAnimationFrame(() => editorSessions.clearSession(tabId));
     },
-    [baseCloseTabNow, revealSidebarForTab],
+    [baseCloseTabNow, editorSessions, revealSidebarForTab, tabs],
   );
 
   const handleCycleTabs = useCallback(
@@ -379,6 +390,7 @@ export default function App() {
             tabs={tabs}
             activeTab={activeTab}
             handleExecuteQuery={handleExecuteQuery}
+            handleCancelQuery={handleCancelQuery}
             handleSqlChange={handleSqlChange}
             handleEditorDatabaseChange={handleEditorDatabaseChange}
             handleCrossDbSchemaLoad={handleCrossDbSchemaLoad}

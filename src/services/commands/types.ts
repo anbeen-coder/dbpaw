@@ -1,5 +1,6 @@
 import type {
   QueryResult,
+  QueryExecutionResult,
   SqlExecutionLog,
   SqlExecutionSource,
   SavedConnection,
@@ -99,7 +100,7 @@ export interface CommandMap {
       source?: SqlExecutionSource;
       queryId?: string;
     };
-    return: QueryResult;
+    return: QueryExecutionResult;
   };
   cancel_query: {
     args: { uuid: string; queryId: string };
@@ -411,7 +412,12 @@ export interface CommandMap {
     return: RedisMutationResult;
   };
   redis_set_ttl: {
-    args: { id: number; database?: string; key: string; ttlSeconds?: number | null };
+    args: {
+      id: number;
+      database?: string;
+      key: string;
+      ttlSeconds?: number | null;
+    };
     return: RedisMutationResult;
   };
   redis_get_key_page: {
@@ -567,7 +573,12 @@ export interface CommandMap {
     return: boolean;
   };
   redis_geo_add: {
-    args: { id: number; database?: string; key: string; members: RedisGeoMember[] };
+    args: {
+      id: number;
+      database?: string;
+      key: string;
+      members: RedisGeoMember[];
+    };
     return: number;
   };
   redis_geo_pos: {
@@ -696,7 +707,13 @@ export interface CommandMap {
     return: RedisZRangeByLexResult;
   };
   redis_zlexcount: {
-    args: { id: number; database?: string; key: string; min: string; max: string };
+    args: {
+      id: number;
+      database?: string;
+      key: string;
+      min: string;
+      max: string;
+    };
     return: number;
   };
   redis_zpopmin: {
@@ -886,7 +903,12 @@ export interface CommandMap {
     return: { success: boolean; insertedId: string };
   };
   mongodb_delete_document: {
-    args: { id: number; database: string; collection: string; documentId: string };
+    args: {
+      id: number;
+      database: string;
+      collection: string;
+      documentId: string;
+    };
     return: { success: boolean; deletedCount: number };
   };
   mongodb_update_document: {
@@ -900,7 +922,12 @@ export interface CommandMap {
     return: { success: boolean; modifiedCount: number };
   };
   mongodb_get_document: {
-    args: { id: number; database: string; collection: string; documentId: string };
+    args: {
+      id: number;
+      database: string;
+      collection: string;
+      documentId: string;
+    };
     return: any;
   };
 

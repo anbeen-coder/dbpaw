@@ -3,7 +3,9 @@ mod helpers;
 mod running_queries;
 
 use crate::error::AppError;
-use crate::models::{ConnectionForm, QueryResult, SqlExecutionLog, TableDataResponse};
+use crate::models::{
+    ConnectionForm, QueryExecutionResponse, QueryResult, SqlExecutionLog, TableDataResponse,
+};
 use crate::sql::query_guard::apply_default_limit;
 use crate::state::AppState;
 use tauri::State;
@@ -47,7 +49,7 @@ pub async fn execute_query(
     database: Option<String>,
     source: Option<String>,
     query_id: Option<String>,
-) -> Result<QueryResult, AppError> {
+) -> Result<QueryExecutionResponse, AppError> {
     execute_query_core(
         state.inner(),
         id,
@@ -68,7 +70,9 @@ pub async fn execute_query_by_id_direct(
     source: Option<String>,
     query_id: Option<String>,
 ) -> Result<QueryResult, AppError> {
-    execute_query_core(state, id, query, database, source, query_id, None).await
+    execute_query_core(state, id, query, database, source, query_id, None)
+        .await
+        .map(|response| response.result)
 }
 
 pub async fn execute_by_conn_direct(
@@ -212,6 +216,7 @@ pub async fn cancel_query_direct(
 mod tests {
     use super::helpers::{clamp_sql_execution_logs_limit, resolve_include_total};
     use super::running_queries::make_query_id;
+    use crate::models::{QueryExecutionMetadata, QueryExecutionResponse, QueryResult};
 
     #[test]
     fn sql_logs_limit_defaults_to_100() {
@@ -246,6 +251,33 @@ mod tests {
         assert!(!resolve_include_total(None));
         assert!(!resolve_include_total(Some(false)));
         assert!(resolve_include_total(Some(true)));
+    }
+
+    #[test]
+    fn query_execution_response_keeps_result_fields_flat() {
+        let response = QueryExecutionResponse {
+            result: QueryResult {
+                data: vec![serde_json::json!({"value": 1})],
+                row_count: 1,
+                columns: vec![],
+                time_taken_ms: 8,
+                success: true,
+                error: None,
+                result_sets: None,
+            },
+            execution: QueryExecutionMetadata {
+                query_id: "query-1".to_string(),
+                original_sql: "SELECT 1".to_string(),
+                executed_sql: "SELECT 1 LIMIT 1000".to_string(),
+                default_limit_applied: true,
+                default_limit: Some(1000),
+            },
+        };
+        let json = serde_json::to_value(response).expect("response serializes");
+        assert_eq!(json["rowCount"], 1);
+        assert_eq!(json["success"], true);
+        assert_eq!(json["execution"]["queryId"], "query-1");
+        assert_eq!(json["execution"]["defaultLimit"], 1000);
     }
 }
 

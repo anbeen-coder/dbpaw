@@ -1,6 +1,6 @@
 use crate::error::AppError;
-use crate::models::QueryResult;
-use crate::sql::query_guard::apply_default_limit;
+use crate::models::{QueryExecutionMetadata, QueryExecutionResponse, QueryResult};
+use crate::sql::query_guard::{apply_default_limit, prepare_query};
 use crate::state::AppState;
 use tauri::Emitter;
 
@@ -18,7 +18,7 @@ pub(super) async fn execute_query_core(
     source: Option<String>,
     query_id: Option<String>,
     emitter: Option<&tauri::AppHandle>,
-) -> Result<QueryResult, AppError> {
+) -> Result<QueryExecutionResponse, AppError> {
     let query_id = make_query_id(id, query_id);
     if let Some(handle) = emitter {
         let _ = handle.emit(
@@ -40,7 +40,8 @@ pub(super) async fn execute_query_core(
         .as_deref()
         .map(supports_query_cancellation)
         .unwrap_or(false);
-    let guarded_query = apply_default_limit(&query, driver.as_deref());
+    let prepared = prepare_query(&query, driver.as_deref());
+    let guarded_query = prepared.executed_sql.clone();
     if cancellation_supported {
         register_running_query(id, &query_id).await;
     }
@@ -73,7 +74,7 @@ pub(super) async fn execute_query_core(
                 let _ = handle.emit(
                     "query.chunk",
                     serde_json::json!({
-                        "queryId": query_id,
+                        "queryId": query_id.clone(),
                         "rows": res.data.iter().take(50).collect::<Vec<_>>()
                     }),
                 );
@@ -86,8 +87,8 @@ pub(super) async fn execute_query_core(
             source,
             Some(id),
             database,
-            true,
-            None,
+            res.success,
+            res.error.clone(),
         )
         .await;
     } else if let Err(err) = &result {
@@ -103,7 +104,16 @@ pub(super) async fn execute_query_core(
         .await;
     }
 
-    result
+    result.map(|result| QueryExecutionResponse {
+        result,
+        execution: QueryExecutionMetadata {
+            query_id,
+            original_sql: prepared.original_sql,
+            executed_sql: prepared.executed_sql,
+            default_limit_applied: prepared.default_limit.is_some(),
+            default_limit: prepared.default_limit,
+        },
+    })
 }
 
 pub(super) async fn execute_by_conn_core(

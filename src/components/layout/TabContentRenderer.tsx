@@ -6,7 +6,6 @@ import { TableMetadataView } from "@/components/business/Metadata/TableMetadataV
 import { RoutineMetadataView } from "@/components/business/Metadata/RoutineMetadataView";
 import { FileCode } from "lucide-react";
 import { resolveTableScope } from "@/lib/driver-registry";
-import { api } from "@/services/api";
 import { useTranslation } from "react-i18next";
 import {
   TabActionsProvider,
@@ -35,6 +34,7 @@ import type {
   ERDiagramTabItem,
   MongoDbDocumentTabItem,
 } from "@/types/tab";
+import type { SqlExecutionTarget } from "@/components/business/Editor/hooks/useSqlExecution";
 
 const SqlEditor = lazy(async () => {
   const mod = await import("@/components/business/Editor/SqlEditor");
@@ -106,7 +106,11 @@ function LazyPanelFallback({
 export interface TabContentRendererProps {
   tabs: TabItem[];
   activeTab: string;
-  handleExecuteQuery: (tabId: string, sql: string) => Promise<void>;
+  handleExecuteQuery: (
+    tabId: string,
+    target: SqlExecutionTarget,
+  ) => Promise<void>;
+  handleCancelQuery: (tabId: string) => Promise<boolean>;
   handleSqlChange: (tabId: string, sql: string) => void;
   handleEditorDatabaseChange: (
     tabId: string,
@@ -166,6 +170,7 @@ function EditorTab({ tab }: { tab: EditorTabItem }) {
   const { t } = useTranslation();
   const {
     handleExecuteQuery,
+    handleCancelQuery,
     handleSqlChange,
     handleEditorDatabaseChange,
     handleCrossDbSchemaLoad,
@@ -177,6 +182,9 @@ function EditorTab({ tab }: { tab: EditorTabItem }) {
   return (
     <Suspense fallback={<LazyPanelFallback label={t("common.loading")} />}>
       <SqlEditor
+        tabId={tab.id}
+        documentRevision={tab.documentRevision}
+        contextRevision={tab.contextRevision}
         databaseName={tab.database}
         availableDatabases={tab.availableDatabases}
         crossDbSchemaCache={tab.crossDbSchemaCache}
@@ -184,12 +192,8 @@ function EditorTab({ tab }: { tab: EditorTabItem }) {
           void handleCrossDbSchemaLoad(tab.id, dbName)
         }
         onExecute={(sql) => handleExecuteQuery(tab.id, sql)}
-        onCancel={() =>
-          tab.connectionId && tab.activeQueryId
-            ? api.query.cancel(String(tab.connectionId), tab.activeQueryId)
-            : Promise.resolve(false)
-        }
-        isExecuting={!!tab.activeQueryId}
+        onCancel={() => void handleCancelQuery(tab.id)}
+        activeExecution={tab.activeExecution}
         queryResults={tab.queryResults}
         value={tab.sqlContent}
         onChange={(sql) => handleSqlChange(tab.id, sql)}

@@ -1,4 +1,5 @@
 import CodeMirror from "@uiw/react-codemirror";
+import { useMemo } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -7,7 +8,6 @@ import {
 import { useTheme } from "@/components/theme-provider";
 import type { SchemaOverview, SavedQuery } from "@/services/api";
 import { SaveQueryDialog } from "./SaveQueryDialog";
-import type { SingleResultState } from "@/lib/queryExecutionState";
 import { useSqlEditorForm } from "./hooks/useSqlEditorForm";
 import { useSqlEditorApi } from "./hooks/useSqlEditorApi";
 import { useSqlEditorActions } from "./hooks/useSqlEditorActions";
@@ -18,17 +18,31 @@ import {
   isRegisteredDriver,
   supportsSchemaBrowsing,
 } from "@/lib/driver-registry";
+import { useDriverCapabilities } from "@/hooks/useDriverCapabilities";
+import type {
+  ActiveExecution,
+  QueryResultState,
+} from "@/lib/queryExecutionState";
+import type { SqlExecutionTarget } from "./hooks/useSqlExecution";
+import { useEditorViewSession } from "./hooks/useEditorViewSession";
 
 interface SqlEditorProps {
-  queryResults?: {
-    data: any[];
-    columns: string[];
-    executionTime?: string;
-    error?: string;
-    resultSets?: SingleResultState[];
-    activeResultSetIndex?: number;
-  } | null;
-  onExecute?: (sql: string) => void;
+  tabId?: string;
+  documentRevision?: number;
+  contextRevision?: number;
+  queryResults?:
+    | QueryResultState
+    | {
+        data: any[];
+        columns: string[];
+        executionTime?: string;
+        error?: string;
+        resultSets?: any[];
+        activeResultSetIndex?: number;
+      }
+    | null;
+  activeExecution?: ActiveExecution;
+  onExecute?: (target: SqlExecutionTarget) => void;
   onCancel?: () => void;
   databaseName?: string;
   availableDatabases?: string[];
@@ -47,11 +61,14 @@ interface SqlEditorProps {
   initialName?: string;
   initialDescription?: string;
   onSaveSuccess?: (savedQuery: SavedQuery) => void;
-  isExecuting?: boolean;
 }
 
 export function SqlEditor({
+  tabId = "standalone-sql-editor",
+  documentRevision = 0,
+  contextRevision = 0,
   queryResults,
+  activeExecution,
   onExecute,
   onCancel,
   databaseName,
@@ -71,9 +88,62 @@ export function SqlEditor({
   initialName,
   initialDescription,
   onSaveSuccess,
-  isExecuting,
 }: SqlEditorProps) {
   const { theme, editorFontSizePx } = useTheme();
+  const capabilities = useDriverCapabilities(connectionId ?? null);
+  const isExecuting = !!activeExecution;
+  const isCancelling = activeExecution?.status === "cancelling";
+  const viewSession = useEditorViewSession(tabId);
+  const effectiveQueryResults = useMemo<QueryResultState | null | undefined>(
+    () =>
+      queryResults && "snapshot" in queryResults
+        ? queryResults
+        : queryResults
+          ? {
+              snapshot: {
+                executionId: "legacy-result",
+                tabId,
+                target: "document",
+                sql: value ?? "",
+                context: {
+                  connectionId: connectionId ?? 0,
+                  database: databaseName,
+                  driver: driver ?? "unknown",
+                  contextRevision,
+                },
+                documentRevision,
+                startedAt: 0,
+              },
+              status: queryResults.error ? "error" : "success",
+              data: queryResults.data,
+              columns: queryResults.columns,
+              rowCount: queryResults.data.length,
+              executionTimeMs: Number.parseInt(
+                queryResults.executionTime ?? "0",
+                10,
+              ),
+              error: queryResults.error
+                ? {
+                    code: 0,
+                    message: queryResults.error,
+                    category: "query",
+                  }
+                : undefined,
+              resultSets: queryResults.resultSets,
+              activeResultSetIndex: queryResults.activeResultSetIndex,
+            }
+          : queryResults,
+    [
+      connectionId,
+      contextRevision,
+      databaseName,
+      documentRevision,
+      driver,
+      queryResults,
+      tabId,
+      value,
+    ],
+  );
 
   const form = useSqlEditorForm({ value, onChange });
 
@@ -88,7 +158,7 @@ export function SqlEditor({
     onSaveSuccess,
   });
 
-  const results = useSqlResults({ queryResults });
+  const results = useSqlResults({ queryResults: effectiveQueryResults });
 
   const actions = useSqlEditorActions({
     driver,
@@ -99,6 +169,7 @@ export function SqlEditor({
     editorFontSizePx,
     theme,
     onExecute,
+    isExecuting,
     handleFormat: api.handleFormat,
     triggerSave: api.triggerSave,
     handleSqlChange: form.handleSqlChange,
@@ -128,11 +199,15 @@ export function SqlEditor({
   };
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div
+      className="h-full flex flex-col bg-background"
+      data-sql-editor-tab={tabId}
+    >
       <SqlToolbar
         databaseName={databaseName}
         availableDatabases={availableDatabases}
         canSwitchDatabase={canSwitchDatabase}
+        disableContextSwitch={isExecuting}
         savedQueryId={savedQueryId}
         schemaOverview={schemaOverview}
         onDatabaseChange={onDatabaseChange}
@@ -141,6 +216,8 @@ export function SqlEditor({
         onSchemaChange={onSchemaChange}
         canSwitchSchema={canSwitchSchema}
         isExecuting={isExecuting}
+        isCancelling={isCancelling}
+        canCancel={capabilities.queryWithId}
         isFormatting={api.isFormatting}
         onExecute={actions.handleExecute}
         onFormat={handleFormatClick}
@@ -148,25 +225,46 @@ export function SqlEditor({
         onTriggerSave={api.triggerSave}
         onClear={actions.handleClear}
         resultStatus={results.resultStatus}
-        queryResults={queryResults}
-        onExportResult={api.handleExportResult}
+        queryResults={effectiveQueryResults}
+        documentRevision={documentRevision}
+        contextRevision={contextRevision}
+        onExportResult={(format) =>
+          effectiveQueryResults &&
+          api.handleExportResult(effectiveQueryResults, format)
+        }
       />
 
       <div className="flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="vertical">
+        <ResizablePanelGroup
+          direction="vertical"
+          id={`sql-editor-layout-${tabId}`}
+          onLayout={viewSession.saveSplitLayout}
+        >
           <ResizablePanel
-            defaultSize={results.hasVisibleResults ? 50 : 100}
+            id={`sql-editor-panel-${tabId}`}
+            order={1}
+            defaultSize={
+              results.hasVisibleResults
+                ? (viewSession.initialSplitLayout?.[0] ?? 50)
+                : 100
+            }
             minSize={30}
           >
             <div className="h-full flex flex-col text-base">
               <CodeMirror
                 value={form.code}
                 height="100%"
-                extensions={actions.extensions}
+                extensions={[
+                  ...actions.extensions,
+                  viewSession.sessionExtension,
+                ]}
                 theme={actions.editorTheme}
                 onChange={form.handleSqlChange}
                 onCreateEditor={(view) => {
                   actions.editorViewRef.current = view;
+                  if ("scrollDOM" in view) {
+                    viewSession.onCreateEditor(view);
+                  }
                 }}
                 className="h-full"
                 basicSetup={{
@@ -181,12 +279,17 @@ export function SqlEditor({
             </div>
           </ResizablePanel>
 
-          {queryResults && results.hasVisibleResults && (
+          {effectiveQueryResults && results.hasVisibleResults && (
             <>
               <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={50} minSize={20}>
+              <ResizablePanel
+                id={`sql-result-panel-${tabId}`}
+                order={2}
+                defaultSize={viewSession.initialSplitLayout?.[1] ?? 50}
+                minSize={20}
+              >
                 <SqlResultsPanel
-                  queryResults={queryResults}
+                  queryResults={effectiveQueryResults}
                   hasMultipleResults={results.hasMultipleResults}
                   visibleResultSets={results.visibleResultSets}
                   activeResultSetIndex={results.activeResultSetIndex}

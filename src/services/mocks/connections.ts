@@ -2,7 +2,8 @@ import { ConnectionForm, TestConnectionResult } from "../types";
 import { COMMANDS } from "../commands";
 import type { CommandMap, CommandArgs, CommandReturn } from "../commands/types";
 
-type ConnectionCommand = Extract<keyof CommandMap,
+type ConnectionCommand = Extract<
+  keyof CommandMap,
   | "get_connections"
   | "create_connection"
   | "update_connection"
@@ -97,6 +98,20 @@ export const mockConnections: any[] = [
     port: 9200,
     database: "",
     username: "",
+    ssl: false,
+    sshEnabled: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 7,
+    uuid: "mock-7",
+    name: "MySQL Dev",
+    dbType: "mysql",
+    host: "localhost",
+    port: 3306,
+    database: "testdb",
+    username: "root",
     ssl: false,
     sshEnabled: false,
     createdAt: new Date().toISOString(),
@@ -348,40 +363,50 @@ export async function mockTestConnectionSavedEdit(
 
 export function handleConnections<T extends ConnectionCommand>(
   cmd: T,
-  args: CommandArgs<T>
+  args: CommandArgs<T>,
 ): Promise<CommandReturn<T>> | null {
   switch (cmd) {
     case COMMANDS.GET_CONNECTIONS:
       return mockGetConnections() as Promise<CommandReturn<T>>;
     case COMMANDS.CREATE_CONNECTION:
-      return mockCreateConnection((args as CommandArgs<"create_connection">).form) as Promise<CommandReturn<T>>;
+      return mockCreateConnection(
+        (args as CommandArgs<"create_connection">).form,
+      ) as Promise<CommandReturn<T>>;
     case COMMANDS.UPDATE_CONNECTION:
       return mockUpdateConnection(
         (args as CommandArgs<"update_connection">).id,
-        (args as CommandArgs<"update_connection">).form
+        (args as CommandArgs<"update_connection">).form,
       ) as Promise<CommandReturn<T>>;
     case COMMANDS.DELETE_CONNECTION:
-      return mockDeleteConnection((args as CommandArgs<"delete_connection">).id) as Promise<CommandReturn<T>>;
+      return mockDeleteConnection(
+        (args as CommandArgs<"delete_connection">).id,
+      ) as Promise<CommandReturn<T>>;
     case COMMANDS.IMPORT_CONNECTIONS:
-      return Promise.resolve({ imported: [], skipped: 0 }) as Promise<CommandReturn<T>>;
+      return Promise.resolve({ imported: [], skipped: 0 }) as Promise<
+        CommandReturn<T>
+      >;
     case COMMANDS.CREATE_DATABASE_BY_ID:
       return mockCreateDatabaseById(
         (args as CommandArgs<"create_database_by_id">).id,
-        (args as CommandArgs<"create_database_by_id">).payload
+        (args as CommandArgs<"create_database_by_id">).payload,
       ) as Promise<CommandReturn<T>>;
     case COMMANDS.GET_MYSQL_CHARSETS_BY_ID:
-      return mockGetMysqlCharsets((args as CommandArgs<"get_mysql_charsets_by_id">).id) as Promise<CommandReturn<T>>;
+      return mockGetMysqlCharsets(
+        (args as CommandArgs<"get_mysql_charsets_by_id">).id,
+      ) as Promise<CommandReturn<T>>;
     case COMMANDS.GET_MYSQL_COLLATIONS_BY_ID:
       return mockGetMysqlCollations(
         (args as CommandArgs<"get_mysql_collations_by_id">).id,
-        (args as CommandArgs<"get_mysql_collations_by_id">).charset
+        (args as CommandArgs<"get_mysql_collations_by_id">).charset,
       ) as Promise<CommandReturn<T>>;
     case COMMANDS.TEST_CONNECTION_EPHEMERAL:
-      return mockTestConnectionEphemeral((args as CommandArgs<"test_connection_ephemeral">).form) as Promise<CommandReturn<T>>;
+      return mockTestConnectionEphemeral(
+        (args as CommandArgs<"test_connection_ephemeral">).form,
+      ) as Promise<CommandReturn<T>>;
     case COMMANDS.TEST_CONNECTION_SAVED_EDIT:
       return mockTestConnectionSavedEdit(
         (args as CommandArgs<"test_connection_saved_edit">).id,
-        (args as CommandArgs<"test_connection_saved_edit">).form
+        (args as CommandArgs<"test_connection_saved_edit">).form,
       ) as Promise<CommandReturn<T>>;
     case COMMANDS.LIST_SQLITE_ISSUES:
       return Promise.resolve([]) as Promise<CommandReturn<T>>;

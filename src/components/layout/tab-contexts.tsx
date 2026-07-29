@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TabItem } from "@/types/tab";
 import type { TabContentRendererProps } from "./TabContentRenderer";
+import type { SqlExecutionTarget } from "@/components/business/Editor/hooks/useSqlExecution";
 
 export type TableRefreshOverrides = {
   page?: number;
@@ -29,7 +30,11 @@ export type OpenErDiagramContext = {
 
 // ── Editor Actions ──
 interface EditorActions {
-  handleExecuteQuery: (tabId: string, sql: string) => Promise<void>;
+  handleExecuteQuery: (
+    tabId: string,
+    target: SqlExecutionTarget,
+  ) => Promise<void>;
+  handleCancelQuery: (tabId: string) => Promise<boolean>;
   handleSqlChange: (tabId: string, sql: string) => void;
   handleEditorDatabaseChange: (
     tabId: string,
@@ -170,6 +175,7 @@ export function TabActionsProvider({
   const editorActions = useMemo(
     () => ({
       handleExecuteQuery: p.handleExecuteQuery,
+      handleCancelQuery: p.handleCancelQuery,
       handleSqlChange: p.handleSqlChange,
       handleEditorDatabaseChange: p.handleEditorDatabaseChange,
       handleCrossDbSchemaLoad: p.handleCrossDbSchemaLoad,
@@ -180,6 +186,7 @@ export function TabActionsProvider({
     }),
     [
       p.handleExecuteQuery,
+      p.handleCancelQuery,
       p.handleSqlChange,
       p.handleEditorDatabaseChange,
       p.handleCrossDbSchemaLoad,

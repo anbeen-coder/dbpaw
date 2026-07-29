@@ -37,8 +37,31 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run smoke tests
-        run: bun run typecheck && bun run lint && bun run test:unit && bun run test:service
+      - name: Run smoke tests and production build
+        run: bun run typecheck && bun run lint && bun run build && bun run test:unit && bun run test:sql-editor:coverage && bun run test:service
+
+  sql-editor-e2e:
+    name: P0 Mock E2E
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run P0 mock flows
+        run: bun run test:e2e:mock:p0
 
   rust-check:
     name: Rust Check

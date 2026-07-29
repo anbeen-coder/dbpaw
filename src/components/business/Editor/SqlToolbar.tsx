@@ -7,6 +7,7 @@ import {
   Braces,
   Download,
   Loader2,
+  Square,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,11 +31,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { SchemaOverview, TransferFormat } from "@/services/api";
+import type { QueryResultState } from "@/lib/queryExecutionState";
 
 interface SqlToolbarProps {
   databaseName?: string;
   availableDatabases?: string[];
   canSwitchDatabase: boolean;
+  disableContextSwitch: boolean;
   savedQueryId?: number;
   schemaOverview?: SchemaOverview;
   onDatabaseChange?: (database: string) => void;
@@ -43,6 +46,8 @@ interface SqlToolbarProps {
   onSchemaChange?: (schema: string) => void;
   canSwitchSchema: boolean;
   isExecuting?: boolean;
+  isCancelling?: boolean;
+  canCancel: boolean;
   isFormatting: boolean;
   onExecute: () => void;
   onFormat: () => void;
@@ -54,9 +59,9 @@ interface SqlToolbarProps {
     toneClass: string;
     Icon: LucideIcon;
   } | null;
-  queryResults?: {
-    error?: string;
-  } | null;
+  queryResults?: QueryResultState | null;
+  documentRevision: number;
+  contextRevision: number;
   onExportResult: (format: TransferFormat) => void;
 }
 
@@ -64,6 +69,7 @@ export function SqlToolbar({
   databaseName,
   availableDatabases,
   canSwitchDatabase,
+  disableContextSwitch,
   savedQueryId,
   schemaOverview,
   onDatabaseChange,
@@ -72,6 +78,8 @@ export function SqlToolbar({
   onSchemaChange,
   canSwitchSchema,
   isExecuting,
+  isCancelling,
+  canCancel,
   isFormatting,
   onExecute,
   onFormat,
@@ -80,6 +88,8 @@ export function SqlToolbar({
   onClear,
   resultStatus,
   queryResults,
+  documentRevision,
+  contextRevision,
   onExportResult,
 }: SqlToolbarProps) {
   const { t } = useTranslation();
@@ -93,7 +103,11 @@ export function SqlToolbar({
               <Database
                 className={`w-3 h-3 ${schemaOverview ? "text-green-500" : "text-muted-foreground"}`}
               />
-              <Select value={databaseName} onValueChange={onDatabaseChange}>
+              <Select
+                value={databaseName}
+                onValueChange={onDatabaseChange}
+                disabled={disableContextSwitch}
+              >
                 <SelectTrigger
                   size="sm"
                   className="h-8 min-w-[180px] bg-muted/50 text-xs"
@@ -112,11 +126,16 @@ export function SqlToolbar({
                 </SelectContent>
               </Select>
               {canSwitchSchema && (
-                <Select value={currentSchema} onValueChange={onSchemaChange}>
+                <Select
+                  value={currentSchema}
+                  onValueChange={onSchemaChange}
+                  disabled={disableContextSwitch}
+                >
                   <SelectTrigger
                     size="sm"
                     className="h-8 min-w-[140px] bg-muted/50 text-xs"
                     aria-label={t("sqlEditor.schema.ariaLabel")}
+                    title={t("sqlEditor.schema.completionOnly")}
                   >
                     <SelectValue
                       placeholder={t("sqlEditor.schema.placeholder")}
@@ -132,9 +151,7 @@ export function SqlToolbar({
                 </Select>
               )}
               {savedQueryId && (
-                <span className="text-[10px] opacity-50">
-                  #{savedQueryId}
-                </span>
+                <span className="text-[10px] opacity-50">#{savedQueryId}</span>
               )}
             </div>
           ) : (
@@ -158,22 +175,42 @@ export function SqlToolbar({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  onClick={onExecute}
+                  onClick={
+                    isExecuting && canCancel && !isCancelling
+                      ? onCancel
+                      : onExecute
+                  }
                   size="icon"
                   variant="outline"
                   className="h-8 w-8"
-                  disabled={isExecuting}
-                  aria-label={t("sqlEditor.tooltip.runSql")}
+                  disabled={isCancelling || (isExecuting && !canCancel)}
+                  aria-label={
+                    isExecuting
+                      ? isCancelling
+                        ? t("sqlEditor.result.cancelling")
+                        : canCancel
+                          ? t("sqlEditor.tooltip.cancelQuery")
+                          : t("sqlEditor.result.running")
+                      : t("sqlEditor.tooltip.runSql")
+                  }
                 >
-                  {isExecuting ? (
+                  {isCancelling || (isExecuting && !canCancel) ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isExecuting ? (
+                    <Square className="w-4 h-4" />
                   ) : (
                     <Play className="w-4 h-4" />
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{t("sqlEditor.tooltip.runSql")}</p>
+                <p>
+                  {isExecuting
+                    ? canCancel
+                      ? t("sqlEditor.tooltip.cancelQuery")
+                      : t("sqlEditor.result.cancelUnavailable")
+                    : t("sqlEditor.tooltip.runSql")}
+                </p>
               </TooltipContent>
             </Tooltip>
 
@@ -192,23 +229,6 @@ export function SqlToolbar({
               </TooltipTrigger>
               <TooltipContent>
                 <p>{t("sqlEditor.tooltip.formatSql")}</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={onCancel}
-                  aria-label={t("sqlEditor.tooltip.cancelQuery")}
-                >
-                  <span className="h-3 w-3 bg-foreground/80 rounded-[1px]" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{t("sqlEditor.tooltip.cancelQuery")}</p>
               </TooltipContent>
             </Tooltip>
 
@@ -259,30 +279,56 @@ export function SqlToolbar({
             </span>
           </>
         )}
-        {queryResults && !queryResults.error && (
-          <>
-            <div className="w-px h-3 bg-border mx-2" />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 gap-1.5">
-                  <Download className="w-4 h-4" />
-                  {t("sqlEditor.export.result")}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onExportResult("csv")}>
-                  CSV
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onExportResult("json")}>
-                  JSON
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onExportResult("sql_dml")}>
-                  SQL
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
+        {queryResults?.execution?.defaultLimitApplied && (
+          <span className="rounded bg-amber-500/15 px-2 py-1 text-xs text-amber-700 dark:text-amber-300">
+            {t("sqlEditor.result.defaultLimitApplied", {
+              count: queryResults.execution.defaultLimit,
+            })}
+          </span>
         )}
+        {queryResults &&
+          queryResults.snapshot.documentRevision !== documentRevision && (
+            <span className="text-xs text-amber-600">
+              {t("sqlEditor.result.previousExecution")}
+            </span>
+          )}
+        {queryResults &&
+          queryResults.snapshot.context.contextRevision !== contextRevision && (
+            <span className="text-xs text-amber-600">
+              {t("sqlEditor.result.previousContext", {
+                database:
+                  queryResults.snapshot.context.database ||
+                  queryResults.snapshot.context.connectionId,
+                schema: queryResults.snapshot.context.schema || "",
+              })}
+            </span>
+          )}
+        {queryResults &&
+          (queryResults.status === "success" ||
+            queryResults.status === "partial_error") && (
+            <>
+              <div className="w-px h-3 bg-border mx-2" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5">
+                    <Download className="w-4 h-4" />
+                    {t("sqlEditor.export.rerunResult")}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onExportResult("csv")}>
+                    CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExportResult("json")}>
+                    JSON
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExportResult("sql_dml")}>
+                    SQL
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
       </div>
     </div>
   );

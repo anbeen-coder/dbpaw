@@ -2,13 +2,10 @@ import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { TableView } from "@/components/business/DataGrid/TableView";
 import type { VisibleResultSet } from "./hooks/useSqlResults";
+import type { QueryResultState } from "@/lib/queryExecutionState";
 
 interface SqlResultsPanelProps {
-  queryResults: {
-    data: any[];
-    columns: string[];
-    error?: string;
-  };
+  queryResults: QueryResultState;
   hasMultipleResults: boolean;
   visibleResultSets: VisibleResultSet[];
   activeResultSetIndex: number;
@@ -30,13 +27,21 @@ export function SqlResultsPanel({
 }: SqlResultsPanelProps) {
   const { t } = useTranslation();
 
-  if (queryResults.error) {
+  if (queryResults.status === "error" && queryResults.error) {
     return (
       <div className="h-full p-4 bg-destructive/10 text-destructive overflow-auto font-mono text-sm whitespace-pre-wrap">
         <div className="font-bold mb-2">
           {t("sqlEditor.error.executingQuery")}
         </div>
-        {queryResults.error}
+        {queryResults.error.message}
+        {queryResults.error.hint && (
+          <div className="mt-3 text-sm opacity-80">
+            {queryResults.error.hint}
+          </div>
+        )}
+        <div className="mt-2 text-xs opacity-60">
+          {queryResults.error.category} · {queryResults.error.code}
+        </div>
       </div>
     );
   }
@@ -65,7 +70,9 @@ export function SqlResultsPanel({
                 className="px-3 py-1.5 pr-1"
                 onClick={() => onResultSetChange(originalIndex)}
               >
-                Result {originalIndex + 1} ({resultSet.rowCount} rows)
+                {resultSet.error
+                  ? t("sqlEditor.result.errorTab")
+                  : `Result ${originalIndex + 1} (${resultSet.rowCount} rows)`}
               </button>
               <button
                 type="button"
@@ -88,7 +95,19 @@ export function SqlResultsPanel({
         </div>
       )}
       <div className="flex-1 overflow-hidden">
-        <TableView data={displayData} columns={displayColumns} hideHeader />
+        {visibleResultSets.find(
+          ({ originalIndex }) => originalIndex === activeResultSetIndex,
+        )?.resultSet.error ? (
+          <div className="h-full overflow-auto bg-destructive/10 p-4 font-mono text-sm text-destructive">
+            {
+              visibleResultSets.find(
+                ({ originalIndex }) => originalIndex === activeResultSetIndex,
+              )?.resultSet.error?.message
+            }
+          </div>
+        ) : (
+          <TableView data={displayData} columns={displayColumns} hideHeader />
+        )}
       </div>
     </div>
   );

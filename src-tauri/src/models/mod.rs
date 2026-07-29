@@ -338,6 +338,24 @@ pub struct QueryResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QueryExecutionMetadata {
+    pub query_id: String,
+    pub original_sql: String,
+    pub executed_sql: String,
+    pub default_limit_applied: bool,
+    pub default_limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryExecutionResponse {
+    #[serde(flatten)]
+    pub result: QueryResult,
+    pub execution: QueryExecutionMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TableDataResponse {
     pub data: Vec<serde_json::Value>,
     pub total: Option<i64>,

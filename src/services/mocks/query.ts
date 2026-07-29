@@ -1,5 +1,6 @@
 import {
   QueryResult,
+  QueryExecutionResult,
   SqlExecutionLog,
   RedisCommandLog,
   ConnectionForm,
@@ -239,12 +240,26 @@ export async function mockExecuteQuery(
   query: string,
   database?: string,
   source?: string,
-): Promise<QueryResult> {
+  queryId?: string,
+): Promise<QueryExecutionResult> {
+  const executionId = queryId?.trim() || `mock-query-${id}-${Date.now()}`;
+  const delayMatch = query.match(/dbpaw-test:delay=(\d+)/i);
+  const delayMs = delayMatch ? Number(delayMatch[1]) : 100;
   // Simulate network latency
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  if (cancelledMockQueries.delete(executionId)) {
+    throw {
+      code: 2002,
+      message: "Mock query cancelled",
+      hint: "The query was cancelled by the user.",
+      category: "query",
+    };
+  }
 
   const lower = query.toLowerCase();
-  const failed = lower.includes("invalid") || lower.includes("error");
+  const isPartialError = lower.includes("dbpaw-test:partial-error");
+  const failed =
+    !isPartialError && (lower.includes("invalid") || lower.includes("error"));
   if (failed) {
     const error = "Mock query execution failed";
     appendSqlExecutionLog({
@@ -256,6 +271,19 @@ export async function mockExecuteQuery(
       error,
     });
     throw new Error(error);
+  }
+
+  if (isPartialError) {
+    return withExecutionMetadata(
+      {
+        ...mockMultipleResultSets,
+        success: false,
+        error: "Mock failure on statement 2",
+        resultSets: mockMultipleResultSets.resultSets?.slice(0, 1),
+      },
+      query,
+      executionId,
+    );
   }
 
   // Check if query contains multiple statements (separated by semicolons)
@@ -276,7 +304,7 @@ export async function mockExecuteQuery(
         database,
         success: true,
       });
-      return mockMultipleResultSets;
+      return withExecutionMetadata(mockMultipleResultSets, query, executionId);
     }
 
     // Dedicated array-type dataset: SELECT * FROM pg_arrays
@@ -294,7 +322,7 @@ export async function mockExecuteQuery(
         : isComplexQuery
           ? mockComplexTypeData
           : mockQueryResult),
-      timeTakenMs: Math.floor(Math.random() * 100) + 20,
+      timeTakenMs: 45,
     };
     appendSqlExecutionLog({
       sql: query,
@@ -303,14 +331,14 @@ export async function mockExecuteQuery(
       database,
       success: true,
     });
-    return result;
+    return withExecutionMetadata(result, query, executionId);
   }
 
   const result = {
     data: [],
     rowCount: 0,
     columns: [],
-    timeTakenMs: Math.floor(Math.random() * 50) + 10,
+    timeTakenMs: 18,
     success: true,
   };
   appendSqlExecutionLog({
@@ -320,7 +348,43 @@ export async function mockExecuteQuery(
     database,
     success: true,
   });
-  return result;
+  return withExecutionMetadata(result, query, executionId);
+}
+
+function prepareMockSql(sql: string) {
+  const trimmed = sql.trim();
+  const isSingle = trimmed.replace(/;+\s*$/, "").indexOf(";") === -1;
+  const shouldLimit =
+    /^select\b/i.test(trimmed) &&
+    isSingle &&
+    !/\blimit\b|\bfetch\s+(?:first|next)\b|\btop\s*(?:\(|\d)/i.test(trimmed);
+  if (!shouldLimit) {
+    return { executedSql: sql, defaultLimit: undefined };
+  }
+  const withoutSemicolon = trimmed.replace(/;\s*$/, "");
+  const suffix = /;\s*$/.test(trimmed) ? ";" : "";
+  return {
+    executedSql: `${withoutSemicolon} LIMIT 1000${suffix}`,
+    defaultLimit: 1000,
+  };
+}
+
+function withExecutionMetadata(
+  result: QueryResult,
+  originalSql: string,
+  queryId: string,
+): QueryExecutionResult {
+  const prepared = prepareMockSql(originalSql);
+  return {
+    ...result,
+    execution: {
+      queryId,
+      originalSql,
+      executedSql: prepared.executedSql,
+      defaultLimitApplied: prepared.defaultLimit !== undefined,
+      defaultLimit: prepared.defaultLimit,
+    },
+  };
 }
 
 /**
@@ -328,11 +392,14 @@ export async function mockExecuteQuery(
  */
 export async function mockCancelQuery(
   _uuid: string,
-  _queryId: string,
+  queryId: string,
 ): Promise<boolean> {
   await new Promise((resolve) => setTimeout(resolve, 50));
+  cancelledMockQueries.add(queryId);
   return true;
 }
+
+const cancelledMockQueries = new Set<string>();
 
 /**
  * Mock query execution by connection info
@@ -373,7 +440,13 @@ export function handleQuery<T extends QueryCommand>(
   switch (cmd) {
     case COMMANDS.EXECUTE_QUERY: {
       const a = args as CommandArgs<"execute_query">;
-      return mockExecuteQuery(a.id, a.query, a.database, a.source) as Promise<CommandReturn<T>>;
+      return mockExecuteQuery(
+        a.id,
+        a.query,
+        a.database,
+        a.source,
+        a.queryId,
+      ) as Promise<CommandReturn<T>>;
     }
     case COMMANDS.CANCEL_QUERY: {
       const a = args as CommandArgs<"cancel_query">;

@@ -26,6 +26,18 @@ export interface QueryResult {
   resultSets?: SingleResultSet[];
 }
 
+export interface QueryExecutionMetadata {
+  queryId: string;
+  originalSql: string;
+  executedSql: string;
+  defaultLimitApplied: boolean;
+  defaultLimit?: number;
+}
+
+export interface QueryExecutionResult extends QueryResult {
+  execution: QueryExecutionMetadata;
+}
+
 export type SqlExecutionSource =
   | "sql_editor"
   | "table_view_save"

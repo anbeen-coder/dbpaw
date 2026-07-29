@@ -22,19 +22,19 @@ else
   echo "✅ Rule 1: No banned @tauri-apps/api/core imports"
 fi
 
-# ─── Rule 2: No direct invoke() calls outside core.ts ────────────────────────
+# ─── Rule 2: No invoke() calls outside the typed API layer ──────────────────
 rule2_violations=$(grep -rn 'invoke\s*(' "$src_dir" --include='*.ts' --include='*.tsx' \
-  | grep -v "^${core_ts}:" \
+  | grep -v '^src/services/api/[^/]*\.ts:' \
   | grep -v '\.test\.' \
   | grep -v '\.spec\.' || true)
 
 if [[ -n "$rule2_violations" ]]; then
   while IFS= read -r line; do
-    echo "❌ Rule 2 (no direct invoke() calls): $line"
+    echo "❌ Rule 2 (no invoke() calls outside src/services/api): $line"
   done <<< "$rule2_violations"
   errors=$((errors + $(echo "$rule2_violations" | wc -l | tr -d ' ')))
 else
-  echo "✅ Rule 2: No direct invoke() calls outside core.ts"
+  echo "✅ Rule 2: No invoke() calls outside the typed API layer"
 fi
 
 # ─── Rule 3: No @ts-ignore anywhere in src/ ──────────────────────────────────

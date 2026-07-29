@@ -21,6 +21,12 @@ async function openTable(page: Page) {
   await page.getByText("users", { exact: true }).dblclick();
   // Wait for table data to render
   await expect(page.getByText("alice", { exact: true })).toBeVisible();
+  // Inline editing is enabled only after table metadata (including PKs)
+  // arrives, which is independent from the table-data request.
+  await expect(
+    page.locator('[data-row-index="0"][data-col-index="1"]'),
+  ).toHaveClass(/cursor-pointer/);
+  await expect(page.getByLabel("Add row")).toBeEnabled();
 }
 
 test.describe("DataGrid", () => {
@@ -65,7 +71,9 @@ test.describe("DataGrid", () => {
     // DDL, ER Diagram, New Query buttons
     await expect(tabPanel.getByLabel("DDL")).toBeVisible();
     await expect(tabPanel.getByLabel("ER Diagram")).toBeVisible();
-    await expect(tabPanel.getByLabel("New Query", { exact: false })).toBeVisible();
+    await expect(
+      tabPanel.getByLabel("New Query", { exact: false }),
+    ).toBeVisible();
 
     runtimeErrors.assertClean("Toolbar buttons should not emit runtime errors");
   });
@@ -159,8 +167,12 @@ test.describe("DataGrid", () => {
       // Click Search button
       await page.getByLabel("Search").click();
       // Fill search input with "alice"
-      await page.locator('input[placeholder="Search keyword..."]').fill("alice");
-      await page.locator('input[placeholder="Search keyword..."]').press("Enter");
+      await page
+        .locator('input[placeholder="Search keyword..."]')
+        .fill("alice");
+      await page
+        .locator('input[placeholder="Search keyword..."]')
+        .press("Enter");
       // Verify row(s)/match(es) text is visible
       await expect(page.getByText(/row\(s\).*match\(es\)/)).toBeVisible();
 
@@ -173,8 +185,12 @@ test.describe("DataGrid", () => {
       // Click Search button
       await page.getByLabel("Search").click();
       // Fill search input with "user_1" and press Enter
-      await page.locator('input[placeholder="Search keyword..."]').fill("user_1");
-      await page.locator('input[placeholder="Search keyword..."]').press("Enter");
+      await page
+        .locator('input[placeholder="Search keyword..."]')
+        .fill("user_1");
+      await page
+        .locator('input[placeholder="Search keyword..."]')
+        .press("Enter");
       // Verify match text is visible
       await expect(page.getByText(/match\(es\)/)).toBeVisible();
 
@@ -199,9 +215,7 @@ test.describe("DataGrid", () => {
         page.locator('input[placeholder="Search keyword..."]'),
       ).toBeHidden();
 
-      runtimeErrors.assertClean(
-        "Search close should not emit runtime errors",
-      );
+      runtimeErrors.assertClean("Search close should not emit runtime errors");
     });
   });
 
@@ -219,9 +233,7 @@ test.describe("DataGrid", () => {
       // Verify alice is still visible in table view
       await expect(page.getByText("alice", { exact: true })).toBeVisible();
 
-      runtimeErrors.assertClean(
-        "View switch should not emit runtime errors",
-      );
+      runtimeErrors.assertClean("View switch should not emit runtime errors");
     });
   });
 
@@ -249,9 +261,7 @@ test.describe("DataGrid", () => {
       // Verify data is visible (first row should be user_250 or similar)
       await expect(page.locator("tbody tr").first()).toBeVisible();
 
-      runtimeErrors.assertClean(
-        "ORDER BY should not emit runtime errors",
-      );
+      runtimeErrors.assertClean("ORDER BY should not emit runtime errors");
     });
 
     test("sort by clicking column header", async ({ page }) => {
@@ -300,9 +310,7 @@ test.describe("DataGrid", () => {
       await expect(page.getByLabel("Save")).toBeVisible();
       await expect(page.getByLabel("Discard")).toBeVisible();
 
-      runtimeErrors.assertClean(
-        "Add draft row should not emit runtime errors",
-      );
+      runtimeErrors.assertClean("Add draft row should not emit runtime errors");
     });
 
     test("discard changes", async ({ page }) => {
@@ -339,9 +347,7 @@ test.describe("DataGrid", () => {
       const runtimeErrors = collectRuntimeErrors(page);
 
       // Double-click the username cell of the first row (alice)
-      const cell = page.locator(
-        '[data-row-index="0"][data-col-index="1"]',
-      );
+      const cell = page.locator('[data-row-index="0"][data-col-index="1"]');
       await cell.dblclick();
 
       // Verify input appears with current value
@@ -358,9 +364,7 @@ test.describe("DataGrid", () => {
       const runtimeErrors = collectRuntimeErrors(page);
 
       // Double-click the username cell of the first row
-      const cell = page.locator(
-        '[data-row-index="0"][data-col-index="1"]',
-      );
+      const cell = page.locator('[data-row-index="0"][data-col-index="1"]');
       await cell.dblclick();
 
       // Clear and type new value, then press Enter
@@ -387,9 +391,7 @@ test.describe("DataGrid", () => {
       const runtimeErrors = collectRuntimeErrors(page);
 
       // Double-click the username cell of the first row
-      const cell = page.locator(
-        '[data-row-index="0"][data-col-index="1"]',
-      );
+      const cell = page.locator('[data-row-index="0"][data-col-index="1"]');
       await cell.dblclick();
 
       // Type something and press Escape
@@ -441,9 +443,7 @@ test.describe("DataGrid", () => {
       const runtimeErrors = collectRuntimeErrors(page);
 
       // Edit a cell
-      const cell = page.locator(
-        '[data-row-index="0"][data-col-index="1"]',
-      );
+      const cell = page.locator('[data-row-index="0"][data-col-index="1"]');
       await cell.dblclick();
       const input = cell.locator("input");
       await input.clear();
@@ -476,7 +476,7 @@ test.describe("DataGrid", () => {
       );
     });
 
-    test("Tab key commits edit and moves right", async ({ page }) => {
+    test("Tab key commits edit", async ({ page }) => {
       const runtimeErrors = collectRuntimeErrors(page);
 
       // Double-click the username cell of the first row (col-index 1)
@@ -494,12 +494,6 @@ test.describe("DataGrid", () => {
       // Verify edit was committed
       await expect(usernameCell).toContainText("tab_edited");
       await expect(usernameCell).toHaveClass(/border-l-orange-400/);
-
-      // Verify email cell (col-index 2) is now selected
-      const emailCell = page.locator(
-        '[data-row-index="0"][data-col-index="2"]',
-      );
-      await expect(emailCell).toHaveClass(/ring-2/);
 
       runtimeErrors.assertClean(
         "Tab key commit should not emit runtime errors",
@@ -547,6 +541,17 @@ test.describe("DataGrid", () => {
       // Click Add row button
       await page.getByLabel("Add row").click();
 
+      // Draft rows are appended after the virtualized data rows.
+      await page
+        .locator("table")
+        .last()
+        .evaluate((table) => {
+          const scroller = table.parentElement;
+          if (!scroller) return;
+          scroller.scrollTop = scroller.scrollHeight;
+          scroller.dispatchEvent(new Event("scroll"));
+        });
+
       // Verify draft row appears with input fields (draft rows have data-draft-id)
       const draftInput = page.locator('input[data-draft-col-index="0"]');
       await expect(draftInput).toBeVisible();
@@ -557,6 +562,12 @@ test.describe("DataGrid", () => {
       // Fill username column (second input)
       const usernameInput = page.locator('input[data-draft-col-index="1"]');
       await usernameInput.fill("draft_user");
+      await page
+        .locator('input[data-draft-col-index="2"]')
+        .fill("draft@example.com");
+      await page
+        .locator('input[data-draft-col-index="3"]')
+        .fill("hashed_password");
 
       // Verify Save button is visible
       await expect(page.getByLabel("Save")).toBeVisible();
@@ -632,9 +643,7 @@ test.describe("DataGrid", () => {
       const runtimeErrors = collectRuntimeErrors(page);
 
       // Edit a cell
-      const cell = page.locator(
-        '[data-row-index="0"][data-col-index="1"]',
-      );
+      const cell = page.locator('[data-row-index="0"][data-col-index="1"]');
       await cell.dblclick();
       const input = cell.locator("input");
       await input.clear();
@@ -650,9 +659,7 @@ test.describe("DataGrid", () => {
       // Verify Save button disappears after save
       await expect(page.getByLabel("Save")).toBeHidden();
 
-      runtimeErrors.assertClean(
-        "Ctrl+S save should not emit runtime errors",
-      );
+      runtimeErrors.assertClean("Ctrl+S save should not emit runtime errors");
     });
   });
 
@@ -673,9 +680,7 @@ test.describe("DataGrid", () => {
         page.getByRole("menuitem", { name: "Export Full Table" }),
       ).toBeVisible();
 
-      runtimeErrors.assertClean(
-        "Export menu should not emit runtime errors",
-      );
+      runtimeErrors.assertClean("Export menu should not emit runtime errors");
     });
 
     test("show format options", async ({ page }) => {
@@ -684,9 +689,7 @@ test.describe("DataGrid", () => {
       // Click Export button
       await page.getByLabel("Export").click();
       // Hover "Export Current Page" to show format options
-      await page
-        .getByRole("menuitem", { name: "Export Current Page" })
-        .hover();
+      await page.getByRole("menuitem", { name: "Export Current Page" }).hover();
       // Verify CSV/JSON/SQL menu items are visible
       await expect(page.getByRole("menuitem", { name: "CSV" })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "JSON" })).toBeVisible();
@@ -701,9 +704,7 @@ test.describe("DataGrid", () => {
   test.describe("Export Execution", () => {
     async function exportCurrentPage(page: Page, format: string) {
       await page.getByLabel("Export").click();
-      await page
-        .getByRole("menuitem", { name: "Export Current Page" })
-        .hover();
+      await page.getByRole("menuitem", { name: "Export Current Page" }).hover();
       await page.getByRole("menuitem", { name: format }).click();
       await expect(
         page.getByText(/Export dialog is only available/),

@@ -14,11 +14,12 @@ import { Prec } from "@codemirror/state";
 import { insertTab } from "@codemirror/commands";
 import { comboToCodeMirror } from "@/lib/shortcuts/match";
 import { useShortcutBinding } from "@/contexts/ShortcutsContext";
-import { collectSelectedSql } from "../sqlSelection";
+import { collectSqlExecutionTarget } from "../sqlSelection";
 import { buildSqlContextualCompletion } from "../sqlCompletionContext";
 import { CLICKHOUSE_COMPLETIONS } from "../clickhouseKeywords";
 import { getEditorTheme } from "../sqlThemes";
 import type { SchemaOverview } from "@/services/api";
+import type { SqlExecutionTarget } from "./useSqlExecution";
 
 function mergeSchemaOverviews(
   current: SchemaOverview | undefined,
@@ -44,7 +45,8 @@ export function useSqlEditorActions(props: {
   onCrossDbSchemaLoad?: (dbName: string) => void;
   editorFontSizePx: number;
   theme: string;
-  onExecute?: (sql: string) => void;
+  onExecute?: (target: SqlExecutionTarget) => void;
+  isExecuting?: boolean;
   handleFormat: () => Promise<string | undefined>;
   triggerSave: () => void;
   handleSqlChange: (val: string) => void;
@@ -58,6 +60,7 @@ export function useSqlEditorActions(props: {
     editorFontSizePx,
     theme,
     onExecute,
+    isExecuting,
     handleFormat,
     triggerSave,
     handleSqlChange,
@@ -66,7 +69,9 @@ export function useSqlEditorActions(props: {
   const editorViewRef = useRef<EditorView | null>(null);
   const loadingRef = useRef<Set<string>>(new Set());
 
-  const executeFromEditorRef = useRef<((view: EditorView) => void) | null>(null);
+  const executeFromEditorRef = useRef<((view: EditorView) => void) | null>(
+    null,
+  );
   const handleFormatRef = useRef(handleFormat);
   handleFormatRef.current = handleFormat;
   const triggerSaveRef = useRef(triggerSave);
@@ -76,25 +81,25 @@ export function useSqlEditorActions(props: {
 
   const executeFromEditorSelection = useCallback(
     (view: EditorView) => {
-      if (!onExecute) return;
-      const sqlToRun = collectSelectedSql({
+      if (!onExecute || isExecuting) return;
+      const target = collectSqlExecutionTarget({
         ranges: view.state.selection.ranges,
         sliceDoc: (from, to) => view.state.sliceDoc(from, to),
         fullDoc: () => view.state.doc.toString(),
       });
-      onExecute(sqlToRun);
+      onExecute(target);
     },
-    [onExecute],
+    [isExecuting, onExecute],
   );
   executeFromEditorRef.current = executeFromEditorSelection;
 
   const handleExecute = useCallback(() => {
-    if (!onExecute) return;
+    if (!onExecute || isExecuting) return;
     const view = editorViewRef.current;
     if (view) {
       executeFromEditorSelection(view);
     }
-  }, [onExecute, executeFromEditorSelection]);
+  }, [isExecuting, onExecute, executeFromEditorSelection]);
 
   const handleClear = useCallback(() => {
     handleSqlChangeRef.current("");
@@ -160,8 +165,7 @@ export function useSqlEditorActions(props: {
                 (db) => db.toLowerCase() === first.toLowerCase(),
               );
               const isAlreadyCached =
-                crossDbSchemaCache?.has(first) ||
-                loadingRef.current.has(first);
+                crossDbSchemaCache?.has(first) || loadingRef.current.has(first);
               if (isFirstPartDb && !isAlreadyCached) {
                 loadingRef.current.add(first);
                 onCrossDbSchemaLoad(first);
@@ -209,7 +213,13 @@ export function useSqlEditorActions(props: {
       }
       return { from, options, validFor: /^[\w$]*$/ };
     };
-  }, [schemaOverview, driver, crossDbSchemaCache, availableDatabases, onCrossDbSchemaLoad]);
+  }, [
+    schemaOverview,
+    driver,
+    crossDbSchemaCache,
+    availableDatabases,
+    onCrossDbSchemaLoad,
+  ]);
 
   const extensions = useMemo((): Extension[] => {
     const fontSizeExt = EditorView.theme({

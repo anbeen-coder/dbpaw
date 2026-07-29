@@ -1,14 +1,8 @@
 import type { RoutineType, SchemaOverview } from "@/services/api";
-import type { SingleResultState } from "@/lib/queryExecutionState";
-
-export interface QueryResults {
-  data: unknown[];
-  columns: string[];
-  executionTime: string;
-  error?: string;
-  resultSets?: SingleResultState[];
-  activeResultSetIndex?: number;
-}
+import type {
+  ActiveExecution,
+  QueryResultState,
+} from "@/lib/queryExecutionState";
 
 export interface EditorTabItem {
   type: "editor";
@@ -21,9 +15,10 @@ export interface EditorTabItem {
   sqlContent?: string;
   lastSavedSql?: string;
   isDirty?: boolean;
-  queryResults?: QueryResults | null;
-  activeQueryId?: string;
-  lastQueryId?: string;
+  documentRevision?: number;
+  contextRevision?: number;
+  queryResults?: QueryResultState | null;
+  activeExecution?: ActiveExecution;
   schemaOverview?: SchemaOverview;
   crossDbSchemaCache?: Map<string, SchemaOverview>;
   savedQueryId?: number;

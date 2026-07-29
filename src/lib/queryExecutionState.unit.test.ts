@@ -1,306 +1,281 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import {
-  applyQueryCompletionToTab,
-  QueryResultsState,
+  makeRejectedQueryResult,
+  normalizeResolvedQuery,
+  reduceQueryExecutionState,
+  type ExecutionSnapshot,
+  type QueryExecutionState,
+  type QueryResultState,
 } from "./queryExecutionState";
 
-// Mock Tab type
-interface TestTab {
-  id: string;
-  activeQueryId?: string;
-  lastQueryId?: string;
-  queryResults?: QueryResultsState | null;
-}
+const snapshot = (
+  overrides: Partial<ExecutionSnapshot> = {},
+): ExecutionSnapshot => ({
+  executionId: "query-A",
+  tabId: "tab-1",
+  target: "document",
+  sql: "SELECT 1",
+  context: {
+    connectionId: 1,
+    database: "db",
+    schema: "public",
+    driver: "postgres",
+    contextRevision: 3,
+  },
+  documentRevision: 5,
+  startedAt: 10,
+  ...overrides,
+});
 
-describe("applyQueryCompletionToTab", () => {
-  const mockResults: QueryResultsState = {
-    data: [{ id: 1, name: "test" }],
-    columns: ["id", "name"],
-    executionTime: "100ms",
-  };
+const completed = (
+  source = snapshot(),
+  status: QueryResultState["status"] = "success",
+): QueryResultState => ({
+  snapshot: source,
+  status,
+  data: [{ value: 1 }],
+  columns: ["value"],
+  rowCount: 1,
+  executionTimeMs: 12,
+});
 
-  it("should update results when the query is the latest", () => {
-    const tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-A",
-      lastQueryId: "query-A",
-    };
+const initial = (): QueryExecutionState => ({
+  contextRevision: 3,
+  queryResults: null,
+});
 
-    const result = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-A",
-      mockResults,
-    );
-
-    expect(result.queryResults).toEqual(mockResults);
-    expect(result.activeQueryId).toBeUndefined();
-    expect(result.lastQueryId).toBeUndefined();
+describe("reduceQueryExecutionState", () => {
+  it("starts one immutable execution and rejects a concurrent start", () => {
+    const started = reduceQueryExecutionState(initial(), {
+      type: "START",
+      snapshot: snapshot(),
+    });
+    const second = reduceQueryExecutionState(started, {
+      type: "START",
+      snapshot: snapshot({ executionId: "query-B" }),
+    });
+    expect(started.activeExecution?.snapshot.sql).toBe("SELECT 1");
+    expect(second).toBe(started);
   });
 
-  it("should ignore stale query results (race condition scenario)", () => {
-    // Scenario: query-A was sent first, then query-B
-    // query-B updated lastQueryId to B
-    // now query-A returns and should be ignored
-    const tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-B",
-      lastQueryId: "query-B", // B is already the latest
-      queryResults: undefined,
-    };
-
-    // query-A response returns
-    const result = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-A",
-      mockResults,
-    );
-
-    // should remain unchanged
-    expect(result.queryResults).toBeUndefined();
-    expect(result.activeQueryId).toBe("query-B");
-    expect(result.lastQueryId).toBe("query-B");
-    // ensure the same object reference is returned (no changes)
-    expect(result).toBe(tab);
+  it("accepts only the matching execution and context revision", () => {
+    const started = reduceQueryExecutionState(initial(), {
+      type: "START",
+      snapshot: snapshot(),
+    });
+    const staleId = reduceQueryExecutionState(started, {
+      type: "RESOLVED",
+      executionId: "query-B",
+      contextRevision: 3,
+      result: completed(),
+    });
+    const staleContext = reduceQueryExecutionState(started, {
+      type: "RESOLVED",
+      executionId: "query-A",
+      contextRevision: 2,
+      result: completed(),
+    });
+    const accepted = reduceQueryExecutionState(started, {
+      type: "RESOLVED",
+      executionId: "query-A",
+      contextRevision: 3,
+      result: completed(),
+    });
+    expect(staleId).toBe(started);
+    expect(staleContext).toBe(started);
+    expect(accepted.activeExecution).toBeUndefined();
+    expect(accepted.queryResults?.rowCount).toBe(1);
   });
 
-  it("should ignore query results from another tab", () => {
-    const tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-A",
-      lastQueryId: "query-A",
-    };
-
-    const result = applyQueryCompletionToTab(
-      tab,
-      "tab-2",
-      "query-A",
-      mockResults,
+  it("invalidates an active execution while retaining prior results", () => {
+    const old = completed();
+    const started = reduceQueryExecutionState(
+      { ...initial(), queryResults: old },
+      { type: "START", snapshot: snapshot() },
     );
-
-    // should remain unchanged
-    expect(result.queryResults).toBeUndefined();
-    expect(result.activeQueryId).toBe("query-A");
-    expect(result).toBe(tab);
+    const changed = reduceQueryExecutionState(started, {
+      type: "CONTEXT_CHANGED",
+      contextRevision: 4,
+    });
+    expect(changed.contextRevision).toBe(4);
+    expect(changed.activeExecution).toBeUndefined();
+    expect(changed.queryResults).toBe(old);
   });
 
-  it("should correctly handle error results", () => {
-    const errorResults: QueryResultsState = {
-      data: [],
-      columns: [],
-      executionTime: "0ms",
-      error: "Connection timeout",
-    };
-
-    const tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-A",
-      lastQueryId: "query-A",
-    };
-
-    const result = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-A",
-      errorResults,
-    );
-
-    expect(result.queryResults).toEqual(errorResults);
-    expect(result.queryResults?.error).toBe("Connection timeout");
+  it("buffers completion while cancelling and discards it on confirmation", () => {
+    let state = reduceQueryExecutionState(initial(), {
+      type: "START",
+      snapshot: snapshot(),
+    });
+    state = reduceQueryExecutionState(state, {
+      type: "CANCEL_REQUESTED",
+      executionId: "query-A",
+    });
+    state = reduceQueryExecutionState(state, {
+      type: "RESOLVED",
+      executionId: "query-A",
+      contextRevision: 3,
+      result: completed(),
+    });
+    expect(state.activeExecution?.pendingResult?.status).toBe("success");
+    state = reduceQueryExecutionState(state, {
+      type: "CANCEL_CONFIRMED",
+      executionId: "query-A",
+      elapsedMs: 21,
+    });
+    expect(state.queryResults?.status).toBe("cancelled");
+    expect(state.queryResults?.executionTimeMs).toBe(21);
   });
 
-  it("complex case: only the last of rapid queries should apply", () => {
-    let tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-1",
-      lastQueryId: "query-1",
-    };
+  it("replays buffered completion when cancellation fails", () => {
+    let state = reduceQueryExecutionState(initial(), {
+      type: "START",
+      snapshot: snapshot(),
+    });
+    state = reduceQueryExecutionState(state, {
+      type: "CANCEL_REQUESTED",
+      executionId: "query-A",
+    });
+    state = reduceQueryExecutionState(state, {
+      type: "REJECTED",
+      executionId: "query-A",
+      contextRevision: 3,
+      result: completed(snapshot(), "error"),
+    });
+    state = reduceQueryExecutionState(state, {
+      type: "CANCEL_FAILED",
+      executionId: "query-A",
+    });
+    expect(state.activeExecution).toBeUndefined();
+    expect(state.queryResults?.status).toBe("error");
+  });
 
-    // Simulate a user executing 3 queries rapidly
-    // First query
-    tab = { ...tab, activeQueryId: "query-1", lastQueryId: "query-1" };
-    // Second query (overrides the first)
-    tab = { ...tab, activeQueryId: "query-2", lastQueryId: "query-2" };
-    // Third query (overrides the second)
-    tab = { ...tab, activeQueryId: "query-3", lastQueryId: "query-3" };
+  it("returns to running when cancellation fails before completion", () => {
+    let state = reduceQueryExecutionState(initial(), {
+      type: "START",
+      snapshot: snapshot(),
+    });
+    state = reduceQueryExecutionState(state, {
+      type: "CANCEL_REQUESTED",
+      executionId: "query-A",
+    });
+    state = reduceQueryExecutionState(state, {
+      type: "CANCEL_FAILED",
+      executionId: "query-A",
+    });
+    expect(state.activeExecution?.status).toBe("running");
+  });
 
-    // query-2 completes first (already stale)
-    const resultFromQuery2 = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-2",
-      {
-        ...mockResults,
-        data: [{ id: 2 }],
-      },
-    );
+  it("ignores duplicate, stale cancellation, and no-op context events", () => {
+    const idle = initial();
+    const started = reduceQueryExecutionState(idle, {
+      type: "START",
+      snapshot: snapshot(),
+    });
+    const cancelling = reduceQueryExecutionState(started, {
+      type: "CANCEL_REQUESTED",
+      executionId: "query-A",
+    });
 
-    // should be ignored
-    expect(resultFromQuery2.queryResults).toBeUndefined();
-    expect(resultFromQuery2.lastQueryId).toBe("query-3");
-
-    // then query-3 completes (latest)
-    const resultFromQuery3 = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-3",
-      {
-        ...mockResults,
-        data: [{ id: 3 }],
-      },
-    );
-
-    // should be accepted
-    expect(resultFromQuery3.queryResults?.data).toEqual([{ id: 3 }]);
-    expect(resultFromQuery3.lastQueryId).toBeUndefined();
-
-    // finally query-1 completes (even more stale)
-    const resultFromQuery1 = applyQueryCompletionToTab(
-      resultFromQuery3,
-      "tab-1",
-      "query-1",
-      {
-        ...mockResults,
-        data: [{ id: 1 }],
-      },
-    );
-
-    // should be ignored, keep query-3 results
-    expect(resultFromQuery1.queryResults?.data).toEqual([{ id: 3 }]);
+    expect(
+      reduceQueryExecutionState(cancelling, {
+        type: "CANCEL_REQUESTED",
+        executionId: "query-A",
+      }),
+    ).toBe(cancelling);
+    expect(
+      reduceQueryExecutionState(started, {
+        type: "CANCEL_CONFIRMED",
+        executionId: "query-B",
+        elapsedMs: 1,
+      }),
+    ).toBe(started);
+    expect(
+      reduceQueryExecutionState(started, {
+        type: "CANCEL_FAILED",
+        executionId: "query-B",
+      }),
+    ).toBe(started);
+    expect(
+      reduceQueryExecutionState(idle, {
+        type: "CONTEXT_CHANGED",
+        contextRevision: 3,
+      }),
+    ).toBe(idle);
   });
 });
 
-describe("applyQueryCompletionToTab - Multiple Result Sets", () => {
-  const mockMultipleResults: QueryResultsState = {
-    data: [],
-    columns: [],
-    executionTime: "150ms",
-    resultSets: [
-      {
-        data: [{ id: 1, name: "Alice" }],
-        columns: ["id", "name"],
-        rowCount: 1,
-        statement: "SELECT id, name FROM users",
-        index: 0,
-      },
-      {
-        data: [{ id: 2, email: "bob@test.com" }],
-        columns: ["id", "email"],
-        rowCount: 1,
-        statement: "SELECT id, email FROM users",
-        index: 1,
-      },
-    ],
-    activeResultSetIndex: 0,
+describe("query result normalization", () => {
+  const execution = {
+    queryId: "query-A",
+    originalSql: "SELECT 1",
+    executedSql: "SELECT 1 LIMIT 1000",
+    defaultLimitApplied: true,
+    defaultLimit: 1000,
   };
 
-  it("should update results with multiple result sets", () => {
-    const tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-A",
-      lastQueryId: "query-A",
-    };
-
-    const result = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-A",
-      mockMultipleResults,
-    );
-
-    expect(result.queryResults).toEqual(mockMultipleResults);
-    expect(result.queryResults?.resultSets).toHaveLength(2);
-    expect(result.queryResults?.activeResultSetIndex).toBe(0);
-    expect(result.activeQueryId).toBeUndefined();
-    expect(result.lastQueryId).toBeUndefined();
+  it("normalizes a successful response with numeric timing and row count", () => {
+    const result = normalizeResolvedQuery(snapshot(), {
+      data: [{ value: 1 }],
+      columns: [{ name: "value", type: "int" }],
+      rowCount: 1,
+      timeTakenMs: 12.4,
+      success: true,
+      execution,
+    });
+    expect(result.status).toBe("success");
+    expect(result.columns).toEqual(["value"]);
+    expect(result.executionTimeMs).toBe(12);
+    expect(result.execution?.defaultLimitApplied).toBe(true);
   });
 
-  it("should preserve multiple result sets structure", () => {
-    const tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-A",
-      lastQueryId: "query-A",
-    };
-
-    const result = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-A",
-      mockMultipleResults,
-    );
-
-    expect(result.queryResults?.resultSets?.[0].statement).toBe(
-      "SELECT id, name FROM users",
-    );
-    expect(result.queryResults?.resultSets?.[1].statement).toBe(
-      "SELECT id, email FROM users",
-    );
-    expect(result.queryResults?.resultSets?.[0].data).toEqual([
-      { id: 1, name: "Alice" },
-    ]);
-    expect(result.queryResults?.resultSets?.[1].data).toEqual([
-      { id: 2, email: "bob@test.com" },
-    ]);
-  });
-
-  it("should handle multiple result sets with error", () => {
-    const errorMultipleResults: QueryResultsState = {
+  it("preserves successful result sets and appends an error result", () => {
+    const result = normalizeResolvedQuery(snapshot(), {
       data: [],
       columns: [],
-      executionTime: "50ms",
-      error: "Partial failure on statement 2",
+      rowCount: 0,
+      timeTakenMs: 20,
+      success: false,
+      error: "statement 2 failed",
       resultSets: [
         {
-          data: [{ id: 1 }],
-          columns: ["id"],
+          data: [{ value: 1 }],
+          columns: [{ name: "value", type: "int" }],
           rowCount: 1,
-          statement: "SELECT id FROM users",
           index: 0,
+          statement: "SELECT 1",
         },
       ],
-      activeResultSetIndex: 0,
-    };
-
-    const tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-A",
-      lastQueryId: "query-A",
-    };
-
-    const result = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-A",
-      errorMultipleResults,
-    );
-
-    expect(result.queryResults?.error).toBe("Partial failure on statement 2");
-    expect(result.queryResults?.resultSets).toHaveLength(1);
+      execution,
+    });
+    expect(result.status).toBe("partial_error");
+    expect(result.resultSets).toHaveLength(2);
+    expect(result.resultSets?.[1].error?.category).toBe("query");
   });
 
-  it("should handle single result set (backward compatibility)", () => {
-    const singleResult: QueryResultsState = {
-      data: [{ id: 1, name: "test" }],
-      columns: ["id", "name"],
-      executionTime: "50ms",
-    };
-
-    const tab: TestTab = {
-      id: "tab-1",
-      activeQueryId: "query-A",
-      lastQueryId: "query-A",
-    };
-
-    const result = applyQueryCompletionToTab(
-      tab,
-      "tab-1",
-      "query-A",
-      singleResult,
+  it("normalizes unsuccessful and thrown responses as errors", () => {
+    const resolved = normalizeResolvedQuery(snapshot(), {
+      data: [],
+      columns: [],
+      rowCount: 0,
+      timeTakenMs: 3,
+      success: false,
+      error: "bad SQL",
+      execution,
+    });
+    const rejected = makeRejectedQueryResult(
+      snapshot(),
+      {
+        code: 2001,
+        message: "syntax error",
+        hint: "check SQL",
+        category: "query",
+      },
+      4.7,
     );
-
-    expect(result.queryResults?.data).toEqual([{ id: 1, name: "test" }]);
-    expect(result.queryResults?.resultSets).toBeUndefined();
-    expect(result.queryResults?.activeResultSetIndex).toBeUndefined();
+    expect(resolved.status).toBe("error");
+    expect(resolved.error?.message).toBe("bad SQL");
+    expect(rejected.executionTimeMs).toBe(5);
+    expect(rejected.error?.hint).toBe("check SQL");
   });
 });

@@ -7,6 +7,7 @@ import "./lib/i18n";
 import { initI18nFromStore } from "./lib/i18n";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ShortcutsProvider } from "./contexts/ShortcutsContext";
+import { EditorSessionProvider } from "./contexts/EditorSessionContext";
 
 const renderApp = async () => {
   await initI18nFromStore();
@@ -25,8 +26,10 @@ const renderApp = async () => {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="default">
         <ShortcutsProvider>
-          <App />
-          <Toaster />
+          <EditorSessionProvider>
+            <App />
+            <Toaster />
+          </EditorSessionProvider>
         </ShortcutsProvider>
       </ThemeProvider>
     </ErrorBoundary>,

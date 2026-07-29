@@ -37,14 +37,15 @@ test("Saved Queries: search filters the list", async ({ page }) => {
   await expect(page.getByText("Get all users")).toBeVisible();
 
   // Search for a specific query
-  await page.getByPlaceholder("Search queries...").fill("Active");
+  const searchInput = page.getByPlaceholder("Find queries...");
+  await searchInput.fill("Active");
 
   // Only matching query should be visible
   await expect(page.getByText("Active posts")).toBeVisible();
   await expect(page.getByText("Get all users")).toBeHidden();
 
   // Clear search shows all again
-  await page.getByPlaceholder("Search queries...").clear();
+  await searchInput.clear();
   await expect(page.getByText("Get all users")).toBeVisible();
   await expect(page.getByText("Active posts")).toBeVisible();
   runtimeErrors.assertClean("Search filter");
@@ -155,9 +156,7 @@ test("Saved Queries: New button opens create dialog", async ({ page }) => {
 
   // Dialog should appear
   await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "New Query" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "New Query" })).toBeVisible();
 
   // Connection selector should be present
   await expect(

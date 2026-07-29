@@ -103,6 +103,19 @@ it never happens again.
 
 ## Testing
 
+- Bun's text `bun.lock` is JSON-compatible but has no inferred Prettier parser.
+  Keep it package-manager controlled and out of the generic Prettier lint
+  glob; dependency integrity is checked with `bun install --frozen-lockfile`.
+- Architecture checks must distinguish the typed `invoke` exported by
+  `src/services/api/core.ts` from Tauri's raw invoke. Domain wrappers under
+  `src/services/api/` may call the typed wrapper; no other layer may do so.
+- DataGrid editability depends on a separate asynchronous table-metadata
+  request. E2E flows that edit cells or add draft rows must wait for the
+  relevant control/cell to become enabled, not merely for row data to render.
+- SQL editor provenance tests depend on the parent tab state observing every
+  CodeMirror change before execution starts. Do not debounce the parent
+  `onChange` update when `documentRevision` is used for execution snapshots;
+  otherwise a just-edited query is immediately mislabeled as an older result.
 - Rust integration tests follow three levels:
   - `<db>_integration.rs` — direct driver method testing
   - `<db>_command_integration.rs` — ephemeral connection commands

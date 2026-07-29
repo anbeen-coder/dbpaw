@@ -14,6 +14,8 @@ describe("Query模块", () => {
     expect(result.columns).toBeDefined();
     expect(result.timeTakenMs).toBeDefined();
     expect(result.success).toBeDefined();
+    expect(result.execution.queryId).toBeDefined();
+    expect(result.execution.executedSql).toContain("LIMIT");
   });
 
   test("cancel_query - 取消查询", async () => {

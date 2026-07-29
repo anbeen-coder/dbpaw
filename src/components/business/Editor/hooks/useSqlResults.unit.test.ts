@@ -11,6 +11,32 @@ mock.module("react-i18next", () => ({
 import { describe, test, expect } from "bun:test";
 import { act, renderHook } from "@testing-library/react";
 import { useSqlResults } from "./useSqlResults";
+import type { QueryResultState } from "@/lib/queryExecutionState";
+
+const resultState = (
+  overrides: Partial<QueryResultState> = {},
+): QueryResultState => ({
+  snapshot: {
+    executionId: "query-1",
+    tabId: "tab-1",
+    target: "document",
+    sql: "SELECT 1",
+    context: {
+      connectionId: 1,
+      database: "testdb",
+      driver: "postgres",
+      contextRevision: 0,
+    },
+    documentRevision: 0,
+    startedAt: 0,
+  },
+  status: "success",
+  data: [],
+  columns: [],
+  rowCount: 0,
+  executionTimeMs: 8,
+  ...overrides,
+});
 
 const makeResultSet = (index: number) => ({
   data: [{ value: index + 1 }],
@@ -50,6 +76,34 @@ describe("useSqlResults", () => {
     );
     expect(result.current.resultStatus).not.toBeNull();
     expect(result.current.resultStatus!.toneClass).toContain("emerald");
+  });
+
+  test("distinguishes SELECT, DML, and DDL completion text", () => {
+    const { result, rerender } = renderHook(
+      ({ queryResults }) => useSqlResults({ queryResults }),
+      {
+        initialProps: {
+          queryResults: resultState({ columns: ["id"], rowCount: 2 }),
+        },
+      },
+    );
+    expect(result.current.resultStatus?.text).toBe(
+      "sqlEditor.result.rowsReturned 2",
+    );
+
+    rerender({
+      queryResults: resultState({ rowCount: 3 }),
+    });
+    expect(result.current.resultStatus?.text).toBe(
+      "sqlEditor.result.rowsAffected 3",
+    );
+
+    rerender({
+      queryResults: resultState(),
+    });
+    expect(result.current.resultStatus?.text).toBe(
+      "sqlEditor.result.commandCompleted",
+    );
   });
 
   test("displayData uses queryResults.data for single result", () => {

@@ -7,12 +7,16 @@ import {
   isRegisteredDriver,
   supportsSchemaBrowsing,
 } from "@/lib/driver-registry";
-import { applyQueryCompletionToTab } from "@/lib/queryExecutionState";
+import { reduceQueryExecutionState } from "@/lib/queryExecutionState";
 import {
   normalizeDatabaseOptions,
   resolvePreferredDatabase,
 } from "@/lib/sqlEditorDatabase";
 import type { TabItem, EditorTabItem } from "@/types/tab";
+import {
+  useSqlExecution,
+  type SqlExecutionTarget,
+} from "@/components/business/Editor/hooks/useSqlExecution";
 
 const DEFAULT_SQL = "";
 
@@ -32,6 +36,7 @@ export function useQueryEditor({
   t,
 }: UseQueryEditorParams) {
   const schemaOverviewRequestKeysRef = useRef<Map<string, string>>(new Map());
+  const sqlExecution = useSqlExecution({ tabs, setTabs, t });
 
   const fetchEditorDatabases = useCallback(
     async (connectionId: number, fallbackDatabase?: string) => {
@@ -93,6 +98,8 @@ export function useQueryEditor({
         sqlContent: DEFAULT_SQL,
         lastSavedSql: DEFAULT_SQL,
         isDirty: false,
+        documentRevision: 0,
+        contextRevision: 0,
         queryResults: null,
       };
       setTabs((prev) => [...prev, newTab]);
@@ -104,55 +111,57 @@ export function useQueryEditor({
         canBrowseSchemas
           ? fetchEditorSchemas(connectionId, initialDatabase)
           : Promise.resolve([]),
-      ]).then(([availableDatabasesResult, schemaOverviewResult, schemasResult]) => {
-        if (availableDatabasesResult.status === "rejected") {
-          console.error(
-            "Failed to load editor databases:",
-            errorMessage(availableDatabasesResult.reason),
-          );
-        }
-        if (schemaOverviewResult.status === "rejected") {
-          console.error(
-            "Failed to load schema overview:",
-            errorMessage(schemaOverviewResult.reason),
-          );
-        }
+      ]).then(
+        ([availableDatabasesResult, schemaOverviewResult, schemasResult]) => {
+          if (availableDatabasesResult.status === "rejected") {
+            console.error(
+              "Failed to load editor databases:",
+              errorMessage(availableDatabasesResult.reason),
+            );
+          }
+          if (schemaOverviewResult.status === "rejected") {
+            console.error(
+              "Failed to load schema overview:",
+              errorMessage(schemaOverviewResult.reason),
+            );
+          }
 
-        const availableDatabases =
-          availableDatabasesResult.status === "fulfilled"
-            ? availableDatabasesResult.value
-            : normalizeDatabaseOptions(
-                initialDatabase ? [initialDatabase] : [],
-                initialDatabase,
-              );
-        const schemaOverview =
-          schemaOverviewResult.status === "fulfilled"
-            ? schemaOverviewResult.value
-            : undefined;
-        const availableSchemas =
-          schemasResult.status === "fulfilled" ? schemasResult.value : [];
-        const currentSchema =
-          availableSchemas.length > 0 ? availableSchemas[0] : undefined;
+          const availableDatabases =
+            availableDatabasesResult.status === "fulfilled"
+              ? availableDatabasesResult.value
+              : normalizeDatabaseOptions(
+                  initialDatabase ? [initialDatabase] : [],
+                  initialDatabase,
+                );
+          const schemaOverview =
+            schemaOverviewResult.status === "fulfilled"
+              ? schemaOverviewResult.value
+              : undefined;
+          const availableSchemas =
+            schemasResult.status === "fulfilled" ? schemasResult.value : [];
+          const currentSchema =
+            availableSchemas.length > 0 ? availableSchemas[0] : undefined;
 
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === newTabId
-              ? {
-                  ...t,
-                  database: resolvePreferredDatabase({
-                    preferredDatabase: initialDatabase,
-                    connectionDatabase: initialDatabase,
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.id === newTabId
+                ? {
+                    ...t,
+                    database: resolvePreferredDatabase({
+                      preferredDatabase: initialDatabase,
+                      connectionDatabase: initialDatabase,
+                      availableDatabases,
+                    }),
                     availableDatabases,
-                  }),
-                  availableDatabases,
-                  schemaOverview,
-                  availableSchemas,
-                  currentSchema,
-                }
-              : t,
-          ),
-        );
-      });
+                    schemaOverview,
+                    availableSchemas,
+                    currentSchema,
+                  }
+                : t,
+            ),
+          );
+        },
+      );
     },
     [
       fetchEditorDatabases,
@@ -240,6 +249,8 @@ export function useQueryEditor({
               sqlContent: query.query,
               lastSavedSql: query.query,
               isDirty: false,
+              documentRevision: 0,
+              contextRevision: 0,
               savedQueryId: query.id,
               savedQueryDescription: query.description || undefined,
               queryResults: null,
@@ -249,7 +260,10 @@ export function useQueryEditor({
             return;
           }
         } catch (e) {
-          console.error("Failed to fetch connection details for saved query", e);
+          console.error(
+            "Failed to fetch connection details for saved query",
+            e,
+          );
         }
       }
 
@@ -267,6 +281,8 @@ export function useQueryEditor({
         sqlContent: query.query,
         lastSavedSql: query.query,
         isDirty: false,
+        documentRevision: 0,
+        contextRevision: 0,
         savedQueryId: query.id,
         savedQueryDescription: query.description || undefined,
         queryResults: null,
@@ -274,7 +290,13 @@ export function useQueryEditor({
       setTabs((prev) => [...prev, newTab]);
       setActiveTab(newTabId);
     },
-    [fetchEditorDatabases, fetchEditorSchemaOverview, setActiveTab, setTabs, tabs],
+    [
+      fetchEditorDatabases,
+      fetchEditorSchemaOverview,
+      setActiveTab,
+      setTabs,
+      tabs,
+    ],
   );
 
   const handleSqlChange = useCallback(
@@ -286,6 +308,7 @@ export function useQueryEditor({
           return {
             ...t,
             sqlContent: sql,
+            documentRevision: (t.documentRevision ?? 0) + 1,
             isDirty: sql !== (t.lastSavedSql ?? ""),
           };
         }),
@@ -295,72 +318,15 @@ export function useQueryEditor({
   );
 
   const handleExecuteQuery = useCallback(
-    async (tabId: string, sql: string) => {
-      const tab = tabs.find((t) => t.id === tabId);
-      if (!tab || tab.type !== "editor" || !tab.connectionId) {
-        toast.info(t("app.error.selectConnectionFirst"));
-        return;
-      }
-
-      const start = performance.now();
-      const queryId = `q-${tab.connectionId}-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId
-            ? { ...t, activeQueryId: queryId, lastQueryId: queryId }
-            : t,
-        ),
-      );
-      try {
-        const result = await api.query.execute(
-          tab.connectionId,
-          sql,
-          tab.database,
-          "sql_editor",
-          queryId,
-        );
-        const columns = (result.columns || []).map((c) => c.name);
-        const execMs = Math.round(
-          result.timeTakenMs ?? performance.now() - start,
-        );
-
-        const resultSets = result.resultSets?.map((rs) => ({
-          data: rs.data,
-          columns: rs.columns.map((c) => c.name),
-          rowCount: rs.rowCount,
-          statement: rs.statement,
-          index: rs.index,
-        }));
-
-        setTabs((prev) =>
-          prev.map((t) =>
-            applyQueryCompletionToTab(t, tabId, queryId, {
-              data: result.data || [],
-              columns,
-              executionTime: `${execMs}ms`,
-              resultSets,
-              activeResultSetIndex: resultSets?.length ? 0 : undefined,
-            }),
-          ),
-        );
-      } catch (e) {
-        const message = errorMessage(e);
-        console.error("execute_query failed:", message);
-        setTabs((prev) =>
-          prev.map((t) =>
-            applyQueryCompletionToTab(t, tabId, queryId, {
-              data: [],
-              columns: [],
-              executionTime: "0ms",
-              error: message,
-            }),
-          ),
-        );
-      }
+    async (tabId: string, target: SqlExecutionTarget) => {
+      await sqlExecution.execute(tabId, target);
     },
-    [setTabs, t, tabs],
+    [sqlExecution],
+  );
+
+  const handleCancelQuery = useCallback(
+    (tabId: string) => sqlExecution.cancel(tabId),
+    [sqlExecution],
   );
 
   const handleEditorDatabaseChange = useCallback(
@@ -373,17 +339,33 @@ export function useQueryEditor({
         .slice(2, 8)}`;
       schemaOverviewRequestKeysRef.current.set(tabId, requestKey);
 
+      const nextRevision = (tab.contextRevision ?? 0) + 1;
+      if (tab.activeExecution) {
+        void api.query.cancel(
+          String(tab.connectionId),
+          tab.activeExecution.snapshot.executionId,
+        );
+      }
       setTabs((prev) =>
         prev.map((item) =>
-          item.id === tabId
+          item.id === tabId && item.type === "editor"
             ? {
                 ...item,
                 title: isDefaultQueryTitle(item.title)
                   ? t("app.tab.queryTitle", { database })
                   : item.title,
                 database,
-                queryResults: null,
-                activeQueryId: undefined,
+                ...reduceQueryExecutionState(
+                  {
+                    contextRevision: item.contextRevision ?? 0,
+                    activeExecution: item.activeExecution,
+                    queryResults: item.queryResults,
+                  },
+                  {
+                    type: "CONTEXT_CHANGED",
+                    contextRevision: nextRevision,
+                  },
+                ),
                 schemaOverview: undefined,
                 crossDbSchemaCache: undefined,
                 availableSchemas: undefined,
@@ -405,7 +387,11 @@ export function useQueryEditor({
 
         const schemaOverview =
           canBrowseSchemas && currentSchema
-            ? await fetchEditorSchemaOverview(tab.connectionId, database, currentSchema)
+            ? await fetchEditorSchemaOverview(
+                tab.connectionId,
+                database,
+                currentSchema,
+              )
             : await fetchEditorSchemaOverview(tab.connectionId, database);
         if (schemaOverviewRequestKeysRef.current.get(tabId) !== requestKey)
           return;
@@ -413,7 +399,12 @@ export function useQueryEditor({
         setTabs((prev) =>
           prev.map((item) =>
             item.id === tabId
-              ? { ...item, schemaOverview, availableSchemas: schemas, currentSchema }
+              ? {
+                  ...item,
+                  schemaOverview,
+                  availableSchemas: schemas,
+                  currentSchema,
+                }
               : item,
           ),
         );
@@ -468,9 +459,32 @@ export function useQueryEditor({
       const tab = tabs.find((item) => item.id === tabId);
       if (!tab || tab.type !== "editor" || !tab.connectionId) return;
 
+      const nextRevision = (tab.contextRevision ?? 0) + 1;
+      if (tab.activeExecution) {
+        void api.query.cancel(
+          String(tab.connectionId),
+          tab.activeExecution.snapshot.executionId,
+        );
+      }
       setTabs((prev) =>
         prev.map((item) =>
-          item.id === tabId ? { ...item, currentSchema: schema } : item,
+          item.id === tabId && item.type === "editor"
+            ? {
+                ...item,
+                currentSchema: schema,
+                ...reduceQueryExecutionState(
+                  {
+                    contextRevision: item.contextRevision ?? 0,
+                    activeExecution: item.activeExecution,
+                    queryResults: item.queryResults,
+                  },
+                  {
+                    type: "CONTEXT_CHANGED",
+                    contextRevision: nextRevision,
+                  },
+                ),
+              }
+            : item,
         ),
       );
 
@@ -486,7 +500,11 @@ export function useQueryEditor({
           ),
         );
       } catch (e) {
-        console.error("Failed to load schema overview for schema:", schema, errorMessage(e));
+        console.error(
+          "Failed to load schema overview for schema:",
+          schema,
+          errorMessage(e),
+        );
       }
     },
     [fetchEditorSchemaOverview, setTabs, tabs],
@@ -541,6 +559,7 @@ export function useQueryEditor({
     handleOpenSavedQuery,
     handleSqlChange,
     handleExecuteQuery,
+    handleCancelQuery,
     handleEditorDatabaseChange,
     handleEditorSchemaChange,
     handleCrossDbSchemaLoad,

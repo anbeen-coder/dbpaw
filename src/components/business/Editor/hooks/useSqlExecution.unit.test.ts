@@ -2,11 +2,13 @@ import { mock } from "bun:test";
 
 const executeMock = mock();
 const cancelMock = mock();
+const analyzeRiskMock = mock();
 const toastInfoMock = mock();
 const toastErrorMock = mock();
 mock.module("@/services/api", () => ({
   api: {
     query: {
+      analyzeRisk: analyzeRiskMock,
       execute: executeMock,
       cancel: cancelMock,
     },
@@ -61,7 +63,7 @@ function useHarness(seedTabs: TabItem[] = initialTabs()) {
     setTabs,
     t: (key) => key,
   });
-  return { tabs, ...execution };
+  return { tabs, setTabs, ...execution };
 }
 
 function deferred<T>() {
@@ -77,11 +79,140 @@ function deferred<T>() {
 beforeEach(() => {
   executeMock.mockReset();
   cancelMock.mockReset();
+  analyzeRiskMock.mockReset();
+  analyzeRiskMock.mockResolvedValue({
+    risk: "read",
+    requiresConfirmation: false,
+    statementCount: 1,
+    reasons: [],
+  });
   toastInfoMock.mockReset();
   toastErrorMock.mockReset();
 });
 
 describe("useSqlExecution", () => {
+  test("requires explicit confirmation before executing risky SQL", async () => {
+    analyzeRiskMock.mockResolvedValue({
+      risk: "write",
+      requiresConfirmation: true,
+      statementCount: 1,
+      reasons: ["write_statement", "missing_where"],
+    });
+    executeMock.mockResolvedValue({
+      ...response,
+      rowCount: 3,
+      columns: [],
+    });
+    const { result } = renderHook(() => useHarness());
+
+    let executionPromise!: Promise<void>;
+    await act(async () => {
+      executionPromise = result.current.execute("tab-1", {
+        sql: "UPDATE users SET active = false",
+        target: "document",
+      });
+      await Promise.resolve();
+    });
+
+    expect(executeMock).not.toHaveBeenCalled();
+    expect(result.current.pendingRiskConfirmation?.analysis.reasons).toEqual([
+      "write_statement",
+      "missing_where",
+    ]);
+    expect(result.current.tabs[0].type).toBe("editor");
+    expect(result.current.tabs[0].activeExecution).toBeUndefined();
+
+    await act(async () => {
+      result.current.confirmRiskExecution();
+      await executionPromise;
+    });
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][1]).toBe(
+      "UPDATE users SET active = false",
+    );
+  });
+
+  test("cancelling risk confirmation does not start or log an execution", async () => {
+    analyzeRiskMock.mockResolvedValue({
+      risk: "ddl",
+      requiresConfirmation: true,
+      statementCount: 1,
+      reasons: ["schema_change"],
+    });
+    const { result } = renderHook(() => useHarness());
+
+    let executionPromise!: Promise<void>;
+    await act(async () => {
+      executionPromise = result.current.execute("tab-1", {
+        sql: "DROP TABLE users",
+        target: "document",
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      result.current.cancelRiskExecution();
+      await executionPromise;
+    });
+
+    expect(executeMock).not.toHaveBeenCalled();
+    expect(result.current.pendingRiskConfirmation).toBeNull();
+    expect(result.current.tabs[0].activeExecution).toBeUndefined();
+    expect(result.current.tabs[0].queryResults).toBeNull();
+  });
+
+  test("fails closed when risk analysis fails", async () => {
+    analyzeRiskMock.mockRejectedValue(new Error("analyzer unavailable"));
+    const { result } = renderHook(() => useHarness());
+
+    await act(async () => {
+      await result.current.execute("tab-1", {
+        sql: "SELECT 1",
+        target: "document",
+      });
+    });
+
+    expect(executeMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "sqlEditor.risk.analysisFailed",
+      { description: "Error: analyzer unavailable" },
+    );
+  });
+
+  test("invalidates pending confirmation when the editor changes", async () => {
+    analyzeRiskMock.mockResolvedValue({
+      risk: "write",
+      requiresConfirmation: true,
+      statementCount: 1,
+      reasons: ["write_statement"],
+    });
+    const { result } = renderHook(() => useHarness());
+
+    let executionPromise!: Promise<void>;
+    await act(async () => {
+      executionPromise = result.current.execute("tab-1", {
+        sql: "DELETE FROM users WHERE id = 1",
+        target: "document",
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      result.current.setTabs((tabs) =>
+        tabs.map((tab) =>
+          tab.type === "editor"
+            ? { ...tab, documentRevision: (tab.documentRevision ?? 0) + 1 }
+            : tab,
+        ),
+      );
+    });
+    await act(async () => {
+      await executionPromise;
+    });
+
+    expect(result.current.pendingRiskConfirmation).toBeNull();
+    expect(executeMock).not.toHaveBeenCalled();
+  });
+
   test("creates a provenance snapshot and normalizes the backend response", async () => {
     executeMock.mockResolvedValue(response);
     const { result } = renderHook(() => useHarness());

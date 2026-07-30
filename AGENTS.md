@@ -11,6 +11,10 @@ it never happens again.
 - In a dirty worktree, do not run broad `cargo fmt` for a narrow Rust change.
   Format only the Rust files touched by the task so unrelated user WIP is not
   rewritten.
+- Invoking `rustfmt` on a crate root such as `lib.rs` can recursively format
+  child modules. For narrow changes to a module root, pass
+  `--config skip_children=true`, then verify `git status` immediately so
+  unrelated Rust files are not rewritten.
 - Structured errors must cross the backend from the inside out. New or modified
   service/internal code should return `Result<T, AppError>` from
   `src-tauri/src/error.rs`; Tauri commands return `Result<T, AppError>` directly
@@ -99,6 +103,9 @@ it never happens again.
   (`split_sql_statements`, `first_sql_keyword`). `src-tauri/src/db/drivers/mod.rs`
   only re-exports splitter helpers as a compatibility layer. Do not reimplement
   SQL parsing in individual drivers.
+- SQL safety analysis must inspect more than the first keyword:
+  `EXPLAIN ANALYZE` can execute an underlying write, and `SELECT ... INTO` can
+  write data. Do not classify every `EXPLAIN` or `SELECT` as read-only.
 - `TableInfo.type` is a logical object category consumed by sidebar grouping,
   not a database-specific storage engine. Drivers must return the categories
   expected by the tree (`table`/`BASE TABLE` and the driver's view categories);
@@ -106,6 +113,10 @@ it never happens again.
 
 ## Testing
 
+- In React hook tests, do not await a Promise inside the same `act()` when that
+  Promise can only resolve after React commits a state update scheduled by that
+  `act()`. Commit the state update in one `act()`, then await the dependent
+  Promise in a second `act()`; otherwise the test deadlocks until timeout.
 - Bun's text `bun.lock` is JSON-compatible but has no inferred Prettier parser.
   Keep it package-manager controlled and out of the generic Prettier lint
   glob; dependency integrity is checked with `bun install --frozen-lockfile`.

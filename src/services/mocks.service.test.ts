@@ -6,6 +6,29 @@ import {
 } from "./mocks/connections";
 
 describe("invokeMock service layer", () => {
+  test("analyzes risky SQL before execution", async () => {
+    const analysis = await invokeMock("analyze_sql_risk", {
+      sql: "DELETE FROM users",
+    });
+
+    expect(analysis).toEqual({
+      risk: "write",
+      requiresConfirmation: true,
+      statementCount: 1,
+      reasons: ["write_statement", "missing_where"],
+    });
+  });
+
+  test("does not treat EXPLAIN ANALYZE writes as read-only", async () => {
+    const analysis = await invokeMock("analyze_sql_risk", {
+      sql: "EXPLAIN ANALYZE UPDATE users SET active = false",
+    });
+
+    expect(analysis.risk).toBe("write");
+    expect(analysis.requiresConfirmation).toBe(true);
+    expect(analysis.reasons).toContain("missing_where");
+  });
+
   test("returns table list for metadata command", async () => {
     const tables = await invokeMock<
       { schema: string; name: string; type: string }[]

@@ -1,6 +1,6 @@
 export * from "../types";
 
-export { isTauri, normalizeImportDriver } from "../platform";
+export { isMockMode, isTauri, normalizeImportDriver } from "../platform";
 export { getImportDriverCapability } from "./core";
 
 import { queryApi } from "./query";

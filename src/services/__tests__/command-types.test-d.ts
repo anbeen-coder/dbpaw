@@ -8,6 +8,7 @@ import type {
   TestConnectionResult,
   SavedQuery,
   SqlExecutionLog,
+  SqlRiskAnalysis,
 } from "../types/sql";
 import type {
   RedisKeyValue,
@@ -28,6 +29,12 @@ describe("CommandMap type assertions", () => {
     expectTypeOf<
       CommandReturn<"execute_query">
     >().toEqualTypeOf<QueryExecutionResult>();
+  });
+
+  it("analyze_sql_risk returns SqlRiskAnalysis", () => {
+    expectTypeOf<
+      CommandReturn<"analyze_sql_risk">
+    >().toEqualTypeOf<SqlRiskAnalysis>();
   });
 
   it("get_table_structure returns columns with name, type, and nullable", () => {

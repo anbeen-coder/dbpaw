@@ -30,6 +30,7 @@ import { TabBar } from "@/components/layout/TabBar";
 import { TabContentRenderer } from "@/components/layout/TabContentRenderer";
 import { UnsavedChangesDialog } from "@/components/layout/UnsavedChangesDialog";
 import { WindowActions } from "@/components/layout/WindowActions";
+import { SqlRiskConfirmDialog } from "@/components/business/Editor/SqlRiskConfirmDialog";
 
 import type { TabItem } from "@/types/tab";
 import { useEditorSessionStore } from "@/contexts/EditorSessionContext";
@@ -115,6 +116,9 @@ export default function App() {
     handleSqlChange,
     handleExecuteQuery,
     handleCancelQuery,
+    pendingRiskConfirmation,
+    confirmRiskExecution,
+    cancelRiskExecution,
     handleEditorDatabaseChange,
     handleEditorSchemaChange,
     handleCrossDbSchemaLoad,
@@ -427,6 +431,11 @@ export default function App() {
         onSaveDialogOpenChange={handleCloseSaveDialogOpenChange}
         onSaveComplete={handleCloseFlowSave}
         isDefaultQueryTitle={isDefaultQueryTitle}
+      />
+      <SqlRiskConfirmDialog
+        pending={pendingRiskConfirmation}
+        onCancel={cancelRiskExecution}
+        onConfirm={confirmRiskExecution}
       />
       {openSettings && (
         <Suspense

@@ -56,6 +56,28 @@ describe("queryApi.query.execute", () => {
   });
 });
 
+describe("queryApi.query.analyzeRisk", () => {
+  test("invokes analyze_sql_risk with the exact SQL", async () => {
+    const expected = {
+      risk: "write",
+      requiresConfirmation: true,
+      statementCount: 1,
+      reasons: ["write_statement"],
+    };
+    mockReturn = expected;
+
+    const result = await queryApi.query.analyzeRisk(
+      "UPDATE users SET active = false",
+    );
+
+    expect(capturedCmd).toBe("analyze_sql_risk");
+    expect(capturedArgs).toEqual({
+      sql: "UPDATE users SET active = false",
+    });
+    expect(result).toBe(expected);
+  });
+});
+
 describe("queryApi.query.cancel", () => {
   test("invokes cancel_query with uuid and queryId", async () => {
     mockReturn = true;

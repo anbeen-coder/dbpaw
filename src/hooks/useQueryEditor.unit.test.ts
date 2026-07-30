@@ -2,6 +2,7 @@ import { mock } from "bun:test";
 
 const executeMock = mock();
 const cancelMock = mock();
+const analyzeRiskMock = mock();
 const listSchemasMock = mock();
 const getSchemaOverviewMock = mock();
 const listDatabasesMock = mock();
@@ -9,6 +10,7 @@ const listDatabasesMock = mock();
 mock.module("@/services/api", () => ({
   api: {
     query: {
+      analyzeRisk: analyzeRiskMock,
       execute: executeMock,
       cancel: cancelMock,
     },
@@ -91,6 +93,13 @@ function useHarness() {
 beforeEach(() => {
   executeMock.mockReset();
   cancelMock.mockReset();
+  analyzeRiskMock.mockReset();
+  analyzeRiskMock.mockResolvedValue({
+    risk: "read",
+    requiresConfirmation: false,
+    statementCount: 1,
+    reasons: [],
+  });
   listSchemasMock.mockReset();
   getSchemaOverviewMock.mockReset();
   listDatabasesMock.mockReset();

@@ -7,6 +7,8 @@ import type {
 
 export const queryApi = {
   query: {
+    analyzeRisk: (sql: string) =>
+      invoke(COMMANDS.ANALYZE_SQL_RISK, { sql }),
     execute: (
       id: number,
       query: string,

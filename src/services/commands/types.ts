@@ -1,6 +1,7 @@
 import type {
   QueryResult,
   QueryExecutionResult,
+  SqlRiskAnalysis,
   SqlExecutionLog,
   SqlExecutionSource,
   SavedConnection,
@@ -92,6 +93,10 @@ export type CommandReturn<T extends keyof CommandMap> = CommandMap[T]["return"];
 
 export interface CommandMap {
   // ── Query ──────────────────────────────────────────────────────────────
+  analyze_sql_risk: {
+    args: { sql: string };
+    return: SqlRiskAnalysis;
+  };
   execute_query: {
     args: {
       id: number;

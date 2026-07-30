@@ -38,6 +38,23 @@ export interface QueryExecutionResult extends QueryResult {
   execution: QueryExecutionMetadata;
 }
 
+export type SqlRisk = "read" | "write" | "ddl" | "transaction" | "unknown";
+
+export type SqlRiskReason =
+  | "write_statement"
+  | "missing_where"
+  | "schema_change"
+  | "transaction_control"
+  | "unknown_statement"
+  | "multiple_statements";
+
+export interface SqlRiskAnalysis {
+  risk: SqlRisk;
+  requiresConfirmation: boolean;
+  statementCount: number;
+  reasons: SqlRiskReason[];
+}
+
 export type SqlExecutionSource =
   | "sql_editor"
   | "table_view_save"

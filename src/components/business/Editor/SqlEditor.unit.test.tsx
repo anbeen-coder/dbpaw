@@ -161,6 +161,7 @@ mock.module("@/services/api", () => ({
       ),
     },
   },
+  isMockMode: () => false,
   isTauri: () => false,
 }));
 

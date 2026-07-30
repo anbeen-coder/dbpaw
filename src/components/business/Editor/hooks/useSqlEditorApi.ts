@@ -6,6 +6,7 @@ import {
   api,
   type SavedQuery,
   type TransferFormat,
+  isMockMode,
   isTauri,
 } from "@/services/api";
 import type { SqlLanguage } from "sql-formatter";
@@ -96,7 +97,9 @@ export function useSqlEditorApi(props: {
         toast.error(t("sqlEditor.export.runWithSavedConnection"));
         return;
       }
-      if (!isTauri()) {
+      const tauriMode = isTauri();
+      const mockMode = isMockMode();
+      if (!tauriMode && !mockMode) {
         toast.error(t("sqlEditor.export.desktopOnly"));
         return;
       }
@@ -111,20 +114,24 @@ export function useSqlEditorApi(props: {
             : [{ name: "SQL", extensions: ["sql"] }];
 
       let filePath: string | undefined;
-      try {
-        const selected = await save({
-          title: t("sqlEditor.export.saveFileTitle"),
-          defaultPath,
-          filters,
-        });
-        if (!selected) return;
-        filePath = Array.isArray(selected) ? selected[0] : selected;
-        if (!filePath) return;
-      } catch (e) {
-        toast.error(t("sqlEditor.export.openSaveDialogFailed"), {
-          description: errorMessage(e),
-        });
-        return;
+      if (mockMode && !tauriMode) {
+        filePath = `/tmp/${defaultPath}`;
+      } else {
+        try {
+          const selected = await save({
+            title: t("sqlEditor.export.saveFileTitle"),
+            defaultPath,
+            filters,
+          });
+          if (!selected) return;
+          filePath = Array.isArray(selected) ? selected[0] : selected;
+          if (!filePath) return;
+        } catch (e) {
+          toast.error(t("sqlEditor.export.openSaveDialogFailed"), {
+            description: errorMessage(e),
+          });
+          return;
+        }
       }
 
       try {

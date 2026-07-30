@@ -2,6 +2,7 @@ import { mock } from "bun:test";
 
 const mockT = (s: string) => s;
 let tauriMode = false;
+let mockMode = false;
 const saveDialogMock = mock(() => Promise.resolve<string | null>(null));
 const exportMock = mock(() =>
   Promise.resolve({ rowCount: 10, filePath: "/tmp/test.csv" }),
@@ -34,6 +35,7 @@ mock.module("@/services/api", () => ({
       exportQueryResult: exportMock,
     },
   },
+  isMockMode: () => mockMode,
   isTauri: () => tauriMode,
 }));
 
@@ -43,6 +45,7 @@ import { useSqlEditorApi } from "./useSqlEditorApi";
 
 beforeEach(() => {
   tauriMode = false;
+  mockMode = false;
   saveDialogMock.mockReset();
   saveDialogMock.mockResolvedValue(null);
   exportMock.mockReset();
@@ -126,6 +129,21 @@ describe("useSqlEditorApi", () => {
       format: "csv",
       filePath: "/tmp/result.csv",
     });
+  });
+
+  test("uses a deterministic temporary path in mock browser mode", async () => {
+    mockMode = true;
+    const { result } = renderHook(() => useSqlEditorApi({ code: "SELECT 1" }));
+
+    await act(async () => {
+      await result.current.handleExportResult(makeQueryResults(), "csv");
+    });
+
+    expect(saveDialogMock).not.toHaveBeenCalled();
+    expect(exportMock).toHaveBeenCalledTimes(1);
+    expect(exportMock.mock.calls[0][0].filePath).toMatch(
+      /^\/tmp\/query_result_.*\.csv$/,
+    );
   });
 
   test("cancelling the export save dialog does not call the export API", async () => {

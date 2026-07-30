@@ -7,12 +7,18 @@ use crate::models::{
     ConnectionForm, QueryExecutionResponse, QueryResult, SqlExecutionLog, TableDataResponse,
 };
 use crate::sql::query_guard::apply_default_limit;
+use crate::sql::risk::{analyze_sql_risk as analyze_risk, SqlRiskAnalysis};
 use crate::state::AppState;
 use tauri::State;
 
 use execute_core::{execute_by_conn_core, execute_query_core};
 use helpers::{clamp_sql_execution_logs_limit, resolve_include_total, validate_page_limit};
 use running_queries::{execute_cancel_query, is_running_query};
+
+#[tauri::command]
+pub fn analyze_sql_risk(sql: String) -> Result<SqlRiskAnalysis, AppError> {
+    Ok(analyze_risk(&sql))
+}
 
 #[tauri::command]
 pub async fn get_table_data_by_conn(
@@ -284,6 +290,7 @@ mod tests {
 #[macro_export]
 macro_rules! query_commands {
     () => {
+        $crate::commands::query::analyze_sql_risk,
         $crate::commands::query::execute_query,
         $crate::commands::query::get_table_data,
         $crate::commands::query::cancel_query,

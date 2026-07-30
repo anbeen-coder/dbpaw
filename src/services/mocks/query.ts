@@ -1,6 +1,9 @@
 import {
   QueryResult,
   QueryExecutionResult,
+  SqlRiskAnalysis,
+  SqlRisk,
+  SqlRiskReason,
   SqlExecutionLog,
   RedisCommandLog,
   ConnectionForm,
@@ -199,6 +202,99 @@ export const mockMultipleResultSets: QueryResult = {
 let mockSqlExecutionLogId = 1;
 const mockSqlExecutionLogs: SqlExecutionLog[] = [];
 
+export async function mockAnalyzeSqlRisk(sql = ""): Promise<SqlRiskAnalysis> {
+  const statements = sql
+    .split(";")
+    .map((statement) =>
+      statement
+        .replace(/^\s*(?:(?:--[^\n]*\n)|(?:\/\*[\s\S]*?\*\/\s*))*/g, "")
+        .trim(),
+    )
+    .filter(Boolean);
+  if (statements.length === 0) {
+    return {
+      risk: "unknown",
+      requiresConfirmation: true,
+      statementCount: 0,
+      reasons: ["unknown_statement"],
+    };
+  }
+
+  let risk: SqlRisk = "read";
+  const reasons: SqlRiskReason[] = [];
+  const rank: Record<SqlRisk, number> = {
+    read: 0,
+    transaction: 1,
+    write: 2,
+    ddl: 3,
+    unknown: 4,
+  };
+  const pushReason = (reason: SqlRiskReason) => {
+    if (!reasons.includes(reason)) reasons.push(reason);
+  };
+
+  for (const statement of statements) {
+    const keyword = statement.match(/^([a-z_]+)/i)?.[1]?.toLowerCase() ?? "";
+    const explainAnalyzeWrite =
+      keyword === "explain" &&
+      /\banalyze\b/i.test(statement) &&
+      /\b(?:insert|update|delete|upsert|merge|replace)\b/i.test(statement);
+    const selectInto = keyword === "select" && /\binto\b/i.test(statement);
+    let statementRisk: SqlRisk;
+    if (
+      !explainAnalyzeWrite &&
+      !selectInto &&
+      ["select", "show", "describe", "explain", "table", "values"].includes(
+        keyword,
+      )
+    ) {
+      statementRisk = "read";
+    } else if (
+      explainAnalyzeWrite ||
+      selectInto ||
+      ["insert", "update", "delete", "upsert", "merge", "replace"].includes(
+        keyword,
+      )
+    ) {
+      statementRisk = "write";
+      pushReason("write_statement");
+      if (
+        (["update", "delete"].includes(keyword) ||
+          /\b(?:update|delete)\b/i.test(statement)) &&
+        !/\bwhere\b/i.test(statement)
+      ) {
+        pushReason("missing_where");
+      }
+    } else if (
+      ["drop", "truncate", "alter", "create", "grant", "revoke"].includes(
+        keyword,
+      )
+    ) {
+      statementRisk = "ddl";
+      pushReason("schema_change");
+    } else if (
+      ["begin", "start", "commit", "rollback", "savepoint", "release"].includes(
+        keyword,
+      )
+    ) {
+      statementRisk = "transaction";
+      pushReason("transaction_control");
+    } else {
+      statementRisk = "unknown";
+      pushReason("unknown_statement");
+    }
+    if (rank[statementRisk] > rank[risk]) risk = statementRisk;
+  }
+
+  if (statements.length > 1) pushReason("multiple_statements");
+  return {
+    risk,
+    requiresConfirmation: risk !== "read",
+    statementCount: statements.length,
+    reasons,
+  };
+}
+
 function appendSqlExecutionLog(params: {
   sql: string;
   source?: string;
@@ -258,6 +354,22 @@ export async function mockExecuteQuery(
 
   const lower = query.toLowerCase();
   const isPartialError = lower.includes("dbpaw-test:partial-error");
+  if (lower.includes("dbpaw-test:structured-error")) {
+    appendSqlExecutionLog({
+      sql: query,
+      source: source || "unknown",
+      connectionId: id,
+      database,
+      success: false,
+      error: "Column account_id does not exist",
+    });
+    throw {
+      code: 42703,
+      message: "Column account_id does not exist",
+      hint: "Check the selected columns and aliases.",
+      category: "query",
+    };
+  }
   const failed =
     !isPartialError && (lower.includes("invalid") || lower.includes("error"));
   if (failed) {
@@ -334,9 +446,14 @@ export async function mockExecuteQuery(
     return withExecutionMetadata(result, query, executionId);
   }
 
+  const affectedMatch = query.match(/dbpaw-test:affected=(\d+)/i);
+  const isDataChange =
+    /^(?:\s|--[^\n]*\n|\/\*[\s\S]*?\*\/)*(?:insert|update|delete|upsert|merge|replace)\b/i.test(
+      query,
+    );
   const result = {
     data: [],
-    rowCount: 0,
+    rowCount: affectedMatch ? Number(affectedMatch[1]) : isDataChange ? 1 : 0,
     columns: [],
     timeTakenMs: 18,
     success: true,
@@ -394,7 +511,7 @@ export async function mockCancelQuery(
   _uuid: string,
   queryId: string,
 ): Promise<boolean> {
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await new Promise((resolve) => setTimeout(resolve, 150));
   cancelledMockQueries.add(queryId);
   return true;
 }
@@ -427,6 +544,7 @@ export async function mockListSqlExecutionLogs(
 }
 
 type QueryCommand =
+  | "analyze_sql_risk"
   | "execute_query"
   | "cancel_query"
   | "execute_by_conn"
@@ -438,6 +556,10 @@ export function handleQuery<T extends QueryCommand>(
   args: CommandArgs<T>,
 ): Promise<CommandReturn<T>> | null {
   switch (cmd) {
+    case COMMANDS.ANALYZE_SQL_RISK: {
+      const a = args as CommandArgs<"analyze_sql_risk">;
+      return mockAnalyzeSqlRisk(a?.sql) as Promise<CommandReturn<T>>;
+    }
     case COMMANDS.EXECUTE_QUERY: {
       const a = args as CommandArgs<"execute_query">;
       return mockExecuteQuery(

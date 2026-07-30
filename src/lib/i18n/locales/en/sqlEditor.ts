@@ -31,6 +31,34 @@ export const sqlEditor = {
     previousContext: "Result is from {{database}} / {{schema}}",
     errorTab: "Error",
   },
+  risk: {
+    title: {
+      read: "Confirm SQL execution",
+      write: "Confirm data change",
+      ddl: "Confirm schema change",
+      transaction: "Confirm transaction command",
+      unknown: "Confirm unrecognized SQL",
+    },
+    description:
+      "Review the exact SQL and database context before allowing this operation.",
+    connection: "Connection #{{id}}",
+    database: "Database: {{database}}",
+    schema: "Schema: {{schema}}",
+    statementCount: "Statements: {{count}}",
+    notSelected: "not selected",
+    reason: {
+      write_statement: "This SQL changes data.",
+      missing_where: "UPDATE or DELETE has no top-level WHERE clause.",
+      schema_change: "This SQL changes database structure or permissions.",
+      transaction_control: "This SQL changes transaction state.",
+      unknown_statement: "The statement type could not be safely recognized.",
+      multiple_statements: "Multiple statements will run together.",
+    },
+    confirm: "Execute anyway",
+    analysisFailed: "SQL safety analysis failed",
+    contextChanged:
+      "The editor or database context changed. Review and run the SQL again.",
+  },
   tooltip: {
     runSql: "Run SQL (Cmd/Ctrl+Enter)",
     formatSql: "Format SQL (Shift+Alt+F)",

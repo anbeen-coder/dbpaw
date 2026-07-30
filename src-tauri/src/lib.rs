@@ -207,6 +207,7 @@ pub fn run() {
             commands::metadata::get_schema_foreign_keys,
             commands::metadata::get_driver_capabilities,
             commands::metadata::list_tables_by_conn,
+            commands::query::analyze_sql_risk,
             commands::query::execute_query,
             commands::query::get_table_data,
             commands::query::cancel_query,

@@ -100,8 +100,67 @@ test("SQL editor: cancel query lifecycle", async ({ page }) => {
   const cancelButton = page.getByRole("button", { name: /Cancel Query/ });
   await expect(cancelButton).toBeVisible();
   await cancelButton.click();
+  const cancellingButton = page.getByRole("button", {
+    name: /Cancelling query/,
+  });
+  await expect(cancellingButton).toBeDisabled();
   await expect(page.getByText(/Query cancelled/)).toBeVisible();
   runtimeErrors.assertClean("Cancel query");
+});
+
+test("SQL editor: closing a running tab cancels without restoring stale results", async ({
+  page,
+}) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await page.goto("/");
+  await openNewQueryTab(page, "MySQL Dev");
+  await typeInEditor(page, "SELECT 1 /* dbpaw-test:delay=1200 */");
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(
+    page.getByRole("button", { name: /Cancel Query/ }),
+  ).toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Close Query (testdb)", exact: true })
+    .click();
+  const unsavedDialog = page.getByRole("alertdialog");
+  await unsavedDialog.getByRole("button", { name: "Don't Save" }).click();
+  await expect(page.getByRole("tab", { name: /Query \(testdb\)/ })).toHaveCount(
+    0,
+  );
+
+  await page.waitForTimeout(1_300);
+  await expect(page.getByText(/Returned 10 row/)).toHaveCount(0);
+  runtimeErrors.assertClean("Close running query tab");
+});
+
+test("SQL editor: selected SQL keeps its execution provenance", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewQueryTab(page);
+  await typeInEditor(page, "SELECT 1;\nSELECT * FROM users");
+
+  const editor = page.locator(".cm-content").first();
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.press("Shift+End");
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible();
+
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(" -- edited later");
+  await expect(
+    page.getByText("Result is from a previous editor revision"),
+  ).toBeVisible();
+
+  await page.getByLabel("Open SQL execution logs").click();
+  const logsPopover = page.locator("[data-radix-popper-content-wrapper]");
+  await expect(
+    logsPopover.getByText("SELECT 1;", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(logsPopover.getByText(/SELECT \* FROM users/)).toHaveCount(0);
 });
 
 test("SQL editor: execution provenance, default limit, and partial errors", async ({
@@ -127,6 +186,64 @@ test("SQL editor: execution provenance, default limit, and partial errors", asyn
   await page.getByRole("button", { name: /Run SQL/ }).click();
   await expect(page.getByText("Error", { exact: true })).toBeVisible();
   await expect(page.getByText(/Completed 1 statement/)).toBeVisible();
+  await expect(page.getByText(/Result 1 \(3 rows\)/)).toBeVisible();
+  await expect(page.getByText("alice@example.com").first()).toBeVisible();
+});
+
+test("SQL editor: risky SQL requires confirmation and reports affected rows", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewQueryTab(page);
+  await typeInEditor(
+    page,
+    "UPDATE users SET username = 'archived' /* dbpaw-test:affected=3 */",
+  );
+
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  let dialog = page.getByRole("alertdialog");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByText("UPDATE users SET username = 'archived'", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("UPDATE or DELETE has no top-level WHERE clause."),
+  ).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.getByLabel("Open SQL execution logs").click();
+  await expect(page.getByText("No execution logs yet.")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  dialog = page.getByRole("alertdialog");
+  await dialog.getByRole("button", { name: "Execute anyway" }).click();
+  await expect(page.getByText(/Affected 3 row.*18 ms/)).toBeVisible();
+});
+
+test("SQL editor: rerun export uses the execution snapshot", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewQueryTab(page);
+  await typeInEditor(
+    page,
+    "SELECT * FROM users /* dbpaw-test:export-token=before */",
+  );
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+  await expect(page.getByText(/Returned 10 row/)).toBeVisible();
+
+  const editor = page.locator(".cm-content").first();
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(" /* dbpaw-test:export-token=after */");
+
+  await page.getByRole("button", { name: "Rerun and Export" }).click();
+  await page.getByRole("menuitem", { name: "CSV" }).click();
+  await expect(page.getByText(/dbpaw-query-export-before\.csv/)).toBeVisible();
+  await expect(page.getByText(/dbpaw-query-export-after\.csv/)).toHaveCount(0);
 });
 
 test("SQL editor: context selectors are disabled while running", async ({
@@ -362,6 +479,26 @@ test("SQL editor: execute invalid query shows error", async ({ page }) => {
     timeout: 10_000,
   });
   // Skip assertClean — the mock throws intentionally, which triggers console.error in the API layer
+});
+
+test("SQL editor: structured errors retain code, category, and hint", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openNewQueryTab(page);
+  await typeInEditor(
+    page,
+    "SELECT account_id FROM users /* dbpaw-test:structured-error */",
+  );
+  await page.getByRole("button", { name: /Run SQL/ }).click();
+
+  await expect(
+    page.getByText("Column account_id does not exist"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Check the selected columns and aliases."),
+  ).toBeVisible();
+  await expect(page.getByText("query · 42703")).toBeVisible();
 });
 
 test("SQL logs dropdown shows execution history", async ({ page }) => {

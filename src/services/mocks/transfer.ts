@@ -30,11 +30,16 @@ export async function mockExportDatabaseSql(
 }
 
 export async function mockExportQueryResult(
-  _params: any,
+  params: any,
 ): Promise<ExportResult> {
   await new Promise((resolve) => setTimeout(resolve, 120));
+  const token = String(params?.sql ?? "").match(
+    /dbpaw-test:export-token=([a-z0-9_-]+)/i,
+  )?.[1];
   return {
-    filePath: `/tmp/dbpaw-query-export-${Date.now()}.csv`,
+    filePath: token
+      ? `/tmp/dbpaw-query-export-${token}.${params?.format || "csv"}`
+      : params?.filePath || `/tmp/dbpaw-query-export-${Date.now()}.csv`,
     rowCount: mockQueryResult.rowCount,
   };
 }

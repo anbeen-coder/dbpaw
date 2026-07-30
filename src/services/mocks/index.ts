@@ -56,7 +56,7 @@ export {
 } from "./metadata";
 export {
   mockQueryResult, mockMultipleResultSets, mockComplexTypeData, mockArrayTypeData,
-  mockExecuteQuery, mockCancelQuery, mockExecuteByConn,
+  mockAnalyzeSqlRisk, mockExecuteQuery, mockCancelQuery, mockExecuteByConn,
   mockListSqlExecutionLogs, mockListRedisCommandLogs,
 } from "./query";
 export { mockTableData, mockGetTableData, mockGetTableDataByConn } from "./tableData";

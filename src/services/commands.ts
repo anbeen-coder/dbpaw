@@ -1,5 +1,6 @@
 export const COMMANDS = {
   // Query
+  ANALYZE_SQL_RISK: "analyze_sql_risk",
   EXECUTE_QUERY: "execute_query",
   CANCEL_QUERY: "cancel_query",
   EXECUTE_BY_CONN: "execute_by_conn",

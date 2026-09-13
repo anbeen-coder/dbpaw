@@ -89,6 +89,10 @@ it never happens again.
 
 ## Database Drivers
 
+- Local SQLite migrations must verify the actual table, column, index, and
+  trigger they require. Never infer that every migration ran from the presence
+  of `connections` or from version records alone. Check multi-column migrations
+  per column and keep repairs transactional so interrupted runs can recover.
 - Every driver implements the `DatabaseDriver` trait re-exported by
   `src-tauri/src/db/drivers/mod.rs`.
   The trait has required methods (`connect`, `list_databases`, `list_tables`,
